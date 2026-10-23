@@ -1,0 +1,40 @@
+:root {
+  --color-navy-950: #151b2d;
+  --color-navy-900: #1d2438;
+  --color-navy-400: #7d879f;
+  --color-navy-300: #a8b1c8;
+  --color-navy-200: #c6cde0;
+  --color-navy-100: #e8ebf5;
+  --color-accent-800: #4338b6;
+  --color-accent-700: #5148db;
+  --color-accent-600: #635bff;
+  --color-accent-500: #7a73ff;
+  --color-accent-300: #aaa5ff;
+  --color-accent-200: #d2cfff;
+  --color-accent-soft: #efeeff;
+  --color-canvas: #f6f7fb;
+  --color-surface: #ffffff;
+  --color-text-strong: #172033;
+  --color-text: #2a3348;
+  --color-text-muted: #667087;
+  --color-text-subtle: #8b93a6;
+  --color-border: #d9ddea;
+  --color-border-soft: #e8eaf2;
+  --color-success-900: #135f43;
+  --color-success-500: #25a875;
+  --color-success-300: #8ce1c1;
+  --color-success-soft: #e7f8f1;
+  --color-warning-text: #78510b;
+  --color-warning-border: #efd596;
+  --color-warning-soft: #fff7df;
+  --color-danger-700: #b4233d;
+  --color-danger-soft: #fff0f2;
+  --shadow-card: 0 26px 70px rgb(29 36 56 / 12%);
+  --shadow-card-soft: 0 10px 34px rgb(29 36 56 / 5%);
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui,
+    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--color-text);
+  background: var(--color-canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}

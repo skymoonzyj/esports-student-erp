@@ -1,0 +1,191 @@
+.talent-game-chrome {
+  display: grid;
+  gap: 1rem;
+  width: min(100%, 72rem);
+  margin-inline: auto;
+}
+
+.talent-game-kicker {
+  color: var(--color-text-muted, #5f6b7a);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.talent-game-status {
+  border-left: 0.25rem solid var(--color-warning, #b7791f);
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface-muted, #f7f8fa);
+}
+
+.talent-game-stage {
+  min-width: 0;
+}
+
+.talent-game-score {
+  font-size: clamp(1.25rem, 3vw, 2rem);
+  font-weight: 700;
+}
+
+.talent-page {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  width: min(100%, 72rem);
+  margin-inline: auto;
+}
+
+.talent-page-heading,
+.talent-progress-row,
+.talent-actions,
+.talent-history-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.talent-page-heading > *,
+.talent-session-panel,
+.talent-readable-reports,
+.talent-history-card,
+.talent-test-card,
+.talent-report-summary,
+.talent-rule-basis {
+  min-width: 0;
+}
+
+.talent-session-panel,
+.talent-readable-reports,
+.talent-history-card,
+.talent-report-summary,
+.talent-rule-basis,
+.talent-dynamic-report {
+  padding: 1rem;
+  border: 1px solid var(--color-border, #d8dee8);
+  border-radius: 0.875rem;
+  background: var(--color-surface, #fff);
+}
+
+.talent-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.75rem;
+  margin-block: 1rem;
+}
+
+.talent-test-card {
+  padding: 1rem;
+  border: 1px solid var(--color-border, #d8dee8);
+  border-radius: 0.75rem;
+}
+
+.talent-test-card h2,
+.talent-test-card p {
+  margin: 0;
+}
+
+.talent-readable-reports ul,
+.talent-rule-basis ul,
+.talent-report-summary ul {
+  padding-inline-start: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.talent-history-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.talent-history-card > div,
+.talent-report-cell-stack {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.talent-dynamic-report {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.talent-dynamic-report dl {
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+
+.talent-dynamic-report dt {
+  font-weight: 700;
+}
+
+.talent-dynamic-report dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.talent-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.talent-report-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.talent-report-table {
+  width: 100%;
+  min-width: 44rem;
+  border-collapse: collapse;
+}
+
+.talent-report-table th,
+.talent-report-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--color-border, #d8dee8);
+  text-align: start;
+  vertical-align: top;
+}
+
+.talent-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(15 23 42 / 55%);
+}
+
+.talent-dialog {
+  width: min(100%, 30rem);
+  padding: 1.25rem;
+  border-radius: 0.875rem;
+  background: var(--color-surface, #fff);
+}
+
+@media (max-width: 390px) {
+  .talent-page-heading,
+  .talent-progress-row,
+  .talent-actions,
+  .talent-history-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .talent-actions > *,
+  .talent-pagination button {
+    min-height: 44px;
+  }
+
+  .talent-dynamic-report dl {
+    grid-template-columns: 1fr;
+  }
+}

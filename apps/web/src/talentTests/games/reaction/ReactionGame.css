@@ -1,0 +1,60 @@
+.reaction-game {
+  align-items: center;
+  background: #2563a6;
+  border-radius: 16px;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  min-height: min(540px, calc(100svh - 180px));
+  outline: none;
+  padding: 32px 24px;
+  text-align: center;
+  touch-action: manipulation;
+  transition: background-color 120ms ease;
+  user-select: none;
+  width: 100%;
+}
+
+.reaction-game:focus-visible {
+  box-shadow: 0 0 0 4px rgb(255 255 255 / 45%);
+}
+
+.reaction-game--waiting {
+  background: #bb2938;
+}
+
+.reaction-game--go {
+  background: #258c47;
+}
+
+.reaction-game__content {
+  max-width: 760px;
+}
+
+.reaction-game__title {
+  font-size: clamp(2.25rem, 8vw, 5rem);
+  font-weight: 500;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.reaction-game__message {
+  font-size: clamp(1rem, 3vw, 1.5rem);
+  line-height: 1.5;
+  margin: 16px 0 0;
+}
+
+.reaction-game__progress {
+  color: rgb(255 255 255 / 82%);
+  font-size: 1rem;
+  margin: 16px 0 0;
+}
+
+@media (max-width: 640px) {
+  .reaction-game {
+    border-radius: 12px;
+    min-height: min(480px, calc(100svh - 128px));
+    padding: 24px 16px;
+  }
+}

@@ -1,0 +1,253 @@
+.campSurveyPage {
+  width: min(100% - 32px, 1100px);
+  margin: 0 auto;
+  display: grid;
+  gap: 20px;
+  color: var(--color-text, #263238);
+}
+
+.campSurveyPage header h1 {
+  margin: .25rem 0;
+  color: var(--color-navy-950, #102a43);
+}
+
+.campSurveyCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+.campSurveyCard,
+.campSurveyForm,
+.campSurveyTable article,
+.printProjection article {
+  padding: 18px;
+  border: 1px solid var(--color-border-soft, #dbe3e8);
+  border-radius: 10px;
+  background: var(--color-surface, #fff);
+  box-shadow: var(--shadow-card-soft, 0 2px 8px rgb(16 42 67 / 8%));
+}
+
+.campSurveyCard,
+.campSurveyForm,
+.campSurveyTable article {
+  display: grid;
+  gap: 14px;
+}
+
+.campSurveyPage button,
+.campSurveyPage a {
+  font: inherit;
+}
+
+.campSurveyPage button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--color-accent-600, #1769aa);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.campSurveyPage button:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
+.campSurveyPage button:focus-visible,
+.campSurveyPage a:focus-visible,
+.campSurveyPage input:focus-visible,
+.campSurveyPage select:focus-visible,
+.campSurveyPage textarea:focus-visible {
+  outline: 3px solid #f5a623;
+  outline-offset: 2px;
+}
+
+.campSurveyForm {
+  max-width: 760px;
+}
+
+.campSurveyForm fieldset {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--color-border-soft, #dbe3e8);
+  border-radius: 8px;
+}
+
+.campSurveyForm legend {
+  padding: 0 6px;
+  color: var(--color-navy-950, #102a43);
+  font-weight: 700;
+}
+
+.campSurveyForm label {
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-muted, #52606d);
+  font-weight: 600;
+}
+
+.campSurveyForm input,
+.campSurveyForm select,
+.campSurveyForm textarea,
+.campSurveyFilters input {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border, #bcccdc);
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+}
+
+.campSurveyForm textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.campSurveyStaffRating {
+  background: color-mix(in srgb, var(--color-surface, #fff) 90%, #dbeafe);
+}
+
+.campSurveySupplementRow {
+  display: grid;
+  gap: 10px;
+}
+
+.campSurveySupplementRow > label,
+.campSurveyCheckboxLabel {
+  display: flex;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.campSurveySupplementRow > label input[type="checkbox"],
+.campSurveyCheckboxLabel input[type="checkbox"] {
+  width: 20px;
+  min-height: 20px;
+  flex: 0 0 auto;
+}
+
+.campSurveyActions,
+.campSurveyAdminActions,
+.campSurveyPrintControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.campSurveySecondaryButton {
+  background: var(--color-surface-muted, #f0f4f8) !important;
+  color: var(--color-navy-950, #102a43) !important;
+  border: 1px solid var(--color-border, #bcccdc) !important;
+}
+
+.campSurveyHint,
+.campSurveyMuted,
+.campSurveyTable article span,
+.campSurveyAdminActions span {
+  color: var(--color-text-muted, #52606d);
+}
+
+.campSurveyScore {
+  margin: 0;
+  color: var(--color-navy-950, #102a43);
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.campSurveyTable {
+  display: grid;
+  gap: 12px;
+}
+
+.campSurveyTable article header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.campSurveyFilters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto auto;
+  align-items: end;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--color-border-soft, #dbe3e8);
+  border-radius: 10px;
+  background: var(--color-surface-muted, #f7fafc);
+}
+
+.campSurveyFilters label:not(.campSurveyCheckboxLabel) {
+  display: grid;
+  gap: 5px;
+  color: var(--color-text-muted, #52606d);
+  font-weight: 600;
+}
+
+.campSurveyPrintToolbar {
+  display: grid;
+  gap: 10px;
+}
+
+.printProjection article {
+  break-inside: avoid;
+}
+
+.campSurveyPrintDetail {
+  padding: 8px 0;
+  border-top: 1px solid var(--color-border-soft, #dbe3e8);
+}
+
+.campSurveyPrintDetail p {
+  margin: 4px 0;
+}
+
+@media (max-width: 768px) {
+  .campSurveyFilters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .campSurveyPage {
+    width: min(100% - 24px, 1100px);
+  }
+
+  .campSurveyFilters {
+    grid-template-columns: 1fr;
+  }
+
+  .campSurveyActions button,
+  .campSurveyCard button,
+  .campSurveyFilters button,
+  .campSurveyPrintControls button {
+    width: 100%;
+  }
+}
+
+@media print {
+  .campSurveyPage {
+    width: 100%;
+  }
+
+  .campSurveyPage > header > a,
+  .campSurveyAdminActions,
+  .campSurveyPrintControls,
+  .campSurveyPrintToolbar > a {
+    display: none;
+  }
+
+  .printProjection article {
+    box-shadow: none;
+  }
+}

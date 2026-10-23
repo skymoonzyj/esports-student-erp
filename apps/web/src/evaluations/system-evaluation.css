@@ -1,0 +1,410 @@
+.systemEvaluationDashboard,
+.systemEvaluationTasksPage,
+.systemEvaluationTaskDetailPage,
+.systemEvaluationReviewPanel,
+.systemEvaluationPreview,
+.systemEvaluationResult,
+.systemEvaluationHistory {
+  min-width: 0;
+}
+
+.systemEvaluationDashboard {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.systemEvaluationDashboard > header,
+.systemEvaluationPageHeader,
+.systemEvaluationResult > header,
+.systemEvaluationHistory article > header,
+.systemEvaluationTaskCards article > header,
+.systemEvaluationDialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.systemEvaluationDashboard h2,
+.systemEvaluationDashboard p,
+.systemEvaluationPageHeader p,
+.systemEvaluationTaskCards p,
+.systemEvaluationResult p,
+.systemEvaluationHistory p,
+.systemEvaluationReviewPanel p,
+.systemEvaluationDialogHeader h2 {
+  margin: 0;
+}
+
+.systemEvaluationMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.systemEvaluationMetric,
+.systemEvaluationTaskCards article,
+.systemEvaluationPreview,
+.systemEvaluationResult,
+.systemEvaluationHistory,
+.systemEvaluationReviewPanel,
+.systemEvaluationState {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface, #fff);
+  box-shadow: 0 8px 24px rgb(16 24 40 / 6%);
+}
+
+.systemEvaluationMetric {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.systemEvaluationMetric > span,
+.systemEvaluationTaskCards article span,
+.systemEvaluationHistory article span {
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.systemEvaluationMetric > strong {
+  font-size: clamp(24px, 3vw, 34px);
+}
+
+.systemEvaluationMetric a,
+.systemEvaluationPageHeader a,
+.systemEvaluationPageHeader button,
+.systemEvaluationFilters select,
+.systemEvaluationTasksPage button,
+.systemEvaluationTasksPage a,
+.systemEvaluationTaskDetailPage button,
+.systemEvaluationTaskDetailPage a,
+.systemEvaluationDialogClose {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.systemEvaluationState button,
+.systemEvaluationPager button,
+.publishedEvaluationList a,
+.adapterCertificationsPanel button,
+.adapterCertificationsPanel input,
+.adapterCertificationsPanel select,
+.systemEvaluationReviewForm > fieldset > label {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.systemEvaluationState button,
+.systemEvaluationPager button,
+.publishedEvaluationList a,
+.adapterCertificationsPanel button,
+.systemEvaluationReviewForm > fieldset > label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.systemEvaluationReviewForm > fieldset > label {
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 8px 4px;
+}
+
+.systemEvaluationReviewActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.adapterCertificationsPanel,
+.adapterCertificationsPanel form,
+.adapterCertificationsPanel label,
+.adapterCertificationList {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.adapterCertificationsPanel input,
+.adapterCertificationsPanel select {
+  width: 100%;
+  padding: 0 12px;
+}
+
+.systemEvaluationMetric a,
+.systemEvaluationPageHeader a,
+.systemEvaluationPageHeader button,
+.systemEvaluationTasksPage a,
+.systemEvaluationTasksPage button,
+.systemEvaluationTaskDetailPage a,
+.systemEvaluationTaskDetailPage button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.systemEvaluationTasksPage,
+.systemEvaluationTaskDetailPage {
+  display: grid;
+  gap: 20px;
+  width: min(100%, 1280px);
+  margin: 0 auto;
+  overflow-x: clip;
+}
+
+.systemEvaluationPageHeader {
+  align-items: flex-start;
+}
+
+.systemEvaluationFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface, #fff);
+}
+
+.systemEvaluationFilters label {
+  display: grid;
+  gap: 6px;
+  min-width: min(100%, 220px);
+  font-weight: 700;
+}
+
+.systemEvaluationFilters select {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+}
+
+.systemEvaluationTableWrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.systemEvaluationTableWrap table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.systemEvaluationTableWrap th,
+.systemEvaluationTableWrap td {
+  padding: 12px;
+  border-bottom: 1px solid var(--color-border-soft);
+  text-align: left;
+  vertical-align: top;
+}
+
+.systemEvaluationTaskCards,
+.systemEvaluationTaskCards article,
+.systemEvaluationTaskCardSummary {
+  display: grid;
+  gap: 10px;
+}
+
+.systemEvaluationTaskCards article {
+  padding: 16px;
+  overflow-wrap: anywhere;
+}
+
+.systemEvaluationTaskCardSummary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.systemEvaluationPager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.systemEvaluationState {
+  padding: 20px;
+}
+
+.systemEvaluationDetailLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.systemEvaluationPreview,
+.systemEvaluationResult,
+.systemEvaluationHistory,
+.systemEvaluationReviewPanel {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+  overflow-wrap: anywhere;
+}
+
+.systemEvaluationPreview > div,
+.systemEvaluationComponents,
+.systemEvaluationHistory > div {
+  display: grid;
+  gap: 12px;
+}
+
+.systemEvaluationPreview figure {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.systemEvaluationPreview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #101828;
+}
+
+.systemEvaluationScoreSummary {
+  display: flex;
+  gap: 10px;
+}
+
+.systemEvaluationScoreSummary > div {
+  display: grid;
+  min-width: 84px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--color-background-soft, #f2f4f7);
+}
+
+.systemEvaluationFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.systemEvaluationFields > div,
+.systemEvaluationComponents article,
+.systemEvaluationHistory article {
+  padding: 12px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+}
+
+.systemEvaluationFields dt {
+  font-weight: 800;
+}
+
+.systemEvaluationFields dd {
+  margin: 4px 0 0;
+}
+
+.systemEvaluationReviewPanel form,
+.systemEvaluationReviewPanel fieldset {
+  display: grid;
+  gap: 12px;
+}
+
+.systemEvaluationReviewPanel textarea {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  margin-top: 6px;
+}
+
+.systemEvaluationDialogBackdrop {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(16 24 40 / 58%);
+}
+
+.systemEvaluationDialog {
+  width: min(720px, 100%);
+  max-height: min(88dvh, 900px);
+  overflow-y: auto;
+  padding: 20px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgb(16 24 40 / 24%);
+}
+
+.systemEvaluationDialogBody {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.systemEvaluationDialogClose {
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 28px;
+}
+
+.systemEvaluationDialog button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+@media (max-width: 768px) {
+  .systemEvaluationDashboard > header,
+  .systemEvaluationPageHeader,
+  .systemEvaluationResult > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .systemEvaluationTasksPage,
+  .systemEvaluationTaskDetailPage {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .systemEvaluationMetricGrid,
+  .systemEvaluationFields,
+  .systemEvaluationDetailLayout,
+  .systemEvaluationTaskCardSummary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .systemEvaluationPageHeader button,
+  .systemEvaluationPager button,
+  .systemEvaluationTaskCards a,
+  .systemEvaluationReviewPanel button[type="submit"],
+  .systemEvaluationReviewActions button,
+  .publishedEvaluationList a,
+  .adapterCertificationsPanel button {
+    width: 100%;
+  }
+
+  .systemEvaluationScoreSummary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .systemEvaluationDialogBackdrop {
+    place-items: stretch;
+    padding: 0;
+  }
+
+  .systemEvaluationDialog {
+    width: 100%;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    padding: 18px 16px calc(96px + env(safe-area-inset-bottom));
+    border-radius: 0;
+  }
+}

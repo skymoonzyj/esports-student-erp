@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="referrer" content="no-referrer">
+  <title>听声辨位 · 试听验证</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header class="topbar"><span class="brand"><span class="brand-icon">声</span> 天赋评测 2 <span class="slash">/</span> <span class="muted">超管试听</span></span><span class="badge">超管试听 · 不计分</span></header>
+  <section class="hero">
+    <div><p class="eyebrow">空间听觉 · FPS 专项探索</p><h1>听声辨位</h1><p class="intro">听一段声音，选出它来自哪个方向。<br class="mobile-only">不看目标，只凭双耳判断。</p></div>
+    <div class="facts"><span><strong>8</strong> 个方向</span><span><strong>双耳</strong> 耳机</span><span><strong>本地</strong> 运行</span></div>
+  </section>
+
+  <div class="workspace">
+    <aside>
+      <section class="card" id="setup">
+        <p class="eyebrow">01 / 先检查设备</p><h2>戴好耳机，开始试听</h2>
+        <p class="muted">在安静环境中测试。关闭系统单声道、额外的空间音效和均衡器；耳机按 L / R 正确佩戴。</p>
+        <label class="field" for="device">本次使用的设备</label>
+        <select id="device"><option value="">请选择耳机类型</option><option value="wired">有线 / USB 双耳耳机</option><option value="bluetooth">蓝牙双耳耳机</option></select>
+        <label class="field" for="volume">试听音量 <output id="volume-value">15%</output></label>
+        <input id="volume" type="range" min="0" max="40" value="15" aria-label="试听音量">
+        <p class="small">从低音量开始，以舒适为准。调整音量会停止当前播放，请重新试听。网页音量不能代表耳机实际声压。</p>
+        <div class="calibration"><button id="left" class="secondary">试听左耳</button><button id="right" class="secondary">试听右耳</button></div>
+        <button id="stop-calibration" class="secondary full" style="margin-top:8px" disabled>立即停止试听</button>
+        <p id="audio-status" class="status" role="status">先分别试听左右声道。</p>
+        <label class="check"><input id="confirmed" type="checkbox"><span>已分别听到左耳和右耳声音，方向正确、音量舒适。</span></label>
+        <button id="start" class="primary full" disabled>开始 8 题试听 <span aria-hidden="true">→</span></button>
+        <p class="small">此项由你确认，网页不会自动识别是否戴耳机。</p>
+      </section>
+      <section class="card instructions">
+        <p class="eyebrow">怎么判断</p>
+        <ol><li>把屏幕上方想象成你面朝的前方。</li><li>点击播放，听完三段短促沙沙声。</li><li>在圆盘上选择声音来自的方向。</li></ol>
+        <div class="note">头部保持自然朝前。前后不好分辨也请如实作答，这正是本次需要验证的效果。</div>
+        <p class="small">使用同一段原创合成声，排除不同音效给出答案的提示。本版没有距离、上下楼层或移动声源。</p>
+      </section>
+    </aside>
+
+    <section class="card stage" id="stage" aria-labelledby="stage-title">
+      <div class="stage-head"><div><p class="eyebrow">02 / 方向判断</p><h2 id="stage-title">准备好，让声音带路</h2></div><span id="counter" class="counter">等待开始</span></div>
+      <div id="progress" class="progress" aria-label="答题进度"></div>
+      <div id="compass" class="compass" role="group" aria-label="声音方向选择">
+        <div class="cross horizontal"></div><div class="cross vertical"></div>
+        <div class="inner-ring"></div>
+        <div class="listener"><span class="facing" aria-hidden="true">▲</span><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M10 28v-6a14 14 0 0 1 28 0v6M10 25H8v12h7V25h-5m28 0h2v12h-7V25h5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>你在这里</span></div>
+      </div>
+      <p id="trial-status" class="trial-status" role="status">完成左侧耳机检查后即可开始。</p>
+      <div class="actions"><button id="play" class="primary" disabled>播放声音</button><button id="stop" class="secondary" disabled>停止声音</button><button id="next" class="primary" hidden>下一题 →</button></div>
+      <p id="feedback" class="feedback" aria-live="polite">播放完成后，点击圆盘上的方向作答。</p>
+      <p class="small center">允许重听，不限作答时间。结果只用于试听验证，不是正式成绩。</p>
+    </section>
+  </div>
+
+  <section id="results" class="card results" hidden aria-labelledby="result-title">
+    <p class="eyebrow">试听记录</p><h2 id="result-title">这一轮，你听到了哪些方向？</h2>
+    <div class="metrics"><div><span>方向完全正确</span><strong id="correct"></strong></div><div><span>本轮正确率</span><strong id="accuracy"></strong></div><div><span>平均方向偏差</span><strong id="error"></strong></div></div>
+    <p id="result-device" class="muted"></p>
+    <div class="table-wrap"><table><thead><tr><th>题目</th><th>实际方向</th><th>你的选择</th><th>角度偏差</th></tr></thead><tbody id="rows"></tbody></table></div>
+    <p class="note">每个方向恰好出现一次，作答前可重听，作答后公布答案，后续可能被排除法影响：这不是独立测量或能力评级。请重点反馈左右是否正确、前后是否难分、手机是否出现无声或声音中断。没有上传 ERP，也不会保存到浏览器；刷新即清空。</p>
+    <button id="restart" class="primary">重新检查耳机并试听</button>
+  </section>
+  <p class="center"><a class="back-link" href="/esports-assessments">返回天赋评测 2</a></p>
+  <footer>试听预览，不替代听力检查，也不用于职业潜力判断。<span>不使用麦克风 · 不上传个人信息</span></footer>
+</main>
+<script type="module" src="app.mjs"></script>
+</body>
+</html>

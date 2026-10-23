@@ -1,0 +1,28 @@
+.teamManagementPage, .teamSelfPanel { display: grid; gap: 1rem; color: var(--text-primary, #243047); }
+.teamPageHeader { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.teamPageHeader h1, .teamSelfPanel h2 { margin: 0; }
+.teamFilters { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; }
+.teamFilters label, .teamDialog label { display: grid; gap: .35rem; min-width: 10rem; }
+.teamFilters input, .teamFilters select, .teamDialog input, .teamDialog select, .teamDialog textarea { font: inherit; min-height: 2.75rem; padding: .5rem .65rem; border: 1px solid #b8c4d2; border-radius: .45rem; background: white; color: inherit; }
+.teamCardGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr)); gap: .75rem; }
+.teamCard, .teamSelfCurrent, .teamHistory { display: grid; gap: .55rem; padding: 1rem; border: 1px solid #d8e0e9; border-radius: .7rem; background: #fff; }
+.teamCard h2, .teamHistory h3 { margin: 0; }
+.teamCardMeta, .teamMemberMeta { color: #526277; font-size: .92rem; }
+.teamActionRow, .teamPager { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.teamManagementPage button, .teamSelfPanel button, .teamDialog button { font: inherit; min-height: 2.75rem; padding: .4rem .8rem; cursor: pointer; border: 1px solid #a9b7c8; border-radius: .45rem; background: white; color: inherit; }
+.teamManagementPage button:disabled, .teamSelfPanel button:disabled, .teamDialog button:disabled { cursor: not-allowed; opacity: .55; }
+.teamManagementPage button:focus-visible, .teamSelfPanel button:focus-visible, .teamDialog button:focus-visible { outline: 3px solid #2b6ecb; outline-offset: 2px; }
+.teamPrimaryButton, .teamDialog .teamPrimaryButton { background: #1556a2; color: white; border-color: #1556a2; }
+.teamMemberList, .teamHistory ul, .teamAssignmentList { display: grid; gap: .5rem; list-style: none; margin: 0; padding: 0; }
+.teamMemberList li, .teamHistory li, .teamAssignmentList li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; padding: .7rem; border: 1px solid #e1e6ee; border-radius: .45rem; }
+.teamHistory li { display: grid; justify-content: stretch; }
+.teamDialogBackdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 1rem; background: #1423339c; }
+.teamDialog { width: min(100%, 34rem); max-height: min(90dvh, 48rem); overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 1rem; padding: 1.2rem; border-radius: .8rem; background: #fff; box-shadow: 0 20px 60px #0b1a2a40; }
+.teamDialog h2 { margin: 0; }
+.teamDialogHeader { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.teamCandidateList { display: grid; gap: .4rem; list-style: none; padding: 0; margin: 0; }
+.teamCandidateList button { width: 100%; text-align: left; }
+.teamCandidateList button[aria-pressed=true] { border-color: #1556a2; background: #e9f1ff; }
+.teamDialogActions { position: sticky; bottom: -1.2rem; display: flex; justify-content: flex-end; gap: .5rem; padding: .8rem 0; background: #fff; }
+.teamError { padding: .65rem; border-radius: .4rem; color: #962d28; background: #fff0ee; }
+@media (max-width: 600px) { .teamFilters { display: grid; grid-template-columns: 1fr; } .teamFilters label { min-width: 0; } .teamDialogBackdrop { align-items: end; padding: 0; } .teamDialog { width: 100%; max-height: 90dvh; border-radius: .9rem .9rem 0 0; padding-bottom: max(1rem, env(safe-area-inset-bottom)); } .teamCandidateList { max-height: 38dvh; overflow-y: auto; } }

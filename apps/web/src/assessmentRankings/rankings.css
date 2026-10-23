@@ -1,0 +1,18 @@
+.assessmentRanking {
+  min-width: 0;
+  margin: 1rem 0;
+  padding: clamp(.75rem, 2vw, 1.25rem);
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: .75rem;
+  overflow-wrap: anywhere;
+}
+.assessmentRankingSummary { display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; }
+.assessmentRankingTableWrap { max-width: 100%; overflow-x: auto; }
+.assessmentRanking table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.assessmentRanking th, .assessmentRanking td { padding: .65rem .4rem; text-align: left; border-bottom: 1px solid var(--border-color, #d1d5db); }
+.assessmentRanking caption { text-align: left; margin-bottom: .5rem; }
+.assessmentRanking button { min-height: 44px; padding: .5rem 1rem; }
+@media (max-width: 480px) {
+  .assessmentRankingSummary { display: block; }
+  .assessmentRanking th, .assessmentRanking td { padding: .5rem .25rem; font-size: .875rem; }
+}

@@ -1,0 +1,368 @@
+.teachingReportPage,
+.publishedReportsPanel,
+.teachingReportPage *,
+.publishedReportsPanel * {
+  min-width: 0;
+}
+
+.teachingReportPage {
+  width: min(100%, 1280px);
+  display: grid;
+  gap: 20px;
+  margin: 0 auto;
+  padding-bottom: calc(32px + env(safe-area-inset-bottom));
+  overflow-x: clip;
+}
+
+.teachingReportPage h1,
+.teachingReportPage h2,
+.teachingReportPage h3,
+.teachingReportPage p,
+.publishedReportsPanel h2,
+.publishedReportsPanel h3,
+.publishedReportsPanel p {
+  margin: 0;
+}
+
+.teachingReportPage button,
+.teachingReportPage input,
+.teachingReportPage select,
+.teachingReportPage textarea,
+.teachingReportEditorBody textarea,
+.teachingReportReviewForm textarea,
+.teachingReportReviewForm fieldset label,
+.publishedReportsPanel button {
+  min-height: 44px;
+}
+
+.teachingReportPage button,
+.publishedReportsPanel button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 8px 14px;
+  color: var(--color-text);
+  background: var(--color-surface, #fff);
+  font-weight: 720;
+  cursor: pointer;
+}
+
+.teachingReportPage input,
+.teachingReportPage select,
+.teachingReportPage textarea,
+.teachingReportEditorBody textarea,
+.teachingReportReviewForm textarea {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--color-text);
+  background: var(--color-surface, #fff);
+}
+
+.teachingReportPage textarea,
+.teachingReportEditorBody textarea,
+.teachingReportReviewForm textarea {
+  min-height: 180px;
+  resize: vertical;
+}
+
+.teachingReportHeader,
+.publishedReportsHeader,
+.teachingReportDetail > header,
+.teachingReportVersionCard > header,
+.publishedReportCard > header,
+.publishedReportCard > footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.teachingReportHeader {
+  padding: 22px;
+  border: 1px solid var(--color-border-soft, var(--color-border));
+  border-radius: 16px;
+  background: linear-gradient(135deg, #fff 0%, #f7f5ff 100%);
+  box-shadow: var(--shadow-card-soft, 0 8px 24px rgb(16 24 40 / 6%));
+}
+
+.teachingReportHeader h1 {
+  color: var(--color-navy-950);
+  font-size: clamp(26px, 4vw, 36px);
+}
+
+.teachingReportHeader > svg,
+.publishedReportsHeader > svg {
+  flex: 0 0 auto;
+  color: var(--color-accent-600);
+}
+
+.teachingReportFilters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface, #fff);
+}
+
+.teachingReportFilters label,
+.teachingReportEditorBody,
+.teachingReportReviewForm,
+.teachingReportReviewForm > label,
+.teachingReportVersionTimeline,
+.publishedReportsPanel {
+  display: grid;
+  gap: 10px;
+}
+
+.teachingReportFilters label > span,
+.teachingReportFacts dt,
+.teachingReportEditorMeta,
+.publishedReportPeriod {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.teachingReportsAuthorPage .teachingReportWorkspace {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.8fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.teachingReportReviewPage .teachingReportWorkspace {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.5fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.teachingReportTargetList,
+.teachingReportSlotList,
+.teachingReportQueue,
+.teachingReportVersionList,
+.publishedReportsList {
+  display: grid;
+  gap: 12px;
+}
+
+.teachingReportTargetList article,
+.teachingReportSlotList article,
+.teachingReportQueueCard,
+.teachingReportDetail,
+.teachingReportVersionCard,
+.publishedReportCard,
+.teachingReportState,
+.publishedReportsState {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface, #fff);
+  box-shadow: 0 8px 24px rgb(16 24 40 / 6%);
+}
+
+.teachingReportTargetList article,
+.teachingReportSlotList article,
+.teachingReportQueueCard,
+.teachingReportDetail,
+.teachingReportVersionCard,
+.publishedReportCard {
+  padding: 16px;
+}
+
+.teachingReportTargetList article,
+.teachingReportSlotList article,
+.teachingReportQueueCard {
+  overflow-wrap: anywhere;
+}
+
+.teachingReportQueueCard.selected,
+.teachingReportTargetList article.selected {
+  border-color: var(--color-accent-600);
+  box-shadow: 0 0 0 3px rgb(99 91 255 / 12%);
+}
+
+.teachingReportQueueSelect {
+  width: 100%;
+  display: grid !important;
+  justify-items: start !important;
+  text-align: left;
+}
+
+.teachingReportPrimaryAction {
+  width: 100%;
+  margin-top: 10px;
+  color: #fff !important;
+  border-color: var(--color-accent-600) !important;
+  background: var(--color-accent-600) !important;
+}
+
+.teachingReportFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.teachingReportFacts div {
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--color-canvas);
+}
+
+.teachingReportFacts dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.teachingReportBody,
+.teachingReportVersionBody,
+.publishedReportBody {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.75;
+}
+
+.teachingReportSlotWindow {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.teachingReportVersionTimeline {
+  margin-top: 20px;
+}
+
+.teachingReportVersionComparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.teachingReportVersionBadges,
+.teachingReportPagination,
+.teachingReportDialogActions,
+.teachingReportEditorActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.teachingReportVersionBadges span,
+.teachingReportDetail > header > span,
+.publishedReportCard > header > span {
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #5a3f80;
+  background: #f2ebfa;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.teachingReportReviewForm fieldset {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.teachingReportReviewForm fieldset label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 4px;
+}
+
+.teachingReportReviewForm fieldset input {
+  width: 20px;
+  min-height: 20px;
+}
+
+.teachingReportDialogActions,
+.teachingReportEditorActions {
+  justify-content: flex-end;
+}
+
+.teachingReportState,
+.publishedReportsState {
+  padding: 22px;
+  color: var(--color-text-muted);
+}
+
+.teachingReportState.error,
+.publishedReportsState.error,
+.teachingReportFormError {
+  color: var(--color-danger-700, #b42318);
+}
+
+.teachingReportNotice {
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: #fff7e8;
+}
+
+.teachingReportNotice.success {
+  color: #067647;
+  background: #ecfdf3;
+}
+
+.teachingReportPagination {
+  justify-content: center;
+}
+
+.publishedReportsPanel {
+  margin-top: 24px;
+  overflow-x: clip;
+}
+
+.publishedReportsHeader {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border-soft, var(--color-border));
+}
+
+.publishedReportCard {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+  .teachingReportPage {
+    gap: 16px;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .teachingReportsAuthorPage .teachingReportWorkspace,
+  .teachingReportReviewPage .teachingReportWorkspace,
+  .teachingReportVersionComparison {
+    grid-template-columns: 1fr;
+  }
+
+  .teachingReportFilters,
+  .teachingReportFacts {
+    grid-template-columns: 1fr;
+  }
+
+  .teachingReportHeader,
+  .publishedReportsHeader,
+  .teachingReportDetail > header,
+  .teachingReportVersionCard > header,
+  .publishedReportCard > header,
+  .publishedReportCard > footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .teachingReportDialogActions > button,
+  .teachingReportEditorActions > button,
+  .teachingReportPagination > button {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+}

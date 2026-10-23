@@ -1,0 +1,41 @@
+.claimCompletionFields,
+.claimGuardianFields {
+  display: grid;
+  gap: 16px;
+}
+
+.claimCompletionFields legend,
+.claimGuardianFields legend {
+  padding: 0;
+  margin-bottom: 12px;
+  font-weight: 700;
+}
+
+.claimCompletionFields p,
+.claimCompletionRead p {
+  margin: 0;
+}
+
+.claimGuardianFields {
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.claimReset {
+  margin-top: 16px;
+}
+
+.claimCompletionRead {
+  min-width: 0;
+  padding: 16px 0;
+  overflow-wrap: anywhere;
+}
+
+.claimCompletionRead dl {
+  display: grid;
+  gap: 12px;
+}
+
+.claimCompletionRead dd {
+  margin: 4px 0 0;
+}

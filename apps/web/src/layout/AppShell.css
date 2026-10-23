@@ -1,0 +1,841 @@
+.appShell {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  color: var(--color-text);
+  background: var(--color-canvas);
+}
+
+.shellRail {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 24px 18px;
+  color: var(--color-navy-100);
+  background: var(--color-navy-950);
+}
+
+.shellBrand,
+.shellMobileBrand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.shellBrand {
+  padding: 0 8px 28px;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.shellBrandMark {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: white;
+  background: var(--color-accent-600);
+  font-weight: 800;
+  box-shadow: 0 10px 24px rgb(44 38 165 / 34%);
+}
+
+.shellBrandMark.compact {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+}
+
+.shellBrandText {
+  display: grid;
+  gap: 2px;
+}
+
+.shellBrandText strong {
+  color: white;
+  font-size: 15px;
+}
+
+.shellBrandText small {
+  color: var(--color-navy-400);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.shellPrimaryNavigation {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  margin-top: 28px;
+  padding-right: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.shellNavLink {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 13px;
+  border-radius: 8px;
+  color: var(--color-navy-300);
+  font-size: 14px;
+  font-weight: 610;
+  text-decoration: none;
+  transition: color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.shellNavLink:hover {
+  color: white;
+  background: rgb(255 255 255 / 5%);
+}
+
+.shellNavLink.active {
+  color: white;
+  background: var(--color-accent-600);
+  box-shadow: 0 10px 24px rgb(35 30 132 / 22%);
+}
+
+.shellNavGroup {
+  display: grid;
+  gap: 2px;
+}
+
+.shellNavGroupLabel {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--color-navy-300);
+  font-size: 14px;
+  font-weight: 610;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.shellNavGroupLabel:hover {
+  color: white;
+  background: rgb(255 255 255 / 5%);
+}
+
+.shellNavGroupLabel.active {
+  color: white;
+  background: var(--color-accent-600);
+  box-shadow: 0 10px 24px rgb(35 30 132 / 22%);
+}
+
+.shellNavSubLinks {
+  display: grid;
+  gap: 2px;
+  margin-left: 17px;
+  padding-left: 11px;
+  border-left: 1px solid rgb(255 255 255 / 13%);
+}
+
+.shellNavSubLinks .shellNavLink {
+  min-height: 38px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.shellNavGroupChevron {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  color: currentColor;
+  transition: transform 150ms ease;
+}
+
+.shellNavGroupChevron svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.shellNavGroup.expanded > .shellNavLink .shellNavGroupChevron,
+.shellNavGroup.expanded > .shellNavGroupLabel .shellNavGroupChevron {
+  transform: rotate(180deg);
+}
+
+.shellNavIcon {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+}
+
+.shellNavIcon svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.shellSecurityNote {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 8px;
+  color: var(--color-success-300);
+  background: rgb(255 255 255 / 4%);
+}
+
+.shellSecurityNote > span {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--color-success-900);
+  background: var(--color-success-300);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.shellSecurityNote p {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.shellSecurityNote strong {
+  color: var(--color-navy-100);
+  font-size: 11px;
+}
+
+.shellSecurityNote small {
+  color: var(--color-navy-400);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.shellWorkspace {
+  min-width: 0;
+}
+
+.shellHeader {
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 24px;
+  padding: 0 clamp(20px, 3.2vw, 48px);
+  border-bottom: 1px solid var(--color-border-soft);
+  background: rgb(255 255 255 / 94%);
+}
+
+.shellMobileBrand {
+  display: none;
+  margin-right: auto;
+}
+
+.shellHeaderContext {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-text-subtle);
+  font-size: 12px;
+}
+
+.shellStatusDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-success-500);
+  box-shadow: 0 0 0 4px var(--color-success-soft);
+}
+
+.shellUser {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.shellAvatar {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--color-accent-800);
+  background: var(--color-accent-soft);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.shellUserName {
+  color: var(--color-text-strong);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.shellLogout {
+  width: 44px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.shellLogout svg {
+  width: 18px;
+  height: 18px;
+}
+
+.shellLogout:hover {
+  color: var(--color-danger-700);
+  background: var(--color-danger-soft);
+}
+
+.shellContent {
+  min-width: 0;
+  padding: clamp(24px, 4vw, 52px);
+}
+
+.shellOnboardingTask {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin: 0 auto 24px;
+  padding: 16px 18px;
+  border: 1px solid var(--color-accent-200);
+  border-radius: 8px;
+  color: var(--color-text);
+  background: var(--color-accent-soft);
+}
+
+.shellOnboardingTask div,
+.shellOnboardingTask p {
+  min-width: 0;
+}
+
+.shellOnboardingTask strong {
+  color: var(--color-text-strong);
+  font-size: 14px;
+}
+
+.shellOnboardingTask p {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.shellOnboardingTask a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  border-radius: 8px;
+  color: white;
+  background: var(--color-accent-700);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.shellMobileNavigation {
+  display: none;
+}
+
+.shellMobileMoreButton {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.shellMoreBackdrop {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-top: 48px;
+  background: rgb(21 27 45 / 42%);
+}
+
+.shellMoreSheet {
+  width: min(100%, 520px);
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  padding: 16px 16px calc(20px + env(safe-area-inset-bottom));
+  border-radius: 8px 8px 0 0;
+  background: var(--color-surface);
+  box-shadow: 0 -16px 48px rgb(21 27 45 / 18%);
+}
+
+.shellMoreSheet > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 0 4px 10px;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.shellMoreSheet > header strong {
+  color: var(--color-text-strong);
+  font-size: 15px;
+}
+
+.shellMoreSheet > header button {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.shellMoreSheet > header button:hover {
+  background: var(--color-canvas);
+}
+
+.shellMoreSheet > header svg {
+  width: 18px;
+  height: 18px;
+}
+
+.shellMoreSheet nav {
+  display: grid;
+  gap: 4px;
+  padding-top: 10px;
+}
+
+.shellMoreSheet .shellNavLink,
+.shellMoreLogout {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.shellMoreSheet .shellNavLink:hover,
+.shellMoreSheet .shellNavLink.active,
+.shellMoreLogout:hover {
+  color: var(--color-accent-800);
+  background: var(--color-accent-soft);
+  box-shadow: none;
+}
+
+.shellMoreSheet .shellNavGroupLabel {
+  min-height: 48px;
+  width: 100%;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.shellMoreSheet .shellNavGroupLabel:hover {
+  color: var(--color-accent-800);
+  background: var(--color-accent-soft);
+}
+
+.shellMoreSheet .shellNavSubLinks {
+  margin-left: 17px;
+  padding-left: 11px;
+  border-left-color: var(--color-border-soft);
+}
+
+.shellMoreSheet .shellNavSubLinks .shellNavLink {
+  min-height: 44px;
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.dashboardPage {
+  width: min(100%, 1220px);
+  margin: 0 auto;
+}
+
+.pageHeadingRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.pageEyebrow {
+  margin: 0 0 10px;
+  color: var(--color-accent-700);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.pageHeadingRow h1 {
+  margin: 0;
+  color: var(--color-navy-950);
+  font-size: 36px;
+  letter-spacing: 0;
+}
+
+.pageHeadingRow p:not(.pageEyebrow) {
+  margin: 12px 0 0;
+  color: var(--color-text-muted);
+}
+
+.foundationBadge {
+  padding: 8px 11px;
+  border: 1px solid var(--color-accent-200);
+  border-radius: 6px;
+  color: var(--color-accent-800);
+  background: var(--color-accent-soft);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.foundationGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 38px;
+}
+
+.foundationGrid article {
+  min-height: 230px;
+  padding: 24px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: white;
+  box-shadow: var(--shadow-card-soft);
+}
+
+.foundationNumber {
+  color: var(--color-accent-500);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.foundationGrid h2 {
+  margin: 48px 0 10px;
+  color: var(--color-navy-950);
+  font-size: 18px;
+}
+
+.foundationGrid p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .appShell {
+    grid-template-columns: 1fr;
+    padding-top: 76px;
+  }
+
+  .shellRail {
+    position: fixed;
+    z-index: 20;
+    inset: 0 0 auto;
+    height: 76px;
+    flex-direction: row;
+    align-items: center;
+    padding: 12px 22px;
+  }
+
+  .shellBrand {
+    min-width: 184px;
+    padding: 0;
+    border: 0;
+  }
+
+  .shellBrandText small,
+  .shellSecurityNote {
+    display: none;
+  }
+
+  .shellPrimaryNavigation {
+    display: none;
+  }
+
+  .shellMobileNavigation {
+    position: fixed;
+    z-index: 30;
+    inset: 12px 22px auto 228px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    min-width: 0;
+  }
+
+  .shellMobileNavigation .shellNavLink,
+  .shellMobileNavigation .shellMobileMoreButton {
+    min-width: 0;
+    min-height: 52px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    color: var(--color-navy-300);
+    font-size: 10px;
+    font-weight: 610;
+    text-decoration: none;
+  }
+
+  .shellMobileNavigation .shellNavLink:hover,
+  .shellMobileNavigation .shellNavLink.active,
+  .shellMobileNavigation .shellMobileMoreButton:hover,
+  .shellMobileNavigation .shellMobileMoreButton.active {
+    color: white;
+    background: rgb(255 255 255 / 8%);
+    box-shadow: none;
+  }
+
+  .shellMobileNavigation .shellNavIcon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .shellMobileNavigation .shellNavGroup {
+    position: relative;
+    min-width: 0;
+  }
+
+  .shellMobileNavigation .shellNavGroupChevron {
+    display: none;
+  }
+
+  .shellMobileNavigation .shellNavSubLinks {
+    position: absolute;
+    z-index: 2;
+    top: calc(100% + 8px);
+    right: 0;
+    display: grid;
+    min-width: 160px;
+    margin: 0;
+    padding: 6px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: 8px;
+    background: var(--color-surface);
+    box-shadow: var(--shadow-card);
+  }
+
+  .shellMobileNavigation .shellNavSubLinks .shellNavLink {
+    min-height: 44px;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 0 10px;
+    color: var(--color-text);
+    font-size: 12px;
+  }
+
+  .shellMobileNavigation .shellNavSubLinks .shellNavLink:hover,
+  .shellMobileNavigation .shellNavSubLinks .shellNavLink.active {
+    color: var(--color-accent-800);
+    background: var(--color-accent-soft);
+  }
+}
+
+@media (max-width: 767px) {
+  .appShell {
+    display: block;
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+
+  .shellRail {
+    display: none;
+  }
+
+  .shellHeader {
+    height: 64px;
+    gap: 10px;
+    padding: 0 16px;
+  }
+
+  .shellMobileBrand {
+    display: flex;
+  }
+
+  .shellMobileBrand strong {
+    color: var(--color-navy-950);
+    font-size: 14px;
+  }
+
+  .shellHeaderContext,
+  .shellUserName {
+    display: none;
+  }
+
+  .shellContent {
+    padding: 24px 16px;
+  }
+
+  .shellOnboardingTask {
+    grid-template-columns: 1fr;
+  }
+
+  .shellOnboardingTask a {
+    width: 100%;
+  }
+
+  .shellMobileNavigation {
+    position: fixed;
+    z-index: 30;
+    inset: auto 0 0;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--color-border-soft);
+    background: rgb(255 255 255 / 97%);
+    box-shadow: 0 -10px 28px rgb(26 31 51 / 7%);
+  }
+
+  .shellMobileNavigation .shellNavLink,
+  .shellMobileNavigation .shellMobileMoreButton {
+    min-width: 0;
+    min-height: 52px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px;
+    color: var(--color-text-subtle);
+    font-size: 10px;
+    font-weight: 610;
+    text-decoration: none;
+  }
+
+  .shellMobileNavigation .shellNavLink.active,
+  .shellMobileNavigation .shellMobileMoreButton.active {
+    color: var(--color-accent-700);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .shellMobileNavigation .shellNavIcon {
+    width: 23px;
+    height: 23px;
+  }
+
+  .shellMobileNavigation .shellNavGroup {
+    position: relative;
+  }
+
+  .shellMobileNavigation .shellNavGroupChevron {
+    display: none;
+  }
+
+  .shellMobileNavigation .shellNavGroupLabel {
+    min-height: 52px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px;
+    color: var(--color-text-subtle);
+    font-size: 10px;
+    font-weight: 610;
+    text-align: center;
+  }
+
+  .shellMobileNavigation .shellNavGroupLabel:hover {
+    color: var(--color-accent-700);
+    background: transparent;
+  }
+
+  .shellMobileNavigation .shellNavGroupLabel.active {
+    color: var(--color-accent-700);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .shellMobileNavigation .shellNavSubLinks {
+    position: absolute;
+    z-index: 2;
+    right: 0;
+    bottom: calc(100% + 8px);
+    display: grid;
+    min-width: 148px;
+    margin: 0;
+    padding: 6px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: 8px;
+    background: var(--color-surface);
+    box-shadow: var(--shadow-card);
+  }
+
+  .shellMobileNavigation .shellNavSubLinks .shellNavLink {
+    min-height: 42px;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 0 10px;
+    color: var(--color-text);
+    font-size: 12px;
+  }
+
+  .shellMobileNavigation .shellNavSubLinks .shellNavLink.active,
+  .shellMobileNavigation .shellNavSubLinks .shellNavLink:hover {
+    color: var(--color-accent-800);
+    background: var(--color-accent-soft);
+  }
+
+  .pageHeadingRow {
+    display: grid;
+  }
+
+  .foundationBadge {
+    width: fit-content;
+  }
+
+  .foundationGrid {
+    grid-template-columns: 1fr;
+    margin-top: 28px;
+  }
+
+  .foundationGrid article {
+    min-height: 176px;
+  }
+
+  .foundationGrid h2 {
+    margin-top: 28px;
+  }
+}

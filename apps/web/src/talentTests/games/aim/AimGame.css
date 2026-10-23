@@ -1,0 +1,146 @@
+.aim-game {
+  position: relative;
+  min-height: 500px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #075985, #0369a1 48%, #0e7490);
+  color: #fff;
+  user-select: none;
+}
+
+.aim-game__intro,
+.aim-game__saving {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.aim-game__intro {
+  flex-direction: column;
+  gap: 10px;
+  text-align: center;
+}
+
+.aim-game__intro h1 {
+  margin: 0 0 16px;
+  font-size: clamp(42px, 8vw, 72px);
+  font-weight: 500;
+}
+
+.aim-game__intro p {
+  margin: 0;
+  font-size: 18px;
+}
+
+.aim-game__surface {
+  position: absolute;
+  inset: 0;
+  touch-action: manipulation;
+}
+
+.aim-game__counter {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  left: 50%;
+  margin: 0;
+  transform: translateX(-50%);
+  color: rgb(255 255 255 / 72%);
+  font-size: 26px;
+  pointer-events: none;
+}
+
+.aim-game__counter strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.aim-game__target {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 48%);
+  color: inherit;
+  cursor: crosshair;
+}
+
+.aim-game__target:focus-visible {
+  outline: 4px solid #fde047;
+  outline-offset: 3px;
+}
+
+.aim-game__target--intro {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  margin-bottom: 38px;
+}
+
+.aim-game__target--playing {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  animation: aim-game-target-spawn 160ms ease-out;
+}
+
+.aim-game__bullseye,
+.aim-game__bullseye::before,
+.aim-game__bullseye::after {
+  position: absolute;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+}
+
+.aim-game__bullseye {
+  inset: 16.667%;
+}
+
+.aim-game__bullseye::before {
+  inset: 24%;
+}
+
+.aim-game__bullseye::after {
+  top: 50%;
+  left: -26%;
+  width: 152%;
+  height: 0;
+  border-width: 1px 0 0;
+  border-radius: 0;
+}
+
+.aim-game__saving {
+  margin: 0;
+  font-size: 24px;
+}
+
+@keyframes aim-game-target-spawn {
+  from {
+    transform: translate(-50%, -50%) scale(0.55);
+  }
+
+  to {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@media (max-width: 699px) {
+  .aim-game {
+    min-height: 420px;
+  }
+
+  .aim-game__counter {
+    font-size: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aim-game__target--playing {
+    animation: none;
+  }
+}

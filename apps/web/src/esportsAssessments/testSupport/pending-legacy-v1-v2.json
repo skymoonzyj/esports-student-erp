@@ -1,0 +1,138 @@
+{
+  "baseline_sources": [
+    "baseline-wt/files/apps/web/src/esportsAssessments/contracts.ts",
+    "baseline-wt/files/apps/web/src/esportsAssessments/pending.ts",
+    "baseline-wt/files/apps/web/src/esportsAssessments/testSupport/fixtures.ts"
+  ],
+  "cases": [
+    {
+      "catalog_version": "pc-fps-v1",
+      "storage_key": "erp:esports-assessments:pending:11111111-1111-4111-8111-111111111111:formal:pc-fps:33333333-3333-4333-8333-000000000101:switching:22222222-2222-4222-8222-000000000201",
+      "pending": {
+        "account_id": "11111111-1111-4111-8111-111111111111",
+        "mode": "formal",
+        "suite_id": "pc-fps",
+        "session_id": "33333333-3333-4333-8333-000000000101",
+        "test_id": "switching",
+        "attempt_id": "22222222-2222-4222-8222-000000000201",
+        "operation_key": "44444444-4444-4444-8444-000000000301",
+        "created_at": "2026-09-21T12:00:00.000Z",
+        "raw": {
+          "kind": "aim",
+          "trials": [
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 },
+            { "hit": false, "latency_ms": 1500 }, { "hit": false, "latency_ms": 1500 }
+          ],
+          "shots": 0,
+          "wrong_target_shots": 0
+        },
+        "quality": {
+          "duration_ms": 60000,
+          "max_frame_gap_ms": 16,
+          "long_frame_gap_total_ms": 0,
+          "input_kind": "mouse",
+          "hidden": false,
+          "interrupted": false
+        }
+      }
+    },
+    {
+      "catalog_version": "mobile-fps-v2",
+      "storage_key": "erp:esports-assessments:pending:11111111-1111-4111-8111-111111111111:formal:mobile-fps:33333333-3333-4333-8333-000000000102:move-fire:22222222-2222-4222-8222-000000000202",
+      "pending": {
+        "account_id": "11111111-1111-4111-8111-111111111111",
+        "mode": "formal",
+        "suite_id": "mobile-fps",
+        "session_id": "33333333-3333-4333-8333-000000000102",
+        "test_id": "move-fire",
+        "attempt_id": "22222222-2222-4222-8222-000000000202",
+        "operation_key": "44444444-4444-4444-8444-000000000302",
+        "created_at": "2026-09-21T12:00:00.000Z",
+        "raw": {
+          "kind": "move_fire",
+          "rounds": [
+            { "hit": false, "reached": false }, { "hit": false, "reached": false },
+            { "hit": false, "reached": false }, { "hit": false, "reached": false },
+            { "hit": false, "reached": false }, { "hit": false, "reached": false },
+            { "hit": false, "reached": false }, { "hit": false, "reached": false },
+            { "hit": false, "reached": false }, { "hit": false, "reached": false },
+            { "hit": false, "reached": false }, { "hit": false, "reached": false },
+            { "hit": false, "reached": false }, { "hit": false, "reached": false },
+            { "hit": false, "reached": false }, { "hit": false, "reached": false },
+            { "hit": false, "reached": false }, { "hit": false, "reached": false },
+            { "hit": false, "reached": false }, { "hit": false, "reached": false }
+          ],
+          "shots": 0
+        },
+        "quality": {
+          "duration_ms": 60000,
+          "max_frame_gap_ms": 16,
+          "long_frame_gap_total_ms": 0,
+          "input_kind": "touch",
+          "hidden": false,
+          "interrupted": false
+        }
+      }
+    },
+    {
+      "catalog_version": "pc-moba-v2",
+      "storage_key": "erp:esports-assessments:pending:11111111-1111-4111-8111-111111111111:practice:pc-moba:22222222-2222-4222-8222-000000000203:dodge:22222222-2222-4222-8222-000000000203",
+      "pending": {
+        "account_id": "11111111-1111-4111-8111-111111111111",
+        "mode": "practice",
+        "suite_id": "pc-moba",
+        "session_id": null,
+        "test_id": "dodge",
+        "attempt_id": "22222222-2222-4222-8222-000000000203",
+        "operation_key": "44444444-4444-4444-8444-000000000303",
+        "created_at": "2026-09-21T12:00:00.000Z",
+        "raw": {
+          "kind": "dodge",
+          "threats": [
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 },
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 },
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 },
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 },
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 },
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 },
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 },
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 },
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 },
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 },
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 },
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 },
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 },
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 },
+            { "hit": false, "response_ms": 100 }, { "hit": false, "response_ms": 100 }
+          ]
+        },
+        "quality": {
+          "duration_ms": 60000,
+          "max_frame_gap_ms": 16,
+          "long_frame_gap_total_ms": 0,
+          "input_kind": "mouse",
+          "hidden": false,
+          "interrupted": false
+        }
+      }
+    }
+  ]
+}
