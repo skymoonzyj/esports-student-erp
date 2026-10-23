@@ -1,0 +1,12 @@
+.moduleRecovery {
+  padding: 1rem;
+  border: 1px solid var(--color-border, #cbd5e1);
+  border-radius: 0.75rem;
+  background: var(--color-surface, #fff);
+}
+
+.moduleRecoveryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}

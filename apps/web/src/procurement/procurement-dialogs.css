@@ -1,0 +1,233 @@
+.procurementChannelField {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.procurementChannelField legend {
+  padding: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.procurementChannelSegmented {
+  width: min(100%, 260px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.procurementFormGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.procurementMoneyGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(150px, .9fr);
+  align-items: end;
+}
+
+.procurementCalculatedTotal {
+  min-height: 40px;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  padding: 5px 10px;
+  border-left: 3px solid var(--color-accent-500);
+  background: #f8f9fb;
+}
+
+.procurementCalculatedTotal output {
+  color: var(--color-navy-950);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.procurementSettlementInput {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, .7fr);
+  align-items: end;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 6px;
+  background: #f8f9fb;
+}
+
+.procurementReserveFundChoice {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border-soft);
+  border-left: 3px solid var(--color-accent-500);
+  background: #f8f9fb;
+}
+
+.procurementAssetChoice {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border-soft);
+  border-left: 3px solid #26734d;
+  background: #f7faf8;
+}
+
+.procurementAssetChoice > small {
+  color: var(--color-text-subtle);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.procurementReserveFundMetrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.procurementReserveFundMetrics > span {
+  display: grid;
+  gap: 3px;
+  color: var(--color-text-subtle);
+  font-size: 11px;
+}
+
+.procurementReserveFundMetrics strong {
+  color: var(--color-text-strong);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.procurementSettlementDate,
+.procurementFinanceHint {
+  grid-column: 1 / -1;
+}
+
+.procurementFinanceHint {
+  color: var(--color-text-subtle);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.procurementInvoiceAmountRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.procurementInvoiceAmountRow > label {
+  display: grid;
+  gap: 7px;
+}
+
+.procurementInvoiceMatches {
+  border-block: 1px solid var(--color-border-soft);
+}
+
+.procurementInvoiceMatches > header {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.procurementInvoiceMatches > header > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.procurementInvoiceMatches > header strong {
+  font-size: 13px;
+}
+
+.procurementInvoiceMatches > header span {
+  color: var(--color-text-subtle);
+  font-size: 11px;
+}
+
+.procurementInvoiceMatches > header > div:last-child {
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.procurementInvoiceMatches > header .matched {
+  color: var(--color-success-900);
+}
+
+.procurementInvoiceMatches > header .mismatch {
+  color: var(--color-danger-700);
+}
+
+.procurementInvoiceCandidateList {
+  max-height: 280px;
+  overflow-y: auto;
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.procurementInvoiceCandidateList > label {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--color-border-soft);
+  cursor: pointer;
+}
+
+.procurementInvoiceCandidateList > label:last-child {
+  border-bottom: 0;
+}
+
+.procurementInvoiceCandidateList input {
+  width: 16px;
+  min-height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--color-accent-600);
+}
+
+.procurementInvoiceCandidateList label > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.procurementInvoiceCandidateList label strong,
+.procurementInvoiceCandidateList label small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.procurementInvoiceCandidateList label strong {
+  color: var(--color-text-strong);
+  font-size: 13px;
+}
+
+.procurementInvoiceCandidateList label small {
+  color: var(--color-text-subtle);
+  font-size: 11px;
+}
+
+.procurementInvoiceCandidateList label b {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .procurementFormGrid,
+  .procurementMoneyGrid,
+  .procurementSettlementInput,
+  .procurementInvoiceAmountRow,
+  .procurementReserveFundMetrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .procurementInvoiceAmountRow > button { width: 100%; }
+}

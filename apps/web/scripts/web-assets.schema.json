@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:erp:web-assets:1",
+  "title": "Private ERP Web asset inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "build_id", "release_id", "predecessor_image_id", "input_sha256", "total_bytes", "documents", "sets"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "build_id": { "$ref": "#/$defs/identity" },
+    "release_id": { "$ref": "#/$defs/identity" },
+    "predecessor_image_id": { "anyOf": [{ "$ref": "#/$defs/image" }, { "type": "null" }] },
+    "input_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$(?![\\s\\S])" },
+    "total_bytes": { "type": "integer", "minimum": 0, "maximum": 536870912 },
+    "documents": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "allOf": [
+        { "contains": { "properties": { "path": { "const": "index.html" } } } },
+        { "contains": { "properties": { "path": { "const": "build-info.json" } } } }
+      ],
+      "items": {
+        "allOf": [{ "$ref": "#/$defs/file" }, { "properties": { "path": { "enum": ["index.html", "build-info.json"] } } }]
+      }
+    },
+    "sets": { "type": "array", "minItems": 1, "maxItems": 100000, "items": { "$ref": "#/$defs/set" } }
+  },
+  "$defs": {
+    "identity": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$(?![\\s\\S])" },
+    "image": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$(?![\\s\\S])" },
+    "file": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "size", "sha256"],
+      "properties": {
+        "path": { "type": "string", "maxLength": 1024, "pattern": "^[ -~]+$(?![\\s\\S])" },
+        "size": { "type": "integer", "minimum": 0, "maximum": 536870912 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$(?![\\s\\S])" }
+      }
+    },
+    "set": {
+      "type": "object", "additionalProperties": false,
+      "required": ["release_id", "build_id", "superseded_by_release_id", "files"],
+      "properties": {
+        "release_id": { "$ref": "#/$defs/identity" },
+        "build_id": { "$ref": "#/$defs/identity" },
+        "superseded_by_release_id": { "anyOf": [{ "$ref": "#/$defs/identity" }, { "type": "null" }] },
+        "files": {
+          "type": "array", "maxItems": 100000,
+          "items": {
+            "allOf": [{ "$ref": "#/$defs/file" }, { "properties": { "path": {
+              "pattern": "^assets/(?:[A-Za-z0-9_@+=,-][A-Za-z0-9_@+=,.-]*/)*[A-Za-z0-9_@+=,-][A-Za-z0-9_@+=,.-]*\\.(?:js|css|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|otf|eot|wasm|json)$(?![\\s\\S])"
+            } } }]
+          }
+        }
+      }
+    },
+    "retainedInput": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "candidate_release_id", "predecessor_image_id", "sets"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "candidate_release_id": { "anyOf": [{ "$ref": "#/$defs/identity" }, { "type": "null" }] },
+        "predecessor_image_id": { "anyOf": [{ "$ref": "#/$defs/image" }, { "type": "null" }] },
+        "sets": { "type": "array", "maxItems": 100000, "items": { "$ref": "#/$defs/set" } }
+      },
+      "anyOf": [
+        { "properties": { "candidate_release_id": { "type": "null" }, "predecessor_image_id": { "type": "null" }, "sets": { "maxItems": 0 } } },
+        { "properties": { "candidate_release_id": { "$ref": "#/$defs/identity" }, "predecessor_image_id": { "$ref": "#/$defs/image" } } }
+      ]
+    },
+    "activationReceipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "release_id", "source_tree_sha256", "web_image_id", "web_assets_manifest_sha256", "activated_verified_utc"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "release_id": { "$ref": "#/$defs/identity" },
+        "source_tree_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$(?![\\s\\S])" },
+        "web_image_id": { "$ref": "#/$defs/image" },
+        "web_assets_manifest_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$(?![\\s\\S])" },
+        "activated_verified_utc": { "type": "string", "maxLength": 40 }
+      }
+    }
+  }
+}

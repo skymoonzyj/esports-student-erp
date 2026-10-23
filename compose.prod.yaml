@@ -1,0 +1,81 @@
+name: esports-erp
+
+services:
+  db:
+    environment: !override
+      POSTGRES_DB: erp
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    ports: !reset []
+    secrets:
+      - postgres_password
+    restart: unless-stopped
+
+  api:
+    build:
+      target: production
+    environment: !override
+      APP_ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+      SESSION_COOKIE_SECURE: "true"
+      SESSION_TTL_MINUTES: ${SESSION_TTL_MINUTES:-480}
+      FIELD_ENCRYPTION_MASTER_KEY_FILE: /run/secrets/field_encryption_master_key
+      FIELD_LOOKUP_KEY_FILE: /run/secrets/field_lookup_key
+      SESSION_TOKEN_PEPPER_FILE: /run/secrets/session_token_pepper
+    volumes: !reset []
+    command: !reset []
+    secrets:
+      - database_url
+      - field_encryption_master_key
+      - field_lookup_key
+      - session_token_pepper
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      target: production
+    environment: !override
+      APP_ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+      SESSION_COOKIE_SECURE: "true"
+      SESSION_TTL_MINUTES: ${SESSION_TTL_MINUTES:-480}
+      COHORT_SCHEDULER_INTERVAL_SECONDS: ${COHORT_SCHEDULER_INTERVAL_SECONDS:-30}
+      FIELD_ENCRYPTION_MASTER_KEY_FILE: /run/secrets/field_encryption_master_key
+      FIELD_LOOKUP_KEY_FILE: /run/secrets/field_lookup_key
+      SESSION_TOKEN_PEPPER_FILE: /run/secrets/session_token_pepper
+    volumes: !reset []
+    secrets:
+      - database_url
+      - field_encryption_master_key
+      - field_lookup_key
+      - session_token_pepper
+    restart: unless-stopped
+
+  web:
+    build:
+      target: production
+      args:
+        ERP_WEB_ASSETS_PROTOCOL: ${ERP_WEB_ASSETS_PROTOCOL:?NAS web asset protocol is required}
+        ERP_WEB_ASSET_INPUT_SHA256: ${ERP_WEB_ASSET_INPUT_SHA256:?NAS web asset input digest is required}
+        ERP_WEB_BUILD_ID: ${ERP_WEB_BUILD_ID:?NAS web build identity is required}
+    volumes: !reset []
+    command: !reset []
+    user: "101:101"
+    restart: unless-stopped
+
+  proxy:
+    ports: !override
+      - "${ERP_BIND_ADDRESS:-127.0.0.1}:${ERP_HTTP_PORT:-8080}:8080"
+    restart: unless-stopped
+
+secrets:
+  postgres_password:
+    file: ${POSTGRES_PASSWORD_SECRET_FILE:-./secrets/postgres_password}
+  database_url:
+    file: ${DATABASE_URL_SECRET_FILE:-./secrets/database_url}
+  field_encryption_master_key:
+    file: ${FIELD_ENCRYPTION_MASTER_KEY_SECRET_FILE:-./secrets/field_encryption_master_key}
+  field_lookup_key:
+    file: ${FIELD_LOOKUP_KEY_SECRET_FILE:-./secrets/field_lookup_key}
+  session_token_pepper:
+    file: ${SESSION_TOKEN_PEPPER_SECRET_FILE:-./secrets/session_token_pepper}

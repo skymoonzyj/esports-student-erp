@@ -1,0 +1,149 @@
+services:
+  db:
+    environment: !override
+      POSTGRES_DB: erp
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+
+  api:
+    image: ${COMPOSE_PROJECT_NAME:-esports-erp-staging}-api:${ERP_RELEASE_ID:-legacy}
+    build:
+      target: production
+      args:
+        ERP_DEPENDENCY_IMAGE: ${ERP_API_DEPENDENCY_IMAGE:-esports-erp-staging-api:latest}
+        ERP_USE_DEPENDENCY_IMAGE: ${ERP_USE_DEPENDENCY_IMAGE:-0}
+    environment: !override
+      APP_ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+      SESSION_COOKIE_SECURE: "true"
+      SESSION_TTL_MINUTES: ${SESSION_TTL_MINUTES:-480}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-172.31.0.0/16}
+      FIELD_ENCRYPTION_MASTER_KEY_FILE: /run/secrets/field_encryption_master_key
+      FIELD_LOOKUP_KEY_FILE: /run/secrets/field_lookup_key
+      SESSION_TOKEN_PEPPER_FILE: /run/secrets/session_token_pepper
+      REGISTRATION_VERIFICATION_PEPPER_FILE: /run/secrets/registration_verification_pepper
+      REGISTRATION_SESSION_TOKEN_PEPPER_FILE: /run/secrets/registration_session_token_pepper
+      REGISTRATION_PHONE_SIGNUP_ENABLED: ${REGISTRATION_PHONE_SIGNUP_ENABLED:-false}
+      EVALUATION_TOOL_SERVICE_TOKEN_FILE: /run/secrets/evaluation_tool_service_token
+      EVALUATION_TOOL_WEB_SERVICE_TOKEN_FILE: /run/secrets/evaluation_tool_web_service_token
+      EVALUATION_TOOL_WORKER_SERVICE_TOKEN_FILE: /run/secrets/evaluation_tool_worker_service_token
+      ERP_WEB_BASE_URL: ${ERP_WEB_BASE_URL:-https://skymoonzyj.l.cd:18080}
+      EVALUATION_TOOL_STANDALONE_BASE_URL: ${EVALUATION_TOOL_STANDALONE_BASE_URL:-https://skymoonzyj.l.cd:18080}
+      EVALUATION_MEDIA_ROOT: /app/runtime/evaluation-media
+      EVALUATION_MEDIA_QUARANTINE_ROOT: /app/runtime/evaluation-quarantine
+      EVALUATION_MEDIA_STORE_ID: ${EVALUATION_MEDIA_STORE_ID:-}
+      OPERATIONS_BACKUP_STATUS_PATH: /app/var/backup-status.json
+      EVALUATION_UPLOAD_MAX_OPEN_SESSIONS_PER_ACCOUNT: ${EVALUATION_UPLOAD_MAX_OPEN_SESSIONS_PER_ACCOUNT:-5}
+      EVALUATION_UPLOAD_MAX_OPEN_SESSIONS_TOTAL: ${EVALUATION_UPLOAD_MAX_OPEN_SESSIONS_TOTAL:-500}
+      OPERATIONS_DISK_PATH: /app/var
+      OPERATIONS_CERTIFICATE_HOST: ${ERP_CERTIFICATE_HOST:-skymoonzyj.l.cd}
+      OPERATIONS_CERTIFICATE_PORT: ${ERP_HTTPS_PORT:-18080}
+    volumes:
+      - evaluation_media:/app/runtime/evaluation-media
+      - evaluation_quarantine:/app/runtime/evaluation-quarantine
+      - ${ERP_OPERATIONS_DIR:-/home/skymoonzyj/esports-erp/operations}:/app/var:ro
+    secrets:
+      - database_url
+      - field_encryption_master_key
+      - field_lookup_key
+      - session_token_pepper
+      - registration_verification_pepper
+      - registration_session_token_pepper
+      - evaluation_tool_service_token
+      - evaluation_tool_web_service_token
+      - evaluation_tool_worker_service_token
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --no-access-log
+
+  scheduler:
+    image: ${COMPOSE_PROJECT_NAME:-esports-erp-staging}-scheduler:${ERP_RELEASE_ID:-legacy}
+    build:
+      target: production
+      args:
+        ERP_DEPENDENCY_IMAGE: ${ERP_API_DEPENDENCY_IMAGE:-esports-erp-staging-api:latest}
+        ERP_USE_DEPENDENCY_IMAGE: ${ERP_USE_DEPENDENCY_IMAGE:-0}
+    environment: !override
+      APP_ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+      SESSION_COOKIE_SECURE: "true"
+      SESSION_TTL_MINUTES: ${SESSION_TTL_MINUTES:-480}
+      COHORT_SCHEDULER_INTERVAL_SECONDS: ${COHORT_SCHEDULER_INTERVAL_SECONDS:-30}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-172.31.0.0/16}
+      FIELD_ENCRYPTION_MASTER_KEY_FILE: /run/secrets/field_encryption_master_key
+      FIELD_LOOKUP_KEY_FILE: /run/secrets/field_lookup_key
+      SESSION_TOKEN_PEPPER_FILE: /run/secrets/session_token_pepper
+      REGISTRATION_VERIFICATION_PEPPER_FILE: /run/secrets/registration_verification_pepper
+      REGISTRATION_SESSION_TOKEN_PEPPER_FILE: /run/secrets/registration_session_token_pepper
+      EVALUATION_TOOL_SERVICE_TOKEN_FILE: /run/secrets/evaluation_tool_service_token
+      EVALUATION_TOOL_WEB_SERVICE_TOKEN_FILE: /run/secrets/evaluation_tool_web_service_token
+      EVALUATION_TOOL_WORKER_SERVICE_TOKEN_FILE: /run/secrets/evaluation_tool_worker_service_token
+      ERP_WEB_BASE_URL: ${ERP_WEB_BASE_URL:-https://skymoonzyj.l.cd:18080}
+      EVALUATION_TOOL_STANDALONE_BASE_URL: ${EVALUATION_TOOL_STANDALONE_BASE_URL:-https://skymoonzyj.l.cd:18080}
+      EVALUATION_MEDIA_ROOT: /app/runtime/evaluation-media
+      EVALUATION_MEDIA_QUARANTINE_ROOT: /app/runtime/evaluation-quarantine
+      EVALUATION_MEDIA_STORE_ID: ${EVALUATION_MEDIA_STORE_ID:-}
+    volumes:
+      - evaluation_media:/app/runtime/evaluation-media
+      - evaluation_quarantine:/app/runtime/evaluation-quarantine
+    secrets:
+      - database_url
+      - field_encryption_master_key
+      - field_lookup_key
+      - session_token_pepper
+      - registration_verification_pepper
+      - registration_session_token_pepper
+      - evaluation_tool_service_token
+      - evaluation_tool_web_service_token
+      - evaluation_tool_worker_service_token
+    command:
+      - python
+      - -m
+      - app.cli.run_teaching_scheduler
+
+  web:
+    image: ${COMPOSE_PROJECT_NAME:-esports-erp-staging}-web:${ERP_RELEASE_ID:-legacy}
+    build:
+      target: production
+
+  proxy:
+    # The proxy is reachable only from the Compose network.  Caddy owns the
+    # single public HTTPS port below.
+    ports: !override []
+
+  caddy:
+    image: caddy:2.9-alpine
+    depends_on:
+      proxy:
+        condition: service_healthy
+    ports:
+      - "${ERP_HTTPS_BIND_ADDRESS:-192.168.31.151}:${ERP_HTTPS_PORT:-18080}:443"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - "${ERP_TLS_CERT_DIR:-/home/skymoonzyj/.config/esports-erp/certs}:/etc/caddy/certs:ro"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  evaluation_media:
+  evaluation_quarantine:
+
+secrets:
+  registration_verification_pepper:
+    file: ${REGISTRATION_VERIFICATION_PEPPER_SECRET_FILE:-./secrets/registration_verification_pepper}
+  registration_session_token_pepper:
+    file: ${REGISTRATION_SESSION_TOKEN_PEPPER_SECRET_FILE:-./secrets/registration_session_token_pepper}
+  evaluation_tool_service_token:
+    file: ${EVALUATION_TOOL_SERVICE_TOKEN_SECRET_FILE:-./secrets/evaluation_tool_service_token}
+  evaluation_tool_web_service_token:
+    file: ${EVALUATION_TOOL_WEB_SERVICE_TOKEN_SECRET_FILE:-./secrets/evaluation_tool_web_service_token}
+  evaluation_tool_worker_service_token:
+    file: ${EVALUATION_TOOL_WORKER_SERVICE_TOKEN_SECRET_FILE:-./secrets/evaluation_tool_worker_service_token}

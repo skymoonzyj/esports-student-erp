@@ -1,0 +1,11 @@
+{
+  "valid": [
+    {"schema_version":1,"candidate_release_id":null,"predecessor_image_id":null,"sets":[]},
+    {"schema_version":1,"candidate_release_id":"candidate","predecessor_image_id":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sets":[{"release_id":"previous","build_id":"previous","superseded_by_release_id":"candidate","files":[{"path":"assets/old.js","size":5,"sha256":"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"}]}]}
+  ],
+  "invalid": [
+    {"schema_version":2,"candidate_release_id":null,"predecessor_image_id":null,"sets":[]},
+    {"schema_version":1,"candidate_release_id":null,"predecessor_image_id":null,"sets":[],"extra":true},
+    {"schema_version":1,"candidate_release_id":"candidate","predecessor_image_id":null,"sets":[{"release_id":"previous","build_id":"previous","superseded_by_release_id":"candidate","files":[{"path":"assets/../old.js","size":5,"sha256":"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"}]}]}
+  ]
+}

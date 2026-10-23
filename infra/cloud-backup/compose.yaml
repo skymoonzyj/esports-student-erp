@@ -1,0 +1,20 @@
+# Optional private portable connector; ERP remains the scheduler and verifier.
+services:
+  openlist:
+    image: openlistteam/openlist:v4.2.6
+    user: "1001:1001"
+    restart: unless-stopped
+    # Bootstrap logs can contain administrator credentials; never persist them.
+    logging:
+      driver: none
+    ports:
+      - "127.0.0.1:5244:5244"
+    environment:
+      UMASK: "077"
+      LOG_ENABLE: "false"
+    volumes:
+      - "./data:/opt/openlist/data"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

@@ -1,0 +1,23 @@
+.invitationPage { max-width: 1200px; margin: auto; min-width: 0; }
+.invitationPage header { margin-bottom: 24px; }
+.invitationPage h1 { font-size: 28px; }
+.invitationFilters { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; margin: 20px 0; }
+.invitationFilters label { display: grid; gap: 8px; min-width: 180px; }
+.invitationPage select, .invitationPage button { padding: 10px; border: 1px solid #d7dce6; border-radius: 8px; background: white; color: #24314a; }
+.invitedPeople { width: 100%; border-collapse: collapse; background: white; }
+.invitedPeople th, .invitedPeople td { text-align: left; padding: 16px; border-bottom: 1px solid #e4e8ef; vertical-align: top; overflow-wrap: anywhere; }
+.invitedPeople th { background: #f4f6fa; }
+.invitedStatus { font-weight: 600; }
+.invitedStay dl { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 12px; }
+.invitedStay dt { color: #667085; font-size: 13px; }
+.invitedStay dd { margin: 4px 0 0; }
+.invitationPage nav { display: flex; gap: 16px; align-items: center; margin-top: 20px; }
+@media (max-width: 640px) {
+  .invitationFilters label { width: 100%; min-width: 0; }
+  .invitedPeople, .invitedPeople tbody, .invitedPeople tr, .invitedPeople td { display: block; width: 100%; }
+  .invitedPeople thead { display: none; }
+  .invitedPeople tr { border: 1px solid #d7dce6; border-radius: 12px; margin-bottom: 16px; }
+  .invitedPeople td { box-sizing: border-box; padding: 12px; }
+  .invitedPeople td::before { content: attr(data-label); display: block; color: #667085; font-size: 12px; margin-bottom: 8px; }
+  .invitedStay dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
