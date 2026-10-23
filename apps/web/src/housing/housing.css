@@ -1,0 +1,525 @@
+.housingPage { width: 100%; min-width: 0; padding: clamp(16px, 3vw, 40px); color: var(--color-text); }
+.housingPage__header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.housingPage__header h1 { margin: 2px 0 6px; color: var(--color-text-strong); font-size: clamp(28px, 4vw, 42px); }
+.housingPage__header p { margin: 0; color: var(--color-text-muted); }
+.housingPage__header .pageEyebrow { color: var(--color-accent-700); font-size: 12px; font-weight: 800; letter-spacing: .16em; }
+.housingPage__headerActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.housingPage__headerActions > button, .housingCatalog button, .housingDialog button { min-height: 44px; border: 1px solid var(--color-border); border-radius: 10px; padding: 0 14px; color: var(--color-text); background: var(--color-surface); cursor: pointer; }
+.housingPage__filterTrigger, .housingFilters footer button, .housingRoomCard__actions button, .housingPagination button, .housingState button, .housingState a { min-height: 44px; min-width: 44px; border: 1px solid var(--color-border); border-radius: 10px; padding: 0 14px; color: var(--color-text); background: var(--color-surface); cursor: pointer; }
+.housingPage__filterTrigger, .housingState button, .housingRoomCard__actions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.housingState a { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.housingPage__filterTrigger svg, .housingState button svg, .housingRoomCard__actions svg { width: 18px; }
+.housingPage__layout { display: grid; grid-template-columns: minmax(200px, 250px) minmax(0, 1fr); align-items: start; gap: 24px; }
+.housingPage__content { min-width: 0; container: housing-content / inline-size; }
+.housingFilters { position: sticky; top: 16px; max-height: calc(100dvh - 32px); overflow: auto; border: 1px solid var(--color-border); border-radius: 18px; background: var(--color-surface); box-shadow: var(--shadow-card-soft); }
+.housingFilters header { padding: 18px 18px 0; }
+.housingFilters h2 { margin: 0; color: var(--color-text-strong); font-size: 18px; }
+.housingFilters__body { display: grid; gap: 14px; padding: 18px; }
+.housingFilters label, .housingFilters fieldset { min-width: 0; color: var(--color-text); font-size: 13px; font-weight: 700; }
+.housingFilters select, .housingFilters input[type="text"], .housingFilters input:not([type]) { width: 100%; min-width: 0; min-height: 42px; margin-top: 6px; border: 1px solid var(--color-border); border-radius: 9px; padding: 8px 10px; background: white; }
+.housingFilters fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; border: 0; padding: 0; }
+.housingFilters legend { grid-column: 1 / -1; margin-bottom: 4px; }
+.housingFilters fieldset label { display: flex; align-items: center; gap: 6px; min-height: 36px; font-weight: 500; }
+.housingFilters fieldset input { width: 18px; height: 18px; margin: 0; }
+.housingFilters footer { display: grid; gap: 8px; padding: 0 18px 18px; }
+.housingFilters footer .housingFilters__apply { border-color: var(--color-accent-600); color: white; background: var(--color-accent-600); font-weight: 750; }
+.housingSummary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.housingSummary__item { display: block; width: 100%; min-width: 0; min-height: 58px; border: 1px solid var(--color-border-soft); border-radius: 14px; padding: 14px; color: var(--color-text-strong); background: var(--color-surface); font: inherit; font-size: 14px; font-weight: 750; line-height: 1.35; text-align: left; cursor: pointer; transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.housingSummary__item:hover { border-color: var(--color-accent-500); background: var(--color-accent-soft); box-shadow: 0 5px 16px rgb(99 91 255 / 12%); }
+.housingSummary__item:focus-visible { outline: 3px solid var(--color-accent-300); outline-offset: 2px; }
+.housingSummary__item:active { transform: translateY(1px); }
+.housingPage__meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin: 24px 0 14px; color: var(--color-text-muted); font-size: 13px; }
+.housingPage__meta strong { color: var(--color-text-strong); }
+.housingCatalog { margin-bottom: 24px; border: 1px solid var(--color-border); border-radius: 18px; padding: clamp(14px, 2vw, 22px); background: var(--color-surface); box-shadow: var(--shadow-card-soft); }
+.housingCatalog__header, .housingCatalog article > header, .housingCatalog__batch { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.housingCatalog__batch > span { display: grid; gap: 2px; }
+.housingCatalog__batch small { color: var(--color-text-muted); font-size: 11px; }
+.housingCatalog__batchActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.housingCatalog__header h2, .housingCatalog__header p, .housingCatalog h3, .housingCatalog h4 { margin: 0; }
+.housingCatalog__header p, .housingCatalog article header span { color: var(--color-text-muted); font-size: 12px; }
+.housingCatalog__header > button, .housingCatalog__batch button { border-color: var(--color-accent-600); color: white; background: var(--color-accent-600); font-weight: 750; }
+.housingCatalog__notice, .housingDialog__error { border-radius: 10px; padding: 10px 12px; color: var(--color-danger-700); background: var(--color-danger-soft); }
+.housingCatalog__batch { margin-top: 14px; border-radius: 12px; padding: 10px 12px; background: var(--color-accent-100); }
+.housingCatalog__buildings, .housingCatalog__buildings ul { display: grid; gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; }
+.housingCatalog__building > article { border: 1px solid var(--color-border-soft); border-radius: 14px; padding: 14px; }
+.housingCatalog__building > article > ul > li > article { border-left: 3px solid var(--color-accent-300); padding: 10px 0 10px 12px; }
+.housingCatalog__building article article > ul > li { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--color-border-soft); padding: 9px 0; }
+.housingCatalog__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.housingCatalog__actions label { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; }
+.housingCatalog__actions input { width: 18px; height: 18px; }
+.housingDialogBackdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 16px; background: rgb(21 27 45 / 55%); }
+.housingDialog { width: min(100%, 560px); min-width: 0; max-height: min(calc(100dvh - 32px), 760px); overflow-x: hidden; overflow-y: auto; border-radius: 18px; padding: 20px; background: var(--color-surface); box-shadow: var(--shadow-card); }
+.housingDialog__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.housingDialog__header h2 { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 21px; }
+.housingDialog__header button { display: grid; place-items: center; min-width: 44px; min-height: 44px; padding: 0; }
+.housingDialog form fieldset, .housingDialog > fieldset { display: grid; gap: 14px; margin: 16px 0 0; border: 0; padding: 0; }
+.housingDialog label { display: grid; gap: 6px; color: var(--color-text); font-size: 13px; font-weight: 700; }
+.housingDialog input, .housingDialog select, .housingDialog textarea { width: 100%; min-height: 44px; border: 1px solid var(--color-border); border-radius: 9px; padding: 9px 10px; color: var(--color-text); background: white; }
+.housingDialog textarea { min-height: 84px; resize: vertical; }
+.housingDialog footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.housingDialog footer button:last-child { border-color: var(--color-accent-600); color: white; background: var(--color-accent-600); font-weight: 750; }
+.housingDialog__warning { margin: 0; border-radius: 10px; padding: 10px 12px; color: var(--color-warning-text); background: var(--color-warning-soft); }
+.housingDialog__hint { margin: -6px 0 0; color: var(--color-text-muted); font-size: 12px; }
+.housingResidentOptions { display: grid; gap: 8px; margin: 0; border: 0; padding: 0; }
+.housingResidentOptions legend { margin-bottom: 4px; color: var(--color-text); font-size: 13px; font-weight: 750; }
+.housingResidentOptions label { grid-template-columns: 20px minmax(0, 1fr); align-items: start; border: 1px solid var(--color-border-soft); border-radius: 9px; padding: 10px; }
+.housingResidentOptions label:has(input:checked) { border-color: var(--color-accent-600); background: var(--color-accent-100); }
+.housingResidentOptions label[aria-disabled="true"] { opacity: .55; }
+.housingResidentOptions input { width: 18px; min-height: 18px; margin-top: 2px; }
+.housingResidentOptions span { display: grid; gap: 2px; min-width: 0; }
+.housingResidentOptions small { color: var(--color-text-muted); font-weight: 500; overflow-wrap: anywhere; }
+.housingCheckoutSummary { display: grid; gap: 8px; margin: 0; }
+.housingCheckoutSummary div { border-radius: 8px; padding: 10px 12px; background: var(--color-canvas); }
+.housingCheckoutSummary dt { color: var(--color-text-muted); font-size: 11px; }
+.housingCheckoutSummary dd { margin: 4px 0 0; color: var(--color-text-strong); overflow-wrap: anywhere; }
+.housingIssueSummary { display: grid; gap: 8px; margin: 0; }
+.housingIssueSummary div { border-radius: 8px; padding: 10px 12px; background: var(--color-canvas); }
+.housingIssueSummary dt { color: var(--color-text-muted); font-size: 11px; }
+.housingIssueSummary dd { margin: 4px 0 0; color: var(--color-text-strong); overflow-wrap: anywhere; }
+.housingDialog :disabled { cursor: wait; opacity: .65; }
+.housingRoomGrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin: 0; padding: 0; list-style: none; }
+.housingRoomGrid > li { min-width: 0; }
+.housingRoomCard { height: 100%; min-width: 0; overflow-wrap: anywhere; border: 1px solid var(--color-border); border-top: 4px solid var(--color-navy-300); border-radius: 16px; padding: 16px; background: var(--color-surface); box-shadow: var(--shadow-card-soft); }
+.housingRoomCard--available { border-top-color: var(--color-success-500); }
+.housingRoomCard--occupied { border-top-color: var(--color-danger-700); }
+.housingRoomCard__header { display: flex; justify-content: space-between; gap: 12px; }
+.housingRoomCard__header p, .housingRoomCard__header h3 { margin: 0; }
+.housingRoomCard__header p { color: var(--color-text-muted); font-size: 12px; }
+.housingRoomCard__header h3 { margin-top: 3px; color: var(--color-text-strong); font-size: 24px; }
+.housingRoomCard__selection { display: grid; place-items: center; min-width: 44px; min-height: 44px; }
+.housingRoomCard__selection input { width: 20px; height: 20px; }
+.housingRoomCard__status { display: flex; align-items: center; gap: 9px; margin: 16px 0 10px; }
+.housingRoomCard--available .housingRoomCard__status { color: var(--color-success-900); }
+.housingRoomCard--occupied .housingRoomCard__status { color: var(--color-danger-700); }
+.housingRoomCard--unavailable .housingRoomCard__status { color: var(--color-text-muted); }
+.housingRoomCard__status strong span { display: block; }
+.housingRoomCard__problem { display: inline-block; border-radius: 999px; padding: 4px 8px; color: var(--color-warning-text); background: var(--color-warning-soft); font-size: 12px; font-weight: 750; }
+.housingRoomCard__pendingTransfer { display: inline-block; margin-left: 6px; border-radius: 999px; padding: 4px 8px; color: var(--color-danger-700); background: var(--color-danger-soft); font-size: 12px; font-weight: 750; }
+.housingRoomCard__partial { margin: 8px 0; color: var(--color-success-900); font-size: 13px; font-weight: 750; }
+.housingRoomCard__details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
+.housingRoomCard__details div { min-width: 0; }
+.housingRoomCard__details dt { color: var(--color-text-muted); font-size: 11px; }
+.housingRoomCard__details dd { margin: 2px 0 0; color: var(--color-text); font-size: 13px; }
+.housingRoomCard__notes { min-height: 36px; margin: 0; color: var(--color-text-muted); font-size: 12px; }
+.housingRoomCard__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.housingPagination { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 24px; }
+.housingState { min-height: 220px; display: grid; place-content: center; justify-items: center; gap: 10px; border: 1px dashed var(--color-border); border-radius: 18px; padding: 24px; color: var(--color-text-muted); background: white; text-align: center; }
+.housingState h2, .housingState p { margin: 0; }
+.housingState--error { min-height: 180px; grid-template-columns: minmax(0, auto) auto; text-align: left; }
+.housingState--error strong { color: var(--color-danger-700); }
+.housingState__pulse { width: 42px; height: 42px; border-radius: 50%; background: var(--color-accent-300); animation: housingPulse 1.2s ease-in-out infinite; }
+@keyframes housingPulse { 50% { opacity: .35; transform: scale(.8); } }
+
+@container housing-content (min-width: 340px) {
+  .housingSummary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .housingRoomGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container housing-content (min-width: 640px) {
+  .housingSummary { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .housingRoomGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container housing-content (min-width: 720px) {
+  .housingRoomGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 719px) {
+  .housingPage__layout { display: block; }
+  .housingPage__header { align-items: flex-start; }
+  .housingCatalog article > header, .housingCatalog__batch, .housingCatalog__building article article > ul > li { align-items: flex-start; flex-direction: column; }
+  .housingCatalog__actions { justify-content: flex-start; }
+  .housingFiltersBackdrop { position: fixed; inset: 0; z-index: 100; display: flex; justify-content: flex-end; background: rgb(21 27 45 / 45%); }
+  .housingFilters--sheet { position: relative; top: auto; width: min(92vw, 380px); max-height: 100dvh; border-radius: 18px 0 0 18px; }
+}
+@media (max-width: 360px) { .housingPage { padding: 12px; } .housingPage__header { display: grid; } .housingPage__headerActions { justify-content: flex-start; } .housingRoomCard__details { grid-template-columns: 1fr; } .housingDialogBackdrop { padding: 8px; } .housingDialog { max-height: calc(100dvh - 16px); padding: 14px; } }
+
+.housingReportsPage { width: min(100%, 1480px); min-width: 0; margin: 0 auto; padding: clamp(16px, 3vw, 40px); color: var(--color-text); }
+.housingReportsHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.housingReportsHeader h1, .housingReportsHeader p { margin: 0; }
+.housingReportsHeader h1 { color: var(--color-text-strong); font-size: clamp(28px, 4vw, 40px); }
+.housingReportsHeader > div:first-child > p:last-child { max-width: 760px; margin-top: 8px; color: var(--color-text-muted); }
+.housingReportsHeader__actions, .housingReportActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.housingReportsHeader__actions button, .housingReportActions button, .housingReportFilters button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; min-height: 44px; border: 1px solid var(--color-border); border-radius: 10px; padding: 8px 12px; color: var(--color-text); background: var(--color-surface); font-weight: 700; }
+.housingReportsHeader__actions button svg, .housingReportActions button svg { width: 17px; height: 17px; }
+.housingReportsHeader__actions .housingReportsPrimary { border-color: var(--color-accent-600); color: white; background: var(--color-accent-600); }
+.housingReportFilters { display: grid; grid-template-columns: repeat(2, minmax(150px, 1fr)) minmax(260px, 2fr) auto; align-items: end; gap: 12px; margin: 24px 0; border: 1px solid var(--color-border-soft); border-radius: 14px; padding: 16px; background: var(--color-surface); }
+.housingReportFilters > label, .housingReportDialogForm > label, .housingReportDialogForm__grid label { display: grid; gap: 6px; min-width: 0; color: var(--color-text-muted); font-size: 12px; font-weight: 700; }
+.housingReportFilters input, .housingReportDialogForm input, .housingReportDialogForm textarea { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--color-border); border-radius: 9px; padding: 9px 11px; color: var(--color-text); background: var(--color-surface); font: inherit; }
+.housingReportDialogForm textarea { min-height: 88px; resize: vertical; }
+.housingReportFilters fieldset, .housingReportChoices { display: flex; flex-wrap: wrap; gap: 8px 14px; min-width: 0; margin: 0; border: 0; padding: 0; }
+.housingReportFilters legend, .housingReportChoices legend { width: 100%; margin-bottom: 4px; color: var(--color-text-muted); font-size: 12px; font-weight: 750; }
+.housingReportFilters fieldset label, .housingReportChoices label { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--color-text); font-size: 13px; font-weight: 650; }
+.housingReportFilters fieldset input, .housingReportChoices input { width: 18px; min-height: 18px; }
+.housingReportSummary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 22px 0; }
+.housingReportSummary article { min-width: 0; border: 1px solid var(--color-border-soft); border-radius: 12px; padding: 14px; background: var(--color-surface); box-shadow: var(--shadow-card-soft); }
+.housingReportSummary span { display: block; color: var(--color-text-muted); font-size: 12px; }
+.housingReportSummary strong { display: block; margin-top: 4px; color: var(--color-text-strong); font-size: 26px; }
+.housingReportNotice { border-radius: 10px; padding: 10px 12px; color: var(--color-success-900); background: var(--color-success-soft); }
+.housingReportTableWrap { min-width: 0; overflow-x: auto; border: 1px solid var(--color-border-soft); border-radius: 14px; background: var(--color-surface); }
+.housingReportTable { width: 100%; min-width: 1080px; border-collapse: collapse; }
+.housingReportTable th, .housingReportTable td { border-bottom: 1px solid var(--color-border-soft); padding: 12px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.housingReportTable th { color: var(--color-text-muted); background: var(--color-canvas); font-size: 12px; }
+.housingReportTable tbody tr:last-child td { border-bottom: 0; }
+.housingReportStatus { display: inline-block; border-radius: 999px; padding: 4px 8px; font-size: 12px; font-weight: 750; white-space: nowrap; }
+.housingReportStatus--generated { color: var(--color-warning-text); background: var(--color-warning-soft); }
+.housingReportStatus--marked_submitted { color: var(--color-success-900); background: var(--color-success-soft); }
+.housingReportStatus--voided, .housingReportStatus--failed { color: var(--color-danger-700); background: var(--color-danger-soft); }
+.housingReportCards { display: grid; gap: 14px; }
+.housingReportCard { min-width: 0; border: 1px solid var(--color-border-soft); border-radius: 14px; padding: 16px; background: var(--color-surface); box-shadow: var(--shadow-card-soft); overflow-wrap: anywhere; }
+.housingReportCard > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.housingReportCard header span, .housingReportCard h2 { margin: 0; }
+.housingReportCard header > div > span { color: var(--color-text-muted); font-size: 12px; }
+.housingReportCard h2 { margin-top: 4px; font-size: 20px; }
+.housingReportCard dl, .housingReportDetail { display: grid; gap: 8px; margin: 14px 0; }
+.housingReportCard dl div, .housingReportDetail div { min-width: 0; border-radius: 8px; padding: 9px 10px; background: var(--color-canvas); }
+.housingReportCard dt, .housingReportDetail dt { color: var(--color-text-muted); font-size: 11px; }
+.housingReportCard dd, .housingReportDetail dd { margin: 3px 0 0; overflow-wrap: anywhere; }
+.housingReportDialogForm { display: grid; gap: 16px; }
+.housingReportDialogForm__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.housingReportChoices { border: 1px solid var(--color-border-soft); border-radius: 10px; padding: 10px 12px; }
+.housingReportIssues { border-radius: 10px; padding: 12px; color: var(--color-warning-text); background: var(--color-warning-soft); }
+.housingReportIssues h3, .housingReportIssues ul { margin: 0; }
+.housingReportIssues ul { margin-top: 8px; padding-left: 20px; }
+.housingReportIssues a { display: inline-flex; align-items: center; min-height: 44px; margin-top: 8px; color: inherit; font-weight: 750; }
+
+@media (max-width: 719px) {
+  .housingReportsPage { padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
+  .housingReportsHeader { display: grid; }
+  .housingReportsHeader__actions { justify-content: flex-start; }
+  .housingReportFilters { grid-template-columns: 1fr; margin-top: 16px; }
+  .housingReportSummary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .housingReportDialogForm__grid { grid-template-columns: 1fr; }
+  .housingReportActions button { flex: 1 1 120px; }
+}
+
+.myHousingPage {
+  width: min(100%, 1220px);
+  min-width: 0;
+  margin: 0 auto;
+  padding: clamp(16px, 3vw, 40px);
+  color: var(--color-text);
+}
+
+.myHousingPageHeader {
+  margin-bottom: 26px;
+}
+
+.myHousingPageHeader h1 {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-size: clamp(28px, 4vw, 38px);
+  letter-spacing: 0;
+}
+
+.myHousingPageHeader > p:last-child:not(.pageEyebrow) {
+  margin: 8px 0 0;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.myHousingBody {
+  min-width: 0;
+}
+
+.myHousingSubjectHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.myHousingSubjectHeader > div {
+  min-width: 0;
+}
+
+.myHousingSubjectHeader p,
+.myHousingSubjectHeader h2 {
+  margin: 0;
+}
+
+.myHousingSubjectHeader p {
+  margin-bottom: 5px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.myHousingSubjectHeader h2 {
+  overflow-wrap: anywhere;
+  color: var(--color-text-strong);
+  font-size: clamp(22px, 3vw, 30px);
+}
+
+.myHousingSubjectPicker {
+  width: min(100%, 340px);
+  min-width: 220px;
+  display: grid;
+  gap: 6px;
+  flex: 0 1 340px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.myHousingSubjectPicker select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  padding: 8px 36px 8px 11px;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.myHousingCurrent,
+.myHousingPlanned {
+  min-width: 0;
+}
+
+.myHousingPlanned {
+  margin-top: 26px;
+}
+
+.myHousingSectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.myHousingSectionHeading h3 {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-size: 18px;
+}
+
+.myHousingSectionHeading span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.myHousingPlannedGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+.myHousingStayCard {
+  min-width: 0;
+  border: 1px solid var(--color-border-soft);
+  border-top: 4px solid var(--color-accent-600);
+  border-radius: 12px;
+  padding: clamp(16px, 2.5vw, 22px);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card-soft);
+}
+
+.myHousingPlanned .myHousingStayCard {
+  border-top-color: var(--color-success-500);
+}
+
+.myHousingStayHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.myHousingStayLocation {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.myHousingStayLocation p,
+.myHousingStayLocation h4 {
+  margin: 0;
+}
+
+.myHousingStayLocation p {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.myHousingStayLocation h4 {
+  margin-top: 5px;
+  color: var(--color-text-strong);
+  font-size: 22px;
+}
+
+.myHousingStatus {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 0 10px;
+  color: var(--color-success-900);
+  background: var(--color-success-soft);
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.myHousingStatus--checkout_pending,
+.myHousingStatus--planned {
+  color: var(--color-warning-text);
+  background: var(--color-warning-soft);
+}
+
+.myHousingStayFacts,
+.myHousingTimeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0 0;
+}
+
+.myHousingStayFacts div,
+.myHousingTimeGrid div {
+  min-width: 0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--color-canvas);
+}
+
+.myHousingStayFacts dt,
+.myHousingTimeGrid dt {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.myHousingStayFacts dd,
+.myHousingTimeGrid dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-strong);
+  font-size: 13px;
+}
+
+.myHousingRoommates {
+  margin-top: 18px;
+  border-top: 1px solid var(--color-border-soft);
+  padding-top: 14px;
+  overflow-wrap: anywhere;
+}
+
+.myHousingRoommates h5,
+.myHousingRoommates p,
+.myHousingRoommates ul {
+  margin: 0;
+}
+
+.myHousingRoommates h5 {
+  color: var(--color-text-strong);
+  font-size: 13px;
+}
+
+.myHousingRoommates p,
+.myHousingRoommates ul {
+  margin-top: 7px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.myHousingRoommates ul {
+  display: grid;
+  gap: 5px;
+  padding-left: 20px;
+}
+
+@media (min-width: 1024px) {
+  .myHousingPlannedGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .myHousingSubjectHeader,
+  .myHousingStayHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .myHousingSubjectPicker {
+    width: 100%;
+    min-width: 0;
+    flex-basis: auto;
+  }
+
+  .myHousingStatus {
+    align-self: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .myHousingPage {
+    padding: 12px;
+    padding-bottom: calc(92px + env(safe-area-inset-bottom));
+  }
+
+  .myHousingSubjectPicker select {
+    width: 100%;
+  }
+
+  .myHousingStayFacts,
+  .myHousingTimeGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.housingRoomDetail { width: min(100%, 1320px); margin: 0 auto; padding: clamp(18px, 3vw, 34px); }
+.housingRoomDetail__back { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; color: var(--color-accent-700); font-weight: 750; text-decoration: none; }
+.housingRoomDetail__back svg { width: 18px; }
+.housingRoomDetail__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-top: 12px; border: 1px solid var(--color-border-soft); border-radius: 14px; padding: clamp(18px, 3vw, 28px); background: var(--color-surface); box-shadow: var(--shadow-card-soft); }
+.housingRoomDetail__header > div { min-width: 0; }
+.housingRoomDetail__header p, .housingRoomDetail__header h1 { margin: 0; }
+.housingRoomDetail__header p { color: var(--color-text-muted); font-size: 13px; }
+.housingRoomDetail__header h1 { margin-top: 5px; overflow-wrap: anywhere; color: var(--color-text-strong); font-size: clamp(24px, 4vw, 36px); }
+.housingRoomDetail__header span { display: inline-block; margin-top: 8px; color: var(--color-text-muted); }
+.housingRoomDetail__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.housingRoomDetail__actions button { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--color-border); border-radius: 9px; padding: 0 14px; background: var(--color-surface); color: var(--color-text-strong); font-weight: 700; }
+.housingRoomDetail__actions button:disabled { cursor: not-allowed; opacity: .72; }
+.housingRoomDetail__warning { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; border-radius: 10px; padding: 12px 14px; color: var(--color-warning-text); background: var(--color-warning-soft); }
+.housingRoomDetail__facts { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin: 16px 0 0; }
+.housingRoomDetail__facts div { min-width: 0; border: 1px solid var(--color-border-soft); border-radius: 10px; padding: 12px; background: var(--color-surface); }
+.housingRoomDetail__facts dt { color: var(--color-text-muted); font-size: 11px; }
+.housingRoomDetail__facts dd { margin: 5px 0 0; overflow-wrap: anywhere; color: var(--color-text-strong); font-weight: 750; }
+.housingRoomDetail__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
+.housingRoomDetail__section { min-width: 0; border: 1px solid var(--color-border-soft); border-radius: 12px; padding: 16px; background: var(--color-surface); }
+.housingRoomDetail__section > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.housingRoomDetail__section h2 { margin: 0; color: var(--color-text-strong); font-size: 18px; }
+.housingRoomDetail__section > header span { color: var(--color-text-muted); font-size: 12px; }
+.housingRoomDetail__cards { display: grid; gap: 10px; margin-top: 12px; }
+.housingRoomDetail__empty { margin: 14px 0 0; color: var(--color-text-muted); }
+.housingStayRecord, .housingSimpleRecord { min-width: 0; border-radius: 9px; padding: 12px; background: var(--color-canvas); overflow-wrap: anywhere; }
+.housingStayRecord > header, .housingSimpleRecord > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.housingStayRecord > header div { display: grid; gap: 3px; }
+.housingStayRecord > header span, .housingSimpleRecord span { color: var(--color-text-muted); font-size: 12px; }
+.housingStayRecord dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0 0; }
+.housingStayRecord dl div { min-width: 0; }
+.housingStayRecord dt { color: var(--color-text-muted); font-size: 11px; }
+.housingStayRecord dd { margin: 3px 0 0; color: var(--color-text-strong); font-size: 12px; overflow-wrap: anywhere; }
+.housingStayRecord p, .housingSimpleRecord p { margin: 10px 0 0; color: var(--color-text-muted); font-size: 12px; }
+.housingStayRecord__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.housingStayRecord__actions button, .housingSimpleRecord > button { min-height: 44px; border: 1px solid var(--color-border); border-radius: 9px; padding: 0 12px; background: var(--color-surface); color: var(--color-text-strong); font-weight: 700; }
+.housingSimpleRecord { display: grid; gap: 6px; }
+
+@media (max-width: 1199px) {
+  .housingRoomDetail__facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 767px) {
+  .housingRoomDetail { padding: 16px; padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
+  .housingRoomDetail__header { align-items: stretch; flex-direction: column; }
+  .housingRoomDetail__actions { justify-content: stretch; }
+  .housingRoomDetail__actions button { flex: 1 1 160px; justify-content: center; }
+  .housingStayRecord__actions button, .housingSimpleRecord > button { flex: 1 1 150px; }
+  .housingRoomDetail__grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 420px) {
+  .housingRoomDetail__facts, .housingStayRecord dl { grid-template-columns: minmax(0, 1fr); }
+  .housingDialog footer button { flex: 1 1 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) { .housingState__pulse { animation: none; } }

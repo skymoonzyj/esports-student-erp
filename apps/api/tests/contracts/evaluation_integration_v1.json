@@ -1,0 +1,20 @@
+{
+  "api_version": "v1",
+  "account_endpoints": {
+    "context": "GET /api/v1/evaluations/context",
+    "issue_ticket": "POST /api/v1/evaluations/bridge/tickets"
+  },
+  "service_endpoints": {
+    "capabilities": "GET /api/v1/integrations/evaluations/v1/capabilities",
+    "login_request": "POST /api/v1/integrations/evaluations/v1/login-requests",
+    "exchange_ticket": "POST /api/v1/integrations/evaluations/v1/login-tickets/exchange",
+    "session_context": "POST /api/v1/integrations/evaluations/v1/session-context"
+  },
+  "features": ["auth_bridge", "page_shell"],
+  "legacy_writes_enabled": false,
+  "ready_message": {
+    "type": "game-score-tool.ready",
+    "api_version": "v1"
+  },
+  "modes": ["standalone", "embedded"]
+}

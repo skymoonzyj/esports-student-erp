@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+EXPECTED_ALEMBIC_HEAD=0011_housing_real_name_reporting
+REQUIRED_TABLES=(
+  people student_profiles staff_profiles visitor_profiles guardian_relationships
+  user_accounts auth_sessions auth_rate_limits roles permissions role_permissions
+  user_roles user_permission_overrides audit_events game_projects professional_teams
+  cohorts cohort_status_events teaching_classes coach_assignments
+  service_accounts service_account_credentials service_account_request_limits
+  service_account_nonces payments payment_import_events payment_conflicts
+  payment_refunds admission_cases admission_case_payments enrollments
+  enrollment_events enrollment_withdrawals evaluation_bridge_requests
+  evaluation_bridge_tickets evaluation_staff_roles cohort_staff_assignments
+  cohort_staff_assignment_permissions student_game_accounts student_auxiliary_phones
+  project_analysis_profiles evaluation_media_blobs evaluation_media_assets
+  housing_buildings housing_floors housing_rooms housing_import_batches
+  housing_report_batches housing_report_batch_scopes
+)
+ROW_COUNT_TABLES=(
+  people user_accounts roles permissions role_permissions user_roles
+  user_permission_overrides audit_events game_projects professional_teams cohorts
+  cohort_status_events teaching_classes coach_assignments service_accounts
+  service_account_credentials service_account_request_limits service_account_nonces
+  payments payment_import_events payment_conflicts payment_refunds admission_cases
+  admission_case_payments enrollments enrollment_events enrollment_withdrawals
+  evaluation_bridge_requests evaluation_bridge_tickets
+  evaluation_staff_roles cohort_staff_assignments cohort_staff_assignment_permissions
+  student_game_accounts student_auxiliary_phones project_analysis_profiles
+  evaluation_media_blobs evaluation_media_assets
+  housing_buildings housing_floors housing_rooms housing_import_batches
+  housing_report_batches housing_report_batch_scopes
+)

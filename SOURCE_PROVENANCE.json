@@ -1,0 +1,17 @@
+{
+  "snapshot_schema": 1,
+  "source_workspace": "main-working-tree",
+  "source_revision": "ca23b632feedb8652cb650efd3125ffbeac1b79e",
+  "exported_at_utc": "2026-10-23T15:59:25.292235+00:00",
+  "original_history_included": false,
+  "original_credentials_included": false,
+  "synthetic_fixture_role_count": 0,
+  "source_file_count": 486,
+  "credential_references_sanitized": 130,
+  "generated_files": [
+    "SOURCE_SNAPSHOT.md",
+    "SOURCE_PROVENANCE.json",
+    "SOURCE_MANIFEST.sha256"
+  ],
+  "environment_example_origin": "main-working-tree/.env.example"
+}

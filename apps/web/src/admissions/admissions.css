@@ -1,0 +1,1351 @@
+.paymentsPage {
+  width: min(100%, 1240px);
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.admissionsPageHeader {
+  align-items: center;
+}
+
+.admissionsTabs {
+  display: flex;
+  gap: 24px;
+  margin-top: 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.admissionsTabs button {
+  min-height: 42px;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-muted);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 720;
+  cursor: pointer;
+}
+
+.admissionsTabs button[aria-selected="true"] {
+  border-bottom-color: var(--color-accent-700);
+  color: var(--color-text-strong);
+}
+
+.admissionsFilterMenu {
+  margin-top: 14px;
+  border-block: 1px solid var(--color-border-soft);
+  background: white;
+}
+
+.admissionsFilterMenu summary {
+  display: none;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 14px;
+  color: var(--color-text-strong);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+
+.admissionsFilterMenu summary svg,
+.admissionsFilters button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.admissionsFilters {
+  display: grid;
+  grid-template-columns: 0.8fr 1fr 1fr 0.9fr 0.9fr auto;
+  align-items: end;
+  gap: 10px;
+  padding: 14px 0;
+}
+
+.admissionsFilters label,
+.admissionsInlineFilters label,
+.admissionsDialogForm > label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.admissionsFilters input,
+.admissionsFilters select,
+.admissionsInlineFilters select,
+.admissionsDialogForm input,
+.admissionsDialogForm select,
+.admissionsDialogForm textarea {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-strong);
+  background: white;
+  font: inherit;
+}
+
+.admissionsDialogForm textarea {
+  min-height: 82px;
+  resize: vertical;
+}
+
+.admissionsDataTable {
+  margin-top: 16px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  overflow: hidden;
+  background: white;
+}
+
+.admissionsTableHeader,
+.admissionsTableRow {
+  display: grid;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.paymentsTable .admissionsTableHeader,
+.paymentsTable .admissionsTableRow {
+  grid-template-columns: 1.15fr 0.9fr 0.8fr 1.05fr minmax(150px, 1.2fr) 76px;
+}
+
+.conflictsTable .admissionsTableHeader,
+.conflictsTable .admissionsTableRow {
+  grid-template-columns: 1.1fr 1.15fr 0.7fr 1.5fr 90px;
+}
+
+.admissionsTableHeader {
+  color: var(--color-text-muted);
+  background: var(--color-canvas);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.admissionsTableRow {
+  min-height: 58px;
+  border-top: 1px solid var(--color-border-soft);
+  color: var(--color-text);
+  font-size: 12px;
+}
+
+.amountCell {
+  color: var(--color-text-strong);
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.monoCell,
+.credentialRow code {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actionCell {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admissionsRowButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  color: var(--color-accent-800);
+  background: white;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admissionsRowButton svg,
+.admissionsIconButton svg {
+  width: 15px;
+  height: 15px;
+}
+
+.admissionsInlineFilters {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.admissionsStatus {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  background: var(--color-canvas);
+  font-size: 10px;
+  font-weight: 740;
+}
+
+.admissionsStatus.status-open,
+.admissionsStatus.status-active {
+  color: var(--color-success-900);
+  background: var(--color-success-soft);
+}
+
+.admissionsStatus.status-disabled,
+.admissionsStatus.status-dismissed {
+  color: var(--color-text-muted);
+  background: var(--color-navy-100);
+}
+
+.admissionsStatus.status-resolved {
+  color: var(--color-accent-800);
+  background: var(--color-accent-soft);
+}
+
+.admissionsStatus.status-cancelled {
+  color: var(--color-danger-700);
+  background: var(--color-danger-soft);
+}
+
+.admissionsStatus.status-completed {
+  color: var(--color-accent-800);
+  background: var(--color-accent-soft);
+}
+
+.admissionsEmptyState {
+  margin-top: 16px;
+  padding: 44px 18px;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  background: white;
+  text-align: center;
+  font-size: 13px;
+}
+
+.admissionsPageError,
+.admissionsInlineError {
+  padding: 10px 12px;
+  border: 1px solid var(--color-danger-700);
+  border-radius: 6px;
+  color: var(--color-danger-700);
+  background: var(--color-danger-soft);
+  font-size: 12px;
+}
+
+.admissionsPageError {
+  margin-top: 12px;
+}
+
+.admissionsDialogBackdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(21 27 45 / 48%);
+}
+
+.admissionsDialog {
+  width: min(100%, 520px);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  padding: 20px;
+  border-radius: 10px;
+  background: white;
+  box-shadow: var(--shadow-card);
+}
+
+.admissionsDialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admissionsDialog h2 {
+  margin: 0;
+  color: var(--color-navy-950);
+  font-size: 19px;
+}
+
+.admissionsIconButton {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  background: white;
+  cursor: pointer;
+}
+
+.admissionsDialogForm {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.admissionsDialogForm footer,
+.serviceAccountCard footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.admissionsSegmentedField {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.admissionsSegmentedField legend {
+  width: 100%;
+  margin-bottom: 5px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.admissionsSegmentedField label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.refundSummary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 18px 0 0;
+}
+
+.refundSummary div {
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--color-canvas);
+}
+
+.refundSummary dt {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.refundSummary dd {
+  margin: 5px 0 0;
+  color: var(--color-text-strong);
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.admissionsDialogHint,
+.admissionsMuted {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.credentialSecretPanel {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.credentialWarning {
+  margin: 0;
+  padding: 10px;
+  border-radius: 6px;
+  color: var(--color-warning-text);
+  background: var(--color-warning-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.credentialSecretPanel code {
+  overflow-wrap: anywhere;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-canvas);
+  font-size: 12px;
+}
+
+.serviceAccountList {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.serviceAccountCard {
+  padding: 16px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: white;
+}
+
+.serviceAccountCard > header,
+.credentialRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.serviceAccountCard h2 {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-size: 15px;
+}
+
+.serviceAccountCard p {
+  margin: 4px 0 0;
+}
+
+.credentialList {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.credentialRow {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--color-canvas);
+}
+
+.credentialRow > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.dangerText {
+  color: var(--color-danger-700);
+}
+
+.admissionCaseFilters {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-block: 12px;
+  border-block: 1px solid var(--color-border-soft);
+}
+
+.admissionCaseFilters label,
+.candidateSearch label,
+.enrollmentConfirmForm > label,
+.tuitionOverrideFields label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.admissionCaseFilters select,
+.candidateSearch input,
+.enrollmentConfirmForm input,
+.enrollmentConfirmForm textarea {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-strong);
+  background: white;
+  font: inherit;
+}
+
+.admissionCaseFilters select {
+  min-width: 150px;
+}
+
+.admissionCasesTable .admissionsTableHeader,
+.admissionCasesTable .admissionsTableRow {
+  grid-template-columns: minmax(150px, 1.25fr) 0.7fr 0.8fr 0.85fr 1fr minmax(160px, 1fr);
+}
+
+.enrollmentsTable .admissionsTableHeader,
+.enrollmentsTable .admissionsTableRow {
+  grid-template-columns:
+    minmax(90px, 0.8fr)
+    minmax(140px, 1.15fr)
+    minmax(56px, 0.5fr)
+    minmax(68px, 0.6fr)
+    minmax(145px, 1.15fr)
+    minmax(92px, 0.7fr);
+}
+
+.cohortStudentsTable .admissionsTableHeader,
+.cohortStudentsTable .admissionsTableRow {
+  grid-template-columns:
+    minmax(100px, 0.85fr)
+    minmax(135px, 1.05fr)
+    minmax(62px, 0.52fr)
+    minmax(72px, 0.6fr)
+    minmax(140px, 1fr)
+    minmax(86px, 0.65fr);
+}
+
+.cohortStudentsPanel {
+  min-width: 0;
+}
+
+.cohortStudentStatusFilter {
+  min-width: 150px;
+  display: grid;
+  gap: 5px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.cohortStudentStatusFilter select {
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-strong);
+  background: white;
+  font: inherit;
+}
+
+.cohortStudentBalance {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.cohortStudentBalance strong {
+  color: var(--color-text-strong);
+  overflow-wrap: anywhere;
+}
+
+.cohortStudentBalance em {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.cohortStudentBalance .dangerText {
+  color: var(--color-danger-700);
+}
+
+.enrollmentIdentity,
+.enrollmentCohortCell,
+.enrollmentAmountSummary {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.enrollmentIdentity strong,
+.enrollmentCohortCell strong,
+.enrollmentAmountSummary strong {
+  color: var(--color-text-strong);
+  overflow-wrap: anywhere;
+}
+
+.enrollmentIdentity small,
+.enrollmentAmountSummary small,
+.enrollmentAmountSummary em {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.enrollmentAmountSummary em {
+  font-weight: 740;
+}
+
+.enrollmentAmountSummary .dangerText {
+  color: var(--color-danger-700);
+}
+
+.enrollmentAmountHidden {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.admissionCasesTable [data-label="学员"] {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.readOnlyLabel {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.readOnlyLabel svg {
+  width: 13px;
+  height: 13px;
+}
+
+.caseActions {
+  align-items: center;
+  gap: 6px;
+}
+
+.caseActions .admissionsIconButton {
+  width: 30px;
+  height: 30px;
+}
+
+.admissionFlowDialog {
+  width: min(100%, 680px);
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+}
+
+.admissionFlowBackdrop {
+  align-items: stretch;
+  justify-items: end;
+  padding: 0;
+}
+
+.admissionFlowStep {
+  width: fit-content;
+  margin-top: 8px;
+  color: var(--color-accent-800);
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.candidateSearch {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.candidateSearch button svg,
+.admissionDialogActions button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.candidateList,
+.enrollmentOptionList {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.candidateList legend,
+.enrollmentOptionList legend {
+  margin-bottom: 8px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.candidateList label,
+.enrollmentOptionList label {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: white;
+  cursor: pointer;
+}
+
+.candidateList label:has(input:checked),
+.enrollmentOptionList label:has(input:checked) {
+  border-color: var(--color-accent-700);
+  box-shadow: 0 0 0 1px var(--color-accent-700);
+}
+
+.candidateList label > span,
+.enrollmentOptionList label > span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.candidateList strong,
+.enrollmentOptionList strong,
+.admissionStudentSummary strong {
+  color: var(--color-text-strong);
+  font-size: 12px;
+}
+
+.candidateList small,
+.enrollmentOptionList small {
+  overflow-wrap: anywhere;
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.candidateList em,
+.enrollmentOptionList em {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.admissionsEmptyState.compact {
+  padding-block: 24px;
+}
+
+.admissionDialogActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.admissionStudentSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border-block: 1px solid var(--color-border-soft);
+}
+
+.admissionStudentSummary span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.enrollmentConfirmForm {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.enrollmentConfirmForm textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.enrollmentOptionSummary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.enrollmentOptionSummary div {
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--color-canvas);
+}
+
+.enrollmentOptionSummary dt {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.enrollmentOptionSummary dd {
+  margin: 5px 0 0;
+  color: var(--color-text-strong);
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.admissionsInlineError a {
+  margin-left: 8px;
+  color: inherit;
+  font-weight: 760;
+}
+
+.admissionCheckboxField {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-strong) !important;
+  font-size: 12px !important;
+}
+
+.admissionCheckboxField input {
+  width: 16px;
+  min-height: 16px;
+  margin: 0;
+}
+
+.tuitionOverrideFields {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 10px;
+}
+
+.enrollmentDetailPage {
+  padding-bottom: 36px;
+}
+
+.enrollmentDetailBack {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 18px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.enrollmentDetailBack svg {
+  width: 16px;
+  height: 16px;
+}
+
+.enrollmentDetailHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 0 18px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.enrollmentDetailHeader h1 {
+  margin: 5px 0 0;
+  color: var(--color-navy-950);
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.enrollmentDetailHeader p:last-child {
+  margin: 8px 0 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.enrollmentReadOnlyNotice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--color-warning-text);
+  color: var(--color-warning-text);
+  background: var(--color-warning-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.enrollmentReadOnlyNotice svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.enrollmentDetailBand {
+  padding: 22px 0;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.enrollmentDetailBand h2,
+.enrollmentActionBar h2 {
+  margin: 0 0 14px;
+  color: var(--color-text-strong);
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.enrollmentDetailGrid,
+.enrollmentFinancialGrid,
+.withdrawalPreviewSummary {
+  display: grid;
+  margin: 0;
+}
+
+.enrollmentDetailGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.enrollmentFinancialGrid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: var(--color-border-soft);
+}
+
+.enrollmentFinancialGrid > div {
+  min-width: 0;
+  padding: 13px 14px;
+  background: white;
+}
+
+.enrollmentDetailGrid dt,
+.enrollmentFinancialGrid dt,
+.withdrawalPreviewSummary dt {
+  color: var(--color-text-subtle);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.enrollmentDetailGrid dd,
+.enrollmentFinancialGrid dd,
+.withdrawalPreviewSummary dd {
+  margin: 6px 0 0;
+  color: var(--color-text-strong);
+  font-size: 13px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.enrollmentFinancialGrid .financialAttention dd {
+  color: var(--color-danger-700);
+}
+
+.enrollmentAmountUnavailable {
+  padding: 24px 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.enrollmentActionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.enrollmentActionBar h2 {
+  margin-bottom: 5px;
+}
+
+.enrollmentActionBar p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.enrollmentActionBar > div:last-child,
+.withdrawalConfirmation footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.enrollmentActionBar button svg,
+.enrollmentOperationDialog button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.enrollmentOperationDialog {
+  width: min(100%, 640px);
+}
+
+.enrollmentDialogState {
+  padding: 24px 12px;
+  border: 1px dashed var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  text-align: center;
+  font-size: 12px;
+}
+
+.enrollmentTransferOptions {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.enrollmentTransferOptions legend {
+  margin-bottom: 6px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.enrollmentTransferOptions label {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.enrollmentTransferOptions label:has(input:checked) {
+  border-color: var(--color-accent-700);
+  background: var(--color-accent-soft);
+}
+
+.enrollmentTransferOptions label:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.enrollmentTransferOptions input {
+  width: 16px;
+  min-height: 16px;
+  margin: 0;
+}
+
+.enrollmentTransferOptions span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.enrollmentTransferOptions strong {
+  color: var(--color-text-strong);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.enrollmentTransferOptions small,
+.enrollmentTransferOptions em {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.enrollmentOperationWarning {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 12px;
+  border-left: 3px solid var(--color-danger-700);
+  color: var(--color-danger-700);
+  background: var(--color-danger-soft);
+}
+
+.enrollmentOperationWarning svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+}
+
+.enrollmentOperationWarning p {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.withdrawalConfirmation {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.withdrawalConfirmation > label {
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.withdrawalConfirmation textarea {
+  width: 100%;
+  min-height: 82px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-strong);
+  background: white;
+  font: inherit;
+  resize: vertical;
+}
+
+.withdrawalPreview h3 {
+  margin: 0 0 12px;
+  color: var(--color-text-strong);
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.withdrawalPreviewSummary {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 6px;
+  background: var(--color-border-soft);
+}
+
+.withdrawalPreviewSummary > div {
+  min-width: 0;
+  padding: 10px;
+  background: var(--color-canvas);
+}
+
+.withdrawalPreviewSummary .withdrawalRefundTotal {
+  background: var(--color-success-soft);
+}
+
+.withdrawalPreviewSummary .withdrawalRefundTotal dd {
+  color: var(--color-success-900);
+}
+
+.withdrawalAllocations {
+  margin-top: 12px;
+}
+
+.withdrawalAllocations h4 {
+  margin: 0 0 7px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.withdrawalAllocations > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--color-border-soft);
+  font-size: 11px;
+}
+
+.withdrawalAllocations code {
+  min-width: 0;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.withdrawalAllocations strong {
+  flex: 0 0 auto;
+  color: var(--color-text-strong);
+}
+
+@media (max-width: 900px) {
+  .admissionsFilters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admissionsTableHeader {
+    display: none;
+  }
+
+  .admissionsDataTable {
+    display: grid;
+    gap: 10px;
+    border: 0;
+    overflow: visible;
+    background: transparent;
+  }
+
+  .paymentsTable .admissionsTableRow,
+  .conflictsTable .admissionsTableRow,
+  .admissionCasesTable .admissionsTableRow,
+  .enrollmentsTable .admissionsTableRow,
+  .cohortStudentsTable .admissionsTableRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admissionsTableRow {
+    padding: 14px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: 8px;
+    background: white;
+  }
+
+  .admissionsTableRow [role="cell"] {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+  }
+
+  .admissionsTableRow [role="cell"]::before {
+    content: attr(data-label);
+    color: var(--color-text-subtle);
+    font-size: 9px;
+    font-weight: 730;
+  }
+
+  .actionCell {
+    justify-content: stretch;
+  }
+
+  .enrollmentDetailGrid,
+  .enrollmentFinancialGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .withdrawalPreviewSummary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .admissionsPageHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admissionsPageHeader > button {
+    width: 100%;
+  }
+
+  .admissionsTabs {
+    gap: 14px;
+    overflow: hidden;
+  }
+
+  .admissionsFilterMenu summary {
+    display: flex;
+  }
+
+  .admissionsFilterMenu:not([open]) .admissionsFilters {
+    display: none;
+  }
+
+  .admissionsFilters,
+  .paymentsTable .admissionsTableRow,
+  .conflictsTable .admissionsTableRow,
+    .admissionCasesTable .admissionsTableRow,
+    .enrollmentsTable .admissionsTableRow,
+    .cohortStudentsTable .admissionsTableRow,
+  .refundSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .admissionsFilters {
+    padding: 12px;
+  }
+
+  .admissionsDialogBackdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .admissionsDialog {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    border-radius: 0;
+    padding: 18px 16px calc(24px + env(safe-area-inset-bottom));
+  }
+
+  .credentialRow {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .admissionCaseFilters {
+    justify-content: stretch;
+  }
+
+  .admissionCaseFilters label,
+  .admissionCaseFilters select {
+    width: 100%;
+  }
+
+  .candidateSearch,
+  .tuitionOverrideFields,
+  .enrollmentOptionSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .candidateSearch button,
+  .admissionDialogActions button {
+    width: 100%;
+  }
+
+  .candidateList label,
+  .enrollmentOptionList label {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .candidateList em,
+  .enrollmentOptionList em {
+    grid-column: 2;
+  }
+
+  .enrollmentDetailHeader,
+  .enrollmentActionBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .enrollmentDetailHeader h1 {
+    font-size: 24px;
+  }
+
+  .enrollmentDetailGrid,
+  .enrollmentFinancialGrid,
+  .withdrawalPreviewSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .enrollmentActionBar > div:last-child,
+  .enrollmentOperationDialog .admissionsDialogForm footer,
+  .withdrawalConfirmation footer {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .enrollmentActionBar button,
+  .enrollmentOperationDialog .admissionsDialogForm footer button,
+  .withdrawalConfirmation footer button {
+    width: 100%;
+  }
+
+  .enrollmentTransferOptions label {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .enrollmentTransferOptions em {
+    grid-column: 2;
+  }
+
+  .withdrawalAllocations > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+}

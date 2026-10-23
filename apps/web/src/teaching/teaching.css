@@ -1,0 +1,1539 @@
+.teachingCatalogPage,
+.teachingFoundationPage {
+  width: min(100%, 1240px);
+  margin: 0 auto;
+  color: var(--color-text);
+  letter-spacing: 0;
+}
+
+.teachingSectionNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 20px;
+  padding: 5px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: white;
+}
+
+.teachingSectionNavLink {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 720;
+  text-decoration: none;
+}
+
+.teachingSectionNavLink:hover {
+  color: var(--color-text-strong);
+  background: var(--color-canvas);
+}
+
+.teachingSectionNavLink.active {
+  color: var(--color-accent-800);
+  background: var(--color-accent-soft);
+}
+
+.teachingFoundationDescription {
+  margin: 8px 0 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.teachingPageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.teachingPageHeader h1 {
+  margin: 3px 0 0;
+  color: var(--color-navy-950);
+  font-size: 28px;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.teachingEyebrow {
+  margin: 0;
+  color: var(--color-success-900);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.teachingPrimaryButton,
+.teachingSecondaryButton {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.teachingPrimaryButton {
+  border: 1px solid var(--color-accent-700);
+  color: white;
+  background: var(--color-accent-700);
+}
+
+.teachingSecondaryButton {
+  border: 1px solid var(--color-border);
+  color: var(--color-text-strong);
+  background: white;
+}
+
+.teachingPrimaryButton svg,
+.teachingSecondaryButton svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.teachingTabs {
+  display: flex;
+  gap: 24px;
+  margin-top: 24px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.teachingTabs button {
+  min-height: 42px;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-muted);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.teachingTabs button[aria-selected="true"] {
+  border-bottom-color: var(--color-accent-700);
+  color: var(--color-text-strong);
+}
+
+.teachingFilterMenu {
+  margin-top: 14px;
+  border-block: 1px solid var(--color-border-soft);
+  background: white;
+}
+
+.teachingFilterMenu summary {
+  display: none;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 14px;
+  color: var(--color-text-strong);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+
+.teachingFilterMenu summary::-webkit-details-marker {
+  display: none;
+}
+
+.teachingFilterMenu summary svg {
+  width: 16px;
+  height: 16px;
+}
+
+.teachingFilters {
+  display: grid;
+  align-items: end;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.projectFilters {
+  grid-template-columns: minmax(180px, 1fr) minmax(140px, 0.55fr) auto;
+}
+
+.teamFilters {
+  grid-template-columns: minmax(170px, 0.8fr) minmax(180px, 1fr) minmax(140px, 0.55fr) auto;
+}
+
+.teachingFilters label,
+.teachingDialogForm label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-strong);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.teachingFilters input,
+.teachingFilters select,
+.teachingDialogForm input,
+.teachingDialogForm select,
+.teachingDialogForm textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  outline: none;
+  color: var(--color-text-strong);
+  background: white;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.teachingFilters .teachingCheckbox {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+}
+
+.teachingFilters .teachingCheckbox input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  flex: 0 0 16px;
+  padding: 0;
+  accent-color: var(--color-accent-700);
+}
+
+.teachingDialogForm textarea {
+  min-height: 96px;
+  padding-block: 10px;
+  resize: vertical;
+}
+
+.teachingFilters input:focus,
+.teachingFilters select:focus,
+.teachingDialogForm input:focus,
+.teachingDialogForm select:focus,
+.teachingDialogForm textarea:focus {
+  border-color: var(--color-accent-500);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.teachingPageError,
+.teachingFormError {
+  border: 1px solid #efb7c2;
+  border-radius: 6px;
+  color: var(--color-danger-700);
+  background: var(--color-danger-soft);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.teachingPageError {
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
+.teachingFormError {
+  padding: 9px 11px;
+}
+
+.teachingDataSurface {
+  margin-top: 14px;
+  border-block: 1px solid var(--color-border-soft);
+  background: white;
+}
+
+.teachingTableHeader,
+.teachingTableRow {
+  display: grid;
+  align-items: center;
+  gap: 14px;
+}
+
+.projectTableGrid {
+  grid-template-columns: minmax(220px, 1fr) 100px 110px 112px;
+}
+
+.teamTableGrid {
+  grid-template-columns: minmax(170px, 0.95fr) minmax(160px, 0.8fr) minmax(180px, 1.2fr) 100px 112px;
+}
+
+.teachingTableHeader {
+  min-height: 40px;
+  padding: 0 16px;
+  color: var(--color-text-subtle);
+  background: #fafbfc;
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.teachingTableRow {
+  min-height: 64px;
+  padding: 11px 16px;
+  border-top: 1px solid var(--color-border-soft);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+.teachingTableRow > [role="cell"] {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.teachingTableRow strong {
+  color: var(--color-text-strong);
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.teachingStatus {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 730;
+  letter-spacing: 0;
+}
+
+.teachingStatus.active {
+  color: var(--color-success-900);
+  background: var(--color-success-soft);
+}
+
+.teachingStatus.inactive {
+  color: var(--color-danger-700);
+  background: var(--color-danger-soft);
+}
+
+.teachingRowActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.teachingRowActions button,
+.teachingDialogHeader button {
+  width: 36px;
+  height: 36px;
+  display: inline-grid;
+  flex: 0 0 36px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  background: white;
+  cursor: pointer;
+}
+
+.teachingRowActions button:hover:not(:disabled),
+.teachingDialogHeader button:hover:not(:disabled) {
+  border-color: var(--color-accent-300);
+  color: var(--color-accent-800);
+  background: var(--color-accent-soft);
+}
+
+.teachingRowActions svg,
+.teachingDialogHeader svg {
+  width: 16px;
+  height: 16px;
+}
+
+.teachingReadOnly {
+  color: var(--color-text-subtle);
+  font-size: 11px;
+}
+
+.teachingEmptyState {
+  padding: 44px 18px;
+  border-top: 1px solid var(--color-border-soft);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.teachingPagination {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 16px;
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.teachingPagination > span {
+  color: var(--color-text-subtle);
+  font-size: 11px;
+}
+
+.teachingPagination > div {
+  display: flex;
+  gap: 7px;
+}
+
+.teachingPagination button {
+  min-height: 34px;
+  padding-inline: 10px;
+}
+
+.teachingDialogBackdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  overflow-y: auto;
+  background: rgb(17 24 39 / 42%);
+}
+
+.teachingDialog {
+  width: min(100%, 480px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  padding: 20px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 24px 70px rgb(17 24 39 / 24%);
+}
+
+.teachingDialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.teachingDialogHeader h2 {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-size: 18px;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.teachingDialogForm {
+  display: grid;
+  gap: 15px;
+  padding-top: 16px;
+}
+
+.teachingDialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 3px;
+}
+
+.teachingCohortsPage,
+.cohortDetailPage {
+  width: min(100%, 1240px);
+  min-width: 0;
+  margin: 0 auto;
+  color: var(--color-text);
+  letter-spacing: 0;
+}
+
+.teachingHeaderActions,
+.cohortStatusActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.teachingSecondaryLink,
+.teachingDangerButton {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.teachingSecondaryLink {
+  border: 1px solid var(--color-border);
+  color: var(--color-text-strong);
+  background: white;
+}
+
+.teachingSecondaryLink svg,
+.teachingDangerButton svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.teachingDangerButton {
+  border: 1px solid #e5a4af;
+  color: var(--color-danger-700);
+  background: var(--color-danger-soft);
+}
+
+.teachingSecondaryLink:hover,
+.teachingSecondaryButton:hover:not(:disabled) {
+  border-color: var(--color-accent-300);
+  color: var(--color-accent-800);
+  background: var(--color-accent-soft);
+}
+
+.teachingDangerButton:hover:not(:disabled) {
+  border-color: var(--color-danger-700);
+}
+
+.teachingPrimaryButton:disabled,
+.teachingSecondaryButton:disabled,
+.teachingDangerButton:disabled,
+.teachingDialogHeader button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.cohortFilters {
+  grid-template-columns: minmax(180px, 1.15fr) minmax(130px, 0.75fr) minmax(145px, 0.8fr) minmax(145px, 0.8fr) auto;
+}
+
+.cohortDateGrid,
+.cohortToggleGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cohortNameField {
+  grid-column: 1 / -1;
+}
+
+.teachingSwitch {
+  min-height: 44px;
+  display: flex !important;
+  align-items: center;
+  gap: 9px !important;
+  padding: 0 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #fafbfc;
+  cursor: pointer;
+}
+
+.teachingSwitch input {
+  width: 18px;
+  min-height: 18px;
+  padding: 0;
+  accent-color: var(--color-accent-700);
+}
+
+.cohortListSurface {
+  min-width: 0;
+  margin-top: 14px;
+  border-block: 1px solid var(--color-border-soft);
+  background: white;
+}
+
+.cohortListRow {
+  min-width: 0;
+  min-height: 92px;
+  display: grid;
+  grid-template-columns: minmax(150px, 1.1fr) minmax(156px, 0.95fr) minmax(112px, 0.72fr) minmax(155px, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.cohortListRow:last-of-type {
+  border-bottom: 0;
+}
+
+.cohortListRow > div,
+.cohortListIdentity,
+.cohortSchedule,
+.cohortAutomationSummary,
+.cohortReadiness {
+  min-width: 0;
+}
+
+.cohortListIdentity,
+.cohortSchedule,
+.cohortAutomationSummary,
+.cohortReadiness {
+  display: grid;
+  gap: 7px;
+}
+
+.cohortListIdentity a {
+  color: var(--color-navy-950);
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1.45;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.cohortListIdentity a:hover {
+  color: var(--color-accent-800);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.cohortStatus,
+.triggerBadge {
+  width: fit-content;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 760;
+  line-height: 1.35;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.status-draft,
+.status-archived {
+  color: #4b5563;
+  background: #eef0f3;
+}
+
+.status-open,
+.trigger-manual {
+  color: var(--color-success-900);
+  background: var(--color-success-soft);
+}
+
+.status-upcoming,
+.trigger-scheduler {
+  color: #805500;
+  background: #fff3cf;
+}
+
+.status-active,
+.trigger-request_reconciliation {
+  color: var(--color-accent-800);
+  background: var(--color-accent-soft);
+}
+
+.status-completed {
+  color: #145f62;
+  background: #def4f1;
+}
+
+.cohortSchedule span,
+.cohortAutomationSummary span,
+.cohortRuntimeStatus > span,
+.cohortWarning,
+.cohortReady,
+.cohortClassCount {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.cohortSchedule svg,
+.cohortAutomationSummary svg,
+.cohortRuntimeStatus svg,
+.cohortWarning svg,
+.cohortReady svg,
+.cohortClassCount svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+
+.cohortAutomationSummary .enabled,
+.cohortRuntimeStatus .enabled,
+.cohortReady {
+  color: var(--color-success-900);
+}
+
+.cohortAutomationSummary .disabled,
+.cohortRuntimeStatus .disabled {
+  color: var(--color-text-subtle);
+}
+
+.cohortWarning {
+  color: #8a4f00;
+}
+
+.teachingBackLink {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 18px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 680;
+  letter-spacing: 0;
+  text-decoration: none;
+}
+
+.teachingBackLink:hover {
+  color: var(--color-accent-800);
+}
+
+.teachingBackLink svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cohortDetailHeader {
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.cohortDetailHeader > div:first-child {
+  min-width: 0;
+}
+
+.cohortHeadingStatus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.cohortDetailHeader h1 {
+  max-width: 100%;
+  margin: 7px 0 0;
+  color: var(--color-navy-950);
+  font-size: 28px;
+  line-height: 1.3;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.cohortDetailTabs {
+  width: 100%;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  margin-top: 22px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.cohortDetailTabs button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-muted);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 720;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.cohortDetailTabs button[aria-selected="true"] {
+  border-bottom-color: var(--color-accent-700);
+  color: var(--color-text-strong);
+}
+
+.cohortOverview {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 14px;
+  border-block: 1px solid var(--color-border-soft);
+  background: white;
+}
+
+.cohortOverviewPanel,
+.cohortHistoryPanel {
+  min-width: 0;
+  padding: 18px;
+}
+
+.cohortOverviewPanel + .cohortOverviewPanel {
+  border-left: 1px solid var(--color-border-soft);
+}
+
+.cohortOverviewPanel h2,
+.cohortHistoryPanel h2,
+.cohortTabSurface h2 {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-size: 14px;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+.cohortDefinitionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 16px 0 0;
+}
+
+.cohortDefinitionGrid > div {
+  min-width: 0;
+}
+
+.cohortDefinitionGrid dt {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-text-subtle);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.cohortDefinitionGrid dt svg {
+  width: 13px;
+  height: 13px;
+}
+
+.cohortDefinitionGrid dd {
+  margin: 5px 0 0;
+  color: var(--color-text-strong);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.cohortRuntimeStatus {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.cohortHistoryPanel {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.cohortHistoryPanel h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.cohortHistoryPanel h2 svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cohortHistoryRow {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(90px, auto) minmax(130px, auto);
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--color-border-soft);
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.cohortHistoryRow:first-of-type {
+  margin-top: 10px;
+}
+
+.cohortHistoryRow:last-child {
+  border-bottom: 0;
+}
+
+.cohortHistoryRow > span:first-child,
+.cohortHistoryRow time {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cohortTabSurface {
+  min-width: 0;
+  margin-top: 14px;
+  border-block: 1px solid var(--color-border-soft);
+  background: white;
+}
+
+.cohortTabSurface > header {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 16px;
+}
+
+.cohortTabSurface > header > div {
+  min-width: 0;
+}
+
+.cohortTabSurface > .teachingPageError {
+  margin: 0 16px 12px;
+}
+
+.cohortTabSurface > header span {
+  display: block;
+  margin-top: 3px;
+  color: var(--color-text-subtle);
+  font-size: 10px;
+}
+
+.teachingClassRow,
+.coachAssignmentRow {
+  min-width: 0;
+  display: grid;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.teachingClassRow {
+  grid-template-columns: minmax(170px, 1.15fr) minmax(270px, 1.45fr) auto;
+}
+
+.coachAssignmentRow {
+  grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.3fr) auto;
+}
+
+.teachingClassRow > div:first-child,
+.coachAssignmentRow > div:first-child,
+.assignmentValidity {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.teachingClassRow strong,
+.coachAssignmentRow strong {
+  color: var(--color-text-strong);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.teachingClassRow > div:first-child > span,
+.coachAssignmentRow > div:first-child > span,
+.assignmentValidity span,
+.assignmentValidity small {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.coachAssignmentRow.ended {
+  background: #fafbfc;
+}
+
+.coachAssignmentRow.ended strong,
+.coachAssignmentRow.ended .assignmentValidity span {
+  color: var(--color-text-subtle);
+}
+
+.teachingClassRow dl {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.teachingClassRow dl > div {
+  min-width: 0;
+}
+
+.teachingClassRow dt {
+  color: var(--color-text-subtle);
+  font-size: 9px;
+}
+
+.teachingClassRow dd {
+  margin: 4px 0 0;
+  color: var(--color-text-strong);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.classPicker {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 80px minmax(0, 280px);
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border-soft);
+  color: var(--color-text-subtle);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.classPicker select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-strong);
+  background: white;
+  font-size: 12px;
+}
+
+.teachingSegmented {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.teachingSegmented legend {
+  grid-column: 1 / -1;
+  margin-bottom: 6px;
+  color: var(--color-text-strong);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.teachingSegmented label {
+  min-width: 0;
+  cursor: pointer;
+}
+
+.teachingSegmented input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.teachingSegmented label span {
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  background: white;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.teachingSegmented input:checked + span {
+  border-color: var(--color-accent-500);
+  color: var(--color-accent-800);
+  background: var(--color-accent-soft);
+}
+
+.teachingSegmented input:focus-visible + span {
+  outline: 3px solid var(--color-accent-soft);
+  outline-offset: 1px;
+}
+
+.eligibleCoachSearch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.eligibleCoachList {
+  max-height: 190px;
+  overflow-y: auto;
+  border-block: 1px solid var(--color-border-soft);
+}
+
+.eligibleCoachList label {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 7px 4px;
+  border-bottom: 1px solid var(--color-border-soft);
+  cursor: pointer;
+}
+
+.eligibleCoachList label:last-of-type {
+  border-bottom: 0;
+}
+
+.eligibleCoachList input {
+  width: 16px;
+  min-height: 16px;
+  padding: 0;
+  accent-color: var(--color-accent-700);
+}
+
+.eligibleCoachList p,
+.dialogSubject {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 960px) {
+  .teamTableGrid {
+    grid-template-columns: minmax(150px, 0.9fr) minmax(140px, 0.8fr) minmax(150px, 1fr) 78px 80px;
+    gap: 10px;
+  }
+
+  .projectTableGrid {
+    grid-template-columns: minmax(180px, 1fr) 76px 86px 80px;
+    gap: 10px;
+  }
+
+  .teachingTableHeader,
+  .teachingTableRow {
+    padding-inline: 12px;
+  }
+
+  .teachingRowActions button {
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
+  }
+}
+
+@media (max-width: 719px) {
+  .teachingPageHeader {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .teachingPageHeader h1 {
+    font-size: 24px;
+  }
+
+  .teachingPageHeader > .teachingPrimaryButton {
+    width: 100%;
+  }
+
+  .teachingTabs {
+    margin-top: 18px;
+  }
+
+  .teachingTabs button {
+    flex: 1;
+  }
+
+  .teachingFilterMenu {
+    border: 1px solid var(--color-border-soft);
+    border-radius: 6px;
+  }
+
+  .teachingFilterMenu summary {
+    display: flex;
+  }
+
+  .teachingFilterMenu:not([open]) .teachingFilters {
+    display: none;
+  }
+
+  .teachingFilters,
+  .projectFilters,
+  .teamFilters {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0 12px 12px;
+  }
+
+  .teachingFilters .teachingSecondaryButton {
+    width: 100%;
+  }
+
+  .teachingDataSurface {
+    display: grid;
+    gap: 10px;
+    border: 0;
+    background: transparent;
+  }
+
+  .teachingTableHeader {
+    display: none;
+  }
+
+  .teachingTableRow {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding: 5px 13px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: 6px;
+    background: white;
+  }
+
+  .teachingTableRow > [role="cell"] {
+    min-height: 38px;
+    display: grid;
+    grid-template-columns: minmax(82px, 0.4fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    padding-block: 7px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .teachingTableRow > [role="cell"]::before {
+    content: attr(data-label);
+    color: var(--color-text-subtle);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  .teachingTableRow > [role="cell"]:last-child {
+    border-bottom: 0;
+  }
+
+  .teachingRowActions {
+    display: grid;
+    grid-template-columns: minmax(82px, 0.4fr) 36px 36px minmax(0, 1fr) !important;
+  }
+
+  .teachingRowActions::before {
+    grid-column: 1;
+  }
+
+  .teachingRowActions > button:first-of-type,
+  .teachingRowActions > .teachingReadOnly {
+    grid-column: 2;
+  }
+
+  .teachingRowActions > button + button {
+    grid-column: 3;
+  }
+
+  .teachingRowActions > .teachingReadOnly {
+    grid-column-end: 5;
+  }
+
+  .teachingPagination {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 10px 0 0;
+    border-top: 0;
+  }
+
+  .teachingPagination > div {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .teachingEmptyState {
+    border: 1px solid var(--color-border-soft);
+    border-radius: 6px;
+    background: white;
+  }
+}
+
+@media (max-width: 420px) {
+  .teachingDialogBackdrop {
+    place-items: start stretch;
+    padding: 0;
+  }
+
+  .teachingDialog {
+    width: 100%;
+    min-height: 100dvh;
+    max-height: none;
+    padding: 16px;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .teachingDialogActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1199px) {
+  .cohortFilters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cohortFilters .teachingSecondaryButton {
+    width: fit-content;
+  }
+}
+
+@media (max-width: 860px) {
+  .cohortOverview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cohortOverviewPanel + .cohortOverviewPanel {
+    border-top: 1px solid var(--color-border-soft);
+    border-left: 0;
+  }
+
+  .cohortHistoryPanel {
+    grid-column: 1;
+  }
+
+  .cohortListRow {
+    grid-template-columns: minmax(145px, 1.05fr) minmax(145px, 0.95fr) minmax(125px, 0.8fr) minmax(145px, 1fr);
+    gap: 10px;
+    padding-inline: 12px;
+  }
+
+  .teachingClassRow {
+    grid-template-columns: minmax(150px, 0.9fr) minmax(240px, 1.4fr) auto;
+    gap: 12px;
+    padding-inline: 12px;
+  }
+
+  .coachAssignmentRow {
+    grid-template-columns: minmax(135px, 0.7fr) minmax(190px, 1.2fr) auto;
+    gap: 12px;
+    padding-inline: 12px;
+  }
+}
+
+@media (max-width: 719px) {
+  .teachingPageHeader .teachingHeaderActions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .teachingPageHeader .teachingHeaderActions > :only-child {
+    grid-column: 1 / -1;
+  }
+
+  .teachingSecondaryLink,
+  .teachingHeaderActions .teachingPrimaryButton {
+    width: 100%;
+  }
+
+  .cohortFilters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cohortFilters .teachingSecondaryButton {
+    width: 100%;
+  }
+
+  .cohortListSurface {
+    display: grid;
+    gap: 10px;
+    border: 0;
+    background: transparent;
+  }
+
+  .cohortListRow {
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding: 5px 13px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: 6px;
+    background: white;
+  }
+
+  .cohortListRow > div {
+    min-height: 42px;
+    display: grid;
+    grid-template-columns: minmax(82px, 0.38fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    padding-block: 7px;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .cohortListRow > div:last-child {
+    border-bottom: 0;
+  }
+
+  .cohortListRow > div::before {
+    content: attr(data-label);
+    color: var(--color-text-subtle);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  .cohortListIdentity > *,
+  .cohortSchedule > *,
+  .cohortReadiness > *,
+  .cohortListRow > div > .cohortAutomationSummary {
+    grid-column: 2;
+  }
+
+  .cohortDetailHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cohortDetailHeader h1 {
+    font-size: 24px;
+  }
+
+  .cohortStatusActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cohortStatusActions .teachingPrimaryButton {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 8px;
+    white-space: normal;
+  }
+
+  .cohortDefinitionGrid,
+  .cohortRuntimeStatus {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cohortHistoryRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-block: 9px;
+  }
+
+  .cohortHistoryRow time {
+    grid-column: 1 / -1;
+  }
+
+  .cohortTabSurface {
+    border: 0;
+    background: transparent;
+  }
+
+  .cohortTabSurface > header {
+    min-height: 0;
+    align-items: stretch;
+    flex-direction: column;
+    padding: 12px 0;
+  }
+
+  .cohortTabSurface > header .teachingPrimaryButton {
+    width: 100%;
+  }
+
+  .teachingClassRow,
+  .coachAssignmentRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    margin-bottom: 10px;
+    padding: 14px;
+    border: 1px solid var(--color-border-soft);
+    border-radius: 6px;
+    background: white;
+  }
+
+  .teachingClassRow dl {
+    padding-block: 10px;
+    border-block: 1px solid var(--color-border-soft);
+  }
+
+  .teachingClassRow .teachingRowActions,
+  .coachAssignmentRow > .teachingDangerButton {
+    width: 100%;
+  }
+
+  .teachingClassRow .teachingRowActions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .teachingClassRow .teachingRowActions::before {
+    content: none;
+  }
+
+  .teachingClassRow .teachingRowActions button {
+    width: 100%;
+    grid-column: auto !important;
+  }
+
+  .classPicker {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0 0 12px;
+    border-top: 0;
+  }
+
+  .classPicker select {
+    max-width: none;
+  }
+
+  .eligibleCoachSearch {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .eligibleCoachSearch .teachingSecondaryButton {
+    width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .cohortDateGrid,
+  .cohortToggleGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cohortDetailTabs button {
+    padding-inline: 6px;
+  }
+
+  .cohortOverviewPanel,
+  .cohortHistoryPanel {
+    padding-inline: 13px;
+  }
+
+  .teachingClassRow dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .teachingClassRow dl > div:last-child {
+    grid-column: 1 / -1;
+  }
+}

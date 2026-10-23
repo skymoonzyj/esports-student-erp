@@ -1,0 +1,778 @@
+.foundationPage {
+  min-width: 0;
+  display: grid;
+  gap: 22px;
+}
+
+.foundationPageHeader {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.foundationPageHeader a {
+  color: var(--color-accent-800);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.foundationPageHeader h1 {
+  margin: 4px 0 0;
+  color: var(--color-text-strong);
+  font-size: 30px;
+  letter-spacing: 0;
+}
+
+.foundationPrimaryButton,
+.foundationIconTextButton,
+.foundationDialogActions button,
+.foundationPager button,
+.foundationTabs button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.foundationTabs {
+  display: flex;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border-soft);
+  overflow-x: auto;
+}
+
+.foundationTabs button {
+  flex: 0 0 auto;
+  border-color: transparent;
+  background: transparent;
+}
+
+.foundationTabs button[aria-selected="true"] {
+  border-color: var(--color-accent-200);
+  color: var(--color-accent-800);
+  background: var(--color-accent-soft);
+}
+
+.foundationPrimaryButton,
+.foundationDialogActions button[type="submit"] {
+  border-color: var(--color-accent-600);
+  color: white;
+  background: var(--color-accent-600);
+}
+
+.foundationPrimaryButton svg,
+.foundationIconTextButton svg {
+  width: 17px;
+  height: 17px;
+}
+
+.foundationToolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-block: 1px solid var(--color-border-soft);
+}
+
+.foundationToolbar label,
+.foundationForm label {
+  display: grid;
+  gap: 7px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.foundationToolbar select,
+.foundationToolbar input,
+.foundationForm input,
+.foundationForm select,
+.foundationForm textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  color: var(--color-text-strong);
+  background: white;
+}
+
+.foundationToolbar select {
+  min-width: min(440px, 60vw);
+}
+
+.foundationTableWrap {
+  min-width: 0;
+  overflow-x: auto;
+  border-block: 1px solid var(--color-border-soft);
+}
+
+.foundationTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.foundationTable th,
+.foundationTable td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--color-border-soft);
+  text-align: left;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.foundationTable th {
+  color: var(--color-text-muted);
+  background: #fafbfe;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.foundationTable tr:last-child td {
+  border-bottom: 0;
+}
+
+.foundationIconTextButton {
+  min-height: 34px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.foundationIconTextButton.danger {
+  color: var(--color-danger-700);
+}
+
+.foundationState {
+  min-height: 160px;
+  display: grid;
+  place-items: center;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.foundationPanel {
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+}
+
+.foundationPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.foundationPanelHeader h2,
+.foundationPanelHeader p {
+  margin: 0;
+}
+
+.foundationPanelHeader h2 {
+  color: var(--color-text-strong);
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.foundationPanelHeader p {
+  margin-top: 3px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.foundationPanelActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.foundationPanelActions button,
+.foundationRoleStrip button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  color: var(--color-text);
+  background: white;
+  cursor: pointer;
+}
+
+.foundationPanelActions svg {
+  width: 16px;
+  height: 16px;
+}
+
+.foundationRoleStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.foundationRoleStrip > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 7px;
+  background: white;
+  font-size: 12px;
+}
+
+.foundationRoleStrip small {
+  color: var(--color-text-muted);
+}
+
+.foundationRoleStrip button {
+  min-height: 28px;
+  padding: 0 8px;
+}
+
+.foundationFormGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.foundationChecks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+}
+
+.foundationChecks legend {
+  padding: 0 5px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.foundationChecks label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.studentMatchingPanel {
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  align-items: start;
+}
+
+.matchingDirectory {
+  display: grid;
+  gap: 12px;
+  padding-right: 18px;
+  border-right: 1px solid var(--color-border-soft);
+}
+
+.foundationSearch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.foundationSearch label {
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.foundationSearch input {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+}
+
+.foundationSearch button,
+.matchingDetailHeader button,
+.matchingSectionHeader button,
+.matchingRowActions button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  color: var(--color-text);
+  background: white;
+  cursor: pointer;
+}
+
+.analysisToolbar {
+  justify-content: flex-start;
+}
+
+.personEvaluationFoundation {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.personEvaluationFoundation > h2 {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.embeddedMatchingTitle {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.analysisToolbar label {
+  flex: 1 1 240px;
+}
+
+.analysisToolbar select {
+  min-width: 0;
+}
+
+.foundationAvailabilityNote {
+  margin: -8px 0 0;
+  padding: 9px 11px;
+  border-left: 3px solid var(--color-warning-border);
+  color: var(--color-warning-text);
+  background: var(--color-warning-soft);
+  font-size: 12px;
+}
+
+.profileVersionList {
+  display: grid;
+  gap: 10px;
+}
+
+.profileVersionList article {
+  padding: 14px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 7px;
+  background: white;
+}
+
+.profileVersionList article.current {
+  border-left: 3px solid var(--color-success-500);
+}
+
+.profileVersionList article > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profileVersionList article > header span,
+.profileVersionList dt {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.profileVersionList dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 0;
+}
+
+.profileVersionList dl > div {
+  min-width: 0;
+}
+
+.profileVersionList dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.profileVersionList article > p {
+  margin: 12px 0 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.foundationSearch svg,
+.matchingDetailHeader svg,
+.matchingSectionHeader svg {
+  width: 16px;
+  height: 16px;
+}
+
+.matchingStudentList {
+  display: grid;
+  gap: 6px;
+}
+
+.matchingStudentList > button {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--color-text);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.matchingStudentList > button.active {
+  border-color: var(--color-accent-200);
+  background: var(--color-accent-soft);
+}
+
+.matchingStudentList span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.foundationPager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.foundationPager button {
+  width: 38px;
+  padding: 0;
+}
+
+.foundationPager.foundationLoadOlder button,
+.matchingLoadOlder {
+  width: auto;
+  min-width: 132px;
+  padding: 0 16px;
+  justify-self: center;
+}
+
+.foundationPager svg {
+  width: 17px;
+  height: 17px;
+}
+
+.matchingDetail {
+  min-width: 0;
+  display: grid;
+  gap: 20px;
+}
+
+.matchingDetailHeader,
+.matchingSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.matchingDetailHeader h2,
+.matchingDetailHeader p,
+.matchingSection h3 {
+  margin: 0;
+}
+
+.matchingHistorySummary {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.matchingDetailHeader h2 {
+  color: var(--color-text-strong);
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+.matchingDetailHeader p {
+  margin: 4px 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.matchingDetailHeader strong {
+  font-size: 13px;
+}
+
+.matchingSection {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.matchingSection h3 {
+  color: var(--color-text-strong);
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.matchingRowActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.matchingRowActions button {
+  min-height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.foundationDialogBackdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(21 27 45 / 48%);
+}
+
+.foundationDialog {
+  width: min(520px, 100%);
+  max-height: min(760px, calc(100dvh - 48px));
+  overflow: auto;
+  padding: 20px;
+  border-radius: 8px;
+  background: white;
+  box-shadow: var(--shadow-card);
+}
+
+.foundationDialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.foundationDialog h2 {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-size: 19px;
+  letter-spacing: 0;
+}
+
+.foundationDialog > header button {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.foundationDialog > header svg {
+  width: 18px;
+  height: 18px;
+}
+
+.foundationForm {
+  display: grid;
+  gap: 16px;
+  padding-top: 16px;
+}
+
+.foundationForm textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.foundationForm > p {
+  margin: 0;
+}
+
+.foundationFormError {
+  padding: 10px 12px;
+  border-radius: 7px;
+  color: var(--color-danger-700);
+  background: var(--color-danger-soft);
+}
+
+.foundationDialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 768px) {
+  .foundationPageHeader,
+  .foundationToolbar,
+  .foundationPanelHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .foundationPanelActions {
+    justify-content: stretch;
+  }
+
+  .foundationPanelActions button {
+    flex: 1 1 220px;
+  }
+
+  .studentMatchingPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .profileVersionList dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .matchingDirectory {
+    padding: 0 0 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border-soft);
+  }
+
+  .foundationToolbar select {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .foundationPage {
+    gap: 16px;
+  }
+
+  .foundationPageHeader h1 {
+    font-size: 24px;
+  }
+
+  .foundationPrimaryButton {
+    width: 100%;
+  }
+
+  .foundationTableWrap {
+    overflow: visible;
+    border: 0;
+  }
+
+  .responsiveRecords thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  .responsiveRecords,
+  .responsiveRecords tbody,
+  .responsiveRecords tr,
+  .responsiveRecords td {
+    display: block;
+    width: 100%;
+  }
+
+  .responsiveRecords tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .responsiveRecords tr {
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 7px;
+    background: white;
+  }
+
+  .responsiveRecords td {
+    display: grid;
+    grid-template-columns: minmax(92px, 38%) minmax(0, 1fr);
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--color-border-soft);
+    text-align: right;
+  }
+
+  .responsiveRecords td::before {
+    content: attr(data-label);
+    color: var(--color-text-muted);
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .responsiveRecords td:last-child {
+    border-bottom: 0;
+  }
+
+  .foundationDialogBackdrop {
+    place-items: stretch;
+    padding: 0;
+  }
+
+  .foundationDialog {
+    width: 100%;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    padding: 18px 16px calc(86px + env(safe-area-inset-bottom));
+    border-radius: 0;
+  }
+
+  .foundationDialogActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .matchingDetailHeader,
+  .matchingSectionHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .matchingDetailHeader button,
+  .matchingSectionHeader button,
+  .matchingLoadOlder,
+  .foundationPager.foundationLoadOlder button {
+    width: 100%;
+  }
+
+  .profileVersionList dl {
+    grid-template-columns: 1fr;
+  }
+}
