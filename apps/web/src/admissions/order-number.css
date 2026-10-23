@@ -1,0 +1,53 @@
+.orderNumber {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  max-width: 100%;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 400;
+  vertical-align: middle;
+}
+
+.orderNumberLabel,
+.orderNumberFeedback {
+  color: var(--color-text-muted);
+}
+
+.orderNumber code {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.orderNumberCopy {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  padding: 3px 5px;
+  min-height: 28px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.orderNumberCopy svg {
+  width: 13px;
+  height: 13px;
+}
+
+.orderNumberCopy:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.orderNumberFeedback {
+  flex-basis: 100%;
+}

@@ -1,0 +1,1 @@
+"""Esports education ERP API."""

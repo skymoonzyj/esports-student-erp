@@ -1,0 +1,478 @@
+{
+  "pc-fps": {
+    "suite_id": "pc-fps",
+    "catalog_version": "pc-fps-v3",
+    "test_ids": [
+      "precision",
+      "tracking",
+      "switching",
+      "recognition"
+    ],
+    "tasks": {
+      "precision": {
+        "catalog_version": "pc-fps-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "pc-fps-v3",
+        "params": {
+          "angle_distances_deg": [
+            10.0,
+            20.0,
+            30.0
+          ],
+          "distance_repetitions": 10,
+          "fast_ms": 350.0,
+          "fire_interval_ms": 200.0,
+          "group_count": 0,
+          "group_ms": 0.0,
+          "horizontal_fov_deg": 90.0,
+          "kind": "aim",
+          "opportunity_count": 30,
+          "pitch_limit_deg": 70.0,
+          "slow_ms": 2000.0,
+          "target_diameter_deg": 3.0,
+          "target_separation_deg": 0.0,
+          "window_ms": 2000.0
+        },
+        "report_version": "pc-fps-v1",
+        "scoring_version": "pc-fps-v1",
+        "suite_id": "pc-fps",
+        "test_id": "precision"
+      },
+      "recognition": {
+        "catalog_version": "pc-fps-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "pc-fps-v3",
+        "params": {
+          "angle_distances_deg": [
+            10.0,
+            20.0,
+            30.0
+          ],
+          "distance_repetitions": 10,
+          "enemy_count": 15,
+          "fast_ms": 250.0,
+          "fire_interval_ms": 200.0,
+          "friend_count": 15,
+          "horizontal_fov_deg": 90.0,
+          "kind": "recognition",
+          "opportunity_count": 30,
+          "pitch_limit_deg": 70.0,
+          "round_ms": 2000.0,
+          "slow_ms": 1200.0,
+          "target_diameter_deg": 4.0,
+          "window_ms": 1200.0
+        },
+        "report_version": "pc-fps-v1",
+        "scoring_version": "pc-fps-v1",
+        "suite_id": "pc-fps",
+        "test_id": "recognition"
+      },
+      "switching": {
+        "catalog_version": "pc-fps-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "pc-fps-v3",
+        "params": {
+          "angle_distances_deg": [],
+          "distance_repetitions": 0,
+          "fast_ms": 300.0,
+          "fire_interval_ms": 200.0,
+          "group_count": 20,
+          "group_ms": 3000.0,
+          "horizontal_fov_deg": 90.0,
+          "kind": "aim",
+          "opportunity_count": 40,
+          "pitch_limit_deg": 70.0,
+          "slow_ms": 1500.0,
+          "target_diameter_deg": 4.0,
+          "target_separation_deg": 25.0,
+          "window_ms": 1500.0
+        },
+        "report_version": "pc-fps-v2",
+        "scoring_version": "pc-fps-v2",
+        "suite_id": "pc-fps",
+        "test_id": "switching"
+      },
+      "tracking": {
+        "catalog_version": "pc-fps-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "pc-fps-v3",
+        "params": {
+          "direction_interval_ms": 2000.0,
+          "fire_interval_ms": 200.0,
+          "horizontal_bound_deg": 30.0,
+          "horizontal_fov_deg": 90.0,
+          "kind": "tracking",
+          "pitch_limit_deg": 70.0,
+          "speed_deg_s": 30.0,
+          "target_diameter_deg": 4.0,
+          "turn_ms": 200.0,
+          "vertical_bound_deg": 15.0
+        },
+        "report_version": "pc-fps-v1",
+        "scoring_version": "pc-fps-v1",
+        "suite_id": "pc-fps",
+        "test_id": "tracking"
+      }
+    }
+  },
+  "mobile-fps": {
+    "suite_id": "mobile-fps",
+    "catalog_version": "mobile-fps-v3",
+    "test_ids": [
+      "precision",
+      "tracking",
+      "switching",
+      "move-fire"
+    ],
+    "tasks": {
+      "move-fire": {
+        "catalog_version": "mobile-fps-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "mobile-fps-v3",
+        "params": {
+          "checkpoint_distance_m": 1.2,
+          "checkpoint_tolerance_m": 0.35,
+          "fire_interval_ms": 200.0,
+          "horizontal_fov_deg": 90.0,
+          "kind": "move_fire_v3",
+          "min_moving_ms": 100.0,
+          "min_moving_speed_m_s": 1.0,
+          "opportunity_count": 20,
+          "pitch_limit_deg": 70.0,
+          "player_speed_m_s": 2.0,
+          "target_diameter_deg": 6.0,
+          "target_offset_max_deg": 20.0,
+          "target_offset_min_deg": 12.0,
+          "window_ms": 3000.0
+        },
+        "report_version": "mobile-fps-v2",
+        "scoring_version": "mobile-fps-v2",
+        "suite_id": "mobile-fps",
+        "test_id": "move-fire"
+      },
+      "precision": {
+        "catalog_version": "mobile-fps-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "mobile-fps-v3",
+        "params": {
+          "angle_distances_deg": [
+            8.0,
+            16.0,
+            24.0
+          ],
+          "distance_repetitions": 10,
+          "fast_ms": 550.0,
+          "fire_interval_ms": 200.0,
+          "group_count": 0,
+          "group_ms": 0.0,
+          "horizontal_fov_deg": 90.0,
+          "kind": "aim",
+          "opportunity_count": 30,
+          "pitch_limit_deg": 70.0,
+          "slow_ms": 2000.0,
+          "target_diameter_deg": 5.0,
+          "target_separation_deg": 0.0,
+          "window_ms": 2000.0
+        },
+        "report_version": "mobile-fps-v1",
+        "scoring_version": "mobile-fps-v1",
+        "suite_id": "mobile-fps",
+        "test_id": "precision"
+      },
+      "switching": {
+        "catalog_version": "mobile-fps-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "mobile-fps-v3",
+        "params": {
+          "angle_distances_deg": [],
+          "distance_repetitions": 0,
+          "fast_ms": 450.0,
+          "fire_interval_ms": 200.0,
+          "group_count": 20,
+          "group_ms": 3000.0,
+          "horizontal_fov_deg": 90.0,
+          "kind": "aim",
+          "opportunity_count": 40,
+          "pitch_limit_deg": 70.0,
+          "slow_ms": 1500.0,
+          "target_diameter_deg": 6.0,
+          "target_separation_deg": 20.0,
+          "window_ms": 1500.0
+        },
+        "report_version": "mobile-fps-v2",
+        "scoring_version": "mobile-fps-v2",
+        "suite_id": "mobile-fps",
+        "test_id": "switching"
+      },
+      "tracking": {
+        "catalog_version": "mobile-fps-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "mobile-fps-v3",
+        "params": {
+          "direction_interval_ms": 2000.0,
+          "fire_interval_ms": 200.0,
+          "horizontal_bound_deg": 30.0,
+          "horizontal_fov_deg": 90.0,
+          "kind": "tracking",
+          "pitch_limit_deg": 70.0,
+          "speed_deg_s": 20.0,
+          "target_diameter_deg": 6.0,
+          "turn_ms": 200.0,
+          "vertical_bound_deg": 15.0
+        },
+        "report_version": "mobile-fps-v1",
+        "scoring_version": "mobile-fps-v1",
+        "suite_id": "mobile-fps",
+        "test_id": "tracking"
+      }
+    }
+  },
+  "pc-moba": {
+    "suite_id": "pc-moba",
+    "catalog_version": "pc-moba-v3",
+    "test_ids": [
+      "last-hit",
+      "orb-walk",
+      "dodge",
+      "map-awareness"
+    ],
+    "tasks": {
+      "dodge": {
+        "catalog_version": "pc-moba-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "pc-moba-v3",
+        "params": {
+          "attack_range": 180.0,
+          "burst_ms": 150.0,
+          "candidate_distance": 100.0,
+          "candidate_offset": 20.0,
+          "kind": "dodge_choice",
+          "logical_height": 562.5,
+          "logical_width": 1000.0,
+          "opportunity_count": 30,
+          "player_radius": 12.0,
+          "player_speed": 180.0,
+          "safe_radius": 32.0,
+          "warning_ms": 1000.0,
+          "warning_start_max_ms": 600.0,
+          "warning_start_min_ms": 100.0,
+          "window_ms": 2000.0
+        },
+        "report_version": "pc-moba-v2",
+        "scoring_version": "pc-moba-v2",
+        "suite_id": "pc-moba",
+        "test_id": "dodge"
+      },
+      "last-hit": {
+        "catalog_version": "pc-moba-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "pc-moba-v3",
+        "params": {
+          "attack_damage": 10.0,
+          "attack_interval_ms": 1000.0,
+          "attack_range": 180.0,
+          "attack_windup_ms": 250.0,
+          "kind": "last_hit",
+          "last_hit_window_ms": 500.0,
+          "logical_height": 562.5,
+          "logical_width": 1000.0,
+          "opportunity_count": 15,
+          "player_radius": 12.0,
+          "player_speed": 180.0,
+          "window_ms": 4000.0,
+          "window_starts_ms": [
+            2000.0,
+            2250.0,
+            2500.0,
+            2750.0,
+            3000.0
+          ]
+        },
+        "report_version": "pc-moba-v1",
+        "scoring_version": "pc-moba-v1",
+        "suite_id": "pc-moba",
+        "test_id": "last-hit"
+      },
+      "map-awareness": {
+        "catalog_version": "pc-moba-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "pc-moba-v3",
+        "params": {
+          "attack_range": 180.0,
+          "event_count": 12,
+          "event_interval_ms": 5000.0,
+          "event_start_ms": 3000.0,
+          "event_window_ms": 1000.0,
+          "kind": "map",
+          "logical_height": 562.5,
+          "logical_width": 1000.0,
+          "minimap_height": 110.0,
+          "minimap_width": 180.0,
+          "minimap_x": 820.0,
+          "minimap_y": 0.0,
+          "opportunity_count": 30,
+          "player_radius": 12.0,
+          "player_speed": 180.0,
+          "target_radius": 24.0,
+          "window_ms": 2000.0
+        },
+        "report_version": "pc-moba-v1",
+        "scoring_version": "pc-moba-v1",
+        "suite_id": "pc-moba",
+        "test_id": "map-awareness"
+      },
+      "orb-walk": {
+        "catalog_version": "pc-moba-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "pc-moba-v3",
+        "params": {
+          "attack_interval_ms": 1000.0,
+          "attack_range": 180.0,
+          "attack_windup_ms": 250.0,
+          "checkpoint_distance": 100.0,
+          "checkpoint_tolerance": 25.0,
+          "kind": "rhythm",
+          "logical_height": 562.5,
+          "logical_width": 1000.0,
+          "opportunity_count": 30,
+          "player_radius": 12.0,
+          "player_speed": 180.0,
+          "window_ms": 2000.0
+        },
+        "report_version": "pc-moba-v1",
+        "scoring_version": "pc-moba-v1",
+        "suite_id": "pc-moba",
+        "test_id": "orb-walk"
+      }
+    }
+  },
+  "mobile-moba": {
+    "suite_id": "mobile-moba",
+    "catalog_version": "mobile-moba-v3",
+    "test_ids": [
+      "dodge",
+      "skill-aim",
+      "move-attack",
+      "map-awareness"
+    ],
+    "tasks": {
+      "dodge": {
+        "catalog_version": "mobile-moba-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "mobile-moba-v3",
+        "params": {
+          "attack_range": 180.0,
+          "burst_ms": 150.0,
+          "candidate_distance": 100.0,
+          "candidate_offset": 20.0,
+          "kind": "dodge_choice",
+          "logical_height": 562.5,
+          "logical_width": 1000.0,
+          "opportunity_count": 30,
+          "player_radius": 12.0,
+          "player_speed": 180.0,
+          "safe_radius": 32.0,
+          "warning_ms": 1100.0,
+          "warning_start_max_ms": 600.0,
+          "warning_start_min_ms": 100.0,
+          "window_ms": 2000.0
+        },
+        "report_version": "mobile-moba-v2",
+        "scoring_version": "mobile-moba-v2",
+        "suite_id": "mobile-moba",
+        "test_id": "dodge"
+      },
+      "map-awareness": {
+        "catalog_version": "mobile-moba-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "mobile-moba-v3",
+        "params": {
+          "attack_range": 180.0,
+          "event_count": 12,
+          "event_interval_ms": 5000.0,
+          "event_start_ms": 3000.0,
+          "event_window_ms": 1000.0,
+          "kind": "map",
+          "logical_height": 562.5,
+          "logical_width": 1000.0,
+          "minimap_height": 110.0,
+          "minimap_width": 180.0,
+          "minimap_x": 820.0,
+          "minimap_y": 0.0,
+          "opportunity_count": 30,
+          "player_radius": 12.0,
+          "player_speed": 180.0,
+          "target_radius": 24.0,
+          "window_ms": 2000.0
+        },
+        "report_version": "mobile-moba-v1",
+        "scoring_version": "mobile-moba-v1",
+        "suite_id": "mobile-moba",
+        "test_id": "map-awareness"
+      },
+      "move-attack": {
+        "catalog_version": "mobile-moba-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "mobile-moba-v3",
+        "params": {
+          "attack_interval_ms": 1000.0,
+          "attack_range": 180.0,
+          "attack_windup_ms": 300.0,
+          "checkpoint_distance": 90.0,
+          "checkpoint_tolerance": 30.0,
+          "kind": "rhythm",
+          "logical_height": 562.5,
+          "logical_width": 1000.0,
+          "opportunity_count": 30,
+          "player_radius": 12.0,
+          "player_speed": 180.0,
+          "window_ms": 2000.0
+        },
+        "report_version": "mobile-moba-v1",
+        "scoring_version": "mobile-moba-v1",
+        "suite_id": "mobile-moba",
+        "test_id": "move-attack"
+      },
+      "skill-aim": {
+        "catalog_version": "mobile-moba-v3",
+        "difficulty": 3,
+        "duration_ms": 60000,
+        "engine_version": "mobile-moba-v3",
+        "params": {
+          "attack_range": 180.0,
+          "kind": "skill_aim",
+          "logical_height": 562.5,
+          "logical_width": 1000.0,
+          "max_distance": 500.0,
+          "opportunity_count": 30,
+          "player_radius": 12.0,
+          "player_speed": 180.0,
+          "projectile_radius": 10.0,
+          "projectile_speed": 600.0,
+          "target_radius": 22.0,
+          "target_speed": 80.0,
+          "window_ms": 2000.0
+        },
+        "report_version": "mobile-moba-v1",
+        "scoring_version": "mobile-moba-v1",
+        "suite_id": "mobile-moba",
+        "test_id": "skill-aim"
+      }
+    }
+  }
+}

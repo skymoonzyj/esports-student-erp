@@ -1,0 +1,112 @@
+.number-game {
+  align-items: center;
+  background: #2563a6;
+  border-radius: 16px;
+  color: #fff;
+  display: flex;
+  justify-content: center;
+  min-height: min(540px, calc(100svh - 180px));
+  padding: 32px 24px;
+  text-align: center;
+  touch-action: manipulation;
+  width: 100%;
+}
+
+.number-game__panel {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  max-width: 970px;
+  width: 100%;
+}
+
+.number-game h2 {
+  font-size: clamp(2rem, 7vw, 4.5rem);
+  font-weight: 500;
+  margin: 0;
+}
+
+.number-game p,
+.number-game label {
+  font-size: clamp(1rem, 3vw, 1.4rem);
+  line-height: 1.5;
+}
+
+.number-game button {
+  background: #fff;
+  border: 0;
+  border-radius: 8px;
+  color: #174f83;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  margin-top: 24px;
+  min-height: 48px;
+  padding: 12px 28px;
+}
+
+.number-game button:focus-visible,
+.number-game input:focus-visible {
+  outline: 4px solid rgb(255 255 255 / 55%);
+  outline-offset: 3px;
+}
+
+.number-game button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.number-game__level {
+  color: rgb(255 255 255 / 80%);
+  margin: 0 0 20px;
+}
+
+.number-game__digits {
+  font-size: clamp(2.75rem, 10vw, 6.25rem) !important;
+  line-height: 1.05 !important;
+  margin: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.number-game input {
+  background: rgb(0 0 80 / 22%);
+  border: 2px solid #9ad0ff;
+  border-radius: 8px;
+  color: #fff;
+  font-size: clamp(2rem, 8vw, 3rem);
+  margin-top: 16px;
+  max-width: 680px;
+  min-height: 72px;
+  padding: 8px 12px;
+  text-align: center;
+  width: 100%;
+}
+
+.number-game__review {
+  display: grid;
+  gap: 16px;
+  margin: 24px 0 0;
+  width: min(100%, 680px);
+}
+
+.number-game__review div {
+  overflow-wrap: anywhere;
+}
+
+.number-game__review dt {
+  color: rgb(255 255 255 / 70%);
+}
+
+.number-game__review dd {
+  font-size: clamp(2rem, 8vw, 3rem);
+  margin: 4px 0 0;
+}
+
+@media (max-width: 640px) {
+  .number-game {
+    border-radius: 12px;
+    min-height: min(480px, calc(100svh - 128px));
+    padding: 24px 16px;
+  }
+}

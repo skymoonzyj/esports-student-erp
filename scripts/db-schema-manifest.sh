@@ -1,0 +1,443 @@
+#!/usr/bin/env bash
+
+EXPECTED_ALEMBIC_HEAD=0061_team_management
+MIGRATION_CHAIN=(
+  0013_system_evaluation_manual_review
+  0014_teaching_reports
+  0015_food_preferences
+  0016_camp_evaluation_surveys
+  0017_self_service_registration
+  0018_registration_review_metadata
+  0019_guardian_invitation_tokens
+  0020_registration_review_pending_guardian
+  0021_registration_review_candidate_binding
+  0022_multiple_custom_cuisines
+  0023_mail_delivery_settings
+  0024_mail_templates
+  0025_password_reset_mail_template
+  0026_verified_login_identifiers
+  0027_super_admin_administration_roles
+  0028_registration_channel_settings
+  0029_staff_approval_optional_reason
+  0030_super_admin_only_audit
+  0031_enrollment_individual_schedule
+  0032_asset_management
+  0033_asset_photos
+  0034_person_nicknames
+  0035_revenue_sharing
+  0036_daily_procurement
+  0037_procurement_invoices
+  0038_admin_finance_boundary
+  0039_procurement_product_links
+  0040_procurement_reimbursement_status
+  0041_procurement_reserve_funds
+  0042_asset_purchase_details
+  0043_operations_monitoring
+  0044_travel_report_conversions
+  0045_enrollment_program_catalog
+  0046_student_portal_permissions
+  0047_self_referral_codes
+  0048_admin_asset_boundary
+  0049_project_coach_selection
+  0050_asset_warranty_service
+  0051_settlement_idempotency
+  0052_operations_history
+  0053_revenue_share_processing
+  0054_admission_order_numbers
+  0055_manual_payment_idempotency
+  0056_evaluation_upload_cleanup
+  0057_procurement_idempotency
+  0058_talent_tests
+  0059_talent_dynamic_vision
+  0060_esports_assessments
+  0061_team_management
+)
+REQUIRED_TABLES=(
+  people student_profiles staff_profiles visitor_profiles guardian_relationships
+  user_accounts auth_sessions auth_rate_limits roles permissions role_permissions
+  user_roles user_permission_overrides audit_events game_projects professional_teams
+  cohorts cohort_status_events teaching_classes coach_assignments project_coach_assignments
+  service_accounts service_account_credentials service_account_request_limits
+  service_account_nonces payments payment_import_events payment_conflicts
+  payment_refunds admission_cases admission_case_payments enrollments
+  enrollment_events enrollment_withdrawals evaluation_bridge_requests
+  evaluation_bridge_tickets evaluation_staff_roles cohort_staff_assignments
+  cohort_staff_assignment_permissions student_game_accounts student_auxiliary_phones
+  project_analysis_profiles evaluation_media_blobs evaluation_media_assets
+  housing_buildings housing_floors housing_rooms housing_import_batches
+  housing_room_issues housing_stays housing_transfers
+  housing_report_batches housing_report_batch_scopes
+  system_evaluation_upload_sessions system_evaluation_upload_session_media
+  system_evaluation_tasks system_evaluation_task_media system_evaluation_attempts
+  system_evaluation_result_versions system_evaluation_manual_drafts
+  system_evaluation_events
+  evaluation_quarantine_cleanup
+  evaluation_adapter_certifications evaluation_idempotency_keys
+  student_reports student_report_drafts student_report_versions
+  student_report_reviews student_report_window_grants
+  food_cuisine_options person_food_preferences
+  person_food_preference_cuisines person_food_preference_dishes
+  person_food_preference_versions
+  camp_survey_cycles camp_survey_snapshot_versions camp_survey_staff_snapshots
+  camp_survey_submissions camp_survey_versions camp_survey_staff_ratings
+  camp_survey_supplements camp_survey_supplement_ratings
+  account_login_identifiers guardian_profiles registration_applications
+  registration_verification_challenges registration_sessions
+  guardian_registration_invitations staff_identity_applications
+  registration_consent_acceptances registration_channel_settings mail_delivery_settings mail_templates
+  assets asset_assignments asset_photos
+  revenue_share_organizations referral_codes student_referral_bindings
+  revenue_share_rules revenue_share_payment_statuses revenue_share_ledger_entries
+  revenue_share_reconcile_queue
+  revenue_share_settlements procurement_settlement_centers procurement_reserve_fund_entries
+  daily_purchase_records
+  procurement_invoices procurement_invoice_purchases
+  operations_service_heartbeats
+  operations_metric_batches operations_request_minutes operations_alerts
+  travel_report_conversions
+  enrollment_programs
+  talent_test_sessions talent_test_results talent_test_reports
+  esports_assessment_sessions esports_assessment_attempts esports_assessment_results
+  esports_assessment_reports esports_assessment_practice_runs
+  team_memberships team_manager_assignments team_operations
+)
+ROW_COUNT_TABLES=(
+  evaluation_quarantine_cleanup
+  people user_accounts roles permissions role_permissions user_roles
+  user_permission_overrides audit_events game_projects professional_teams cohorts
+  cohort_status_events teaching_classes coach_assignments project_coach_assignments service_accounts
+  service_account_credentials service_account_request_limits service_account_nonces
+  payments payment_import_events payment_conflicts payment_refunds admission_cases
+  admission_case_payments enrollments enrollment_events enrollment_withdrawals
+  evaluation_bridge_requests evaluation_bridge_tickets
+  evaluation_staff_roles cohort_staff_assignments cohort_staff_assignment_permissions
+  student_game_accounts student_auxiliary_phones project_analysis_profiles
+  evaluation_media_blobs evaluation_media_assets
+  housing_buildings housing_floors housing_rooms housing_import_batches
+  housing_room_issues housing_stays housing_transfers
+  housing_report_batches housing_report_batch_scopes
+  system_evaluation_upload_sessions system_evaluation_upload_session_media
+  system_evaluation_tasks system_evaluation_task_media system_evaluation_attempts
+  system_evaluation_result_versions system_evaluation_manual_drafts
+  system_evaluation_events
+  evaluation_adapter_certifications evaluation_idempotency_keys
+  student_reports student_report_drafts student_report_versions
+  student_report_reviews student_report_window_grants
+  food_cuisine_options person_food_preferences
+  person_food_preference_cuisines person_food_preference_dishes
+  person_food_preference_versions
+  camp_survey_cycles camp_survey_snapshot_versions camp_survey_staff_snapshots
+  camp_survey_submissions camp_survey_versions camp_survey_staff_ratings
+  camp_survey_supplements camp_survey_supplement_ratings
+  account_login_identifiers guardian_profiles registration_applications
+  registration_verification_challenges registration_sessions
+  guardian_registration_invitations staff_identity_applications
+  registration_consent_acceptances registration_channel_settings mail_delivery_settings mail_templates
+  assets asset_assignments asset_photos
+  revenue_share_organizations referral_codes student_referral_bindings
+  revenue_share_rules revenue_share_payment_statuses revenue_share_ledger_entries
+  revenue_share_reconcile_queue
+  revenue_share_settlements procurement_settlement_centers procurement_reserve_fund_entries
+  daily_purchase_records
+  procurement_invoices procurement_invoice_purchases
+  operations_service_heartbeats
+  operations_metric_batches operations_request_minutes operations_alerts
+  travel_report_conversions
+  enrollment_programs
+  talent_test_sessions talent_test_results talent_test_reports
+  esports_assessment_sessions esports_assessment_attempts esports_assessment_results
+  esports_assessment_reports esports_assessment_practice_runs
+  team_memberships team_manager_assignments team_operations
+)
+REQUIRED_INDEXES=(
+  uq_team_memberships_open_person
+  ix_team_memberships_person_history
+  ix_team_memberships_team_history
+  uq_team_manager_assignments_open_account_team
+  ix_team_manager_assignments_account_history
+  ix_team_manager_assignments_team_history
+  uq_team_operations_actor_key
+  uq_talent_sessions_person_creation
+  uq_talent_sessions_active_person
+  ix_talent_sessions_person_created
+  uq_talent_results_session_test
+  uq_talent_results_session_submission
+  uq_talent_reports_session
+  ix_talent_reports_created
+  uq_ea_session_creator_creation
+  uq_ea_session_creator_abandon
+  uq_ea_open_person_suite
+  ix_ea_session_person_suite_status_created
+  uq_ea_attempt_identity
+  uq_ea_attempt_creator_creation
+  uq_ea_attempt_creator_interrupt
+  uq_ea_attempt_sequence
+  uq_ea_attempt_submittable_session_test
+  ix_ea_attempt_creator_state_deadline
+  uq_ea_result_session_test
+  uq_ea_result_attempt
+  uq_ea_result_creator_submission
+  ix_ea_result_comparison_created
+  uq_ea_report_session
+  ix_ea_report_created
+  uq_ea_practice_creator_creation
+  uq_ea_practice_creator_submission
+  uq_ea_practice_creator_interrupt
+  ix_ea_practice_person_suite_state_created
+  ix_ea_practice_creator_state_deadline
+  ix_ea_practice_comparison_created
+  ix_evaluation_quarantine_cleanup_due
+  ix_evaluation_upload_account_open
+  ix_revenue_share_reconcile_queue_paid_at
+  uq_operations_alert_active_key
+  ix_operations_alert_first_seen
+  ix_operations_metric_batches_created_at
+  ix_people_email_digest
+  uq_housing_room_issues_open_room
+  ix_housing_stays_room_status_time
+  ix_housing_stays_person_status_time
+  ix_housing_stays_cohort_status
+  excl_housing_stays_person_active_overlap
+  uq_housing_transfers_from_stay
+  uq_housing_transfers_to_stay
+  uq_person_food_preference_cuisines_standard_option
+  uq_account_login_identifiers_identifier_digest
+  uq_registration_applications_active_identifier
+  uq_registration_applications_active_identity
+  uq_registration_sessions_token_digest
+  uq_guardian_registration_invitations_pending_application
+  uq_guardian_registration_invitations_pending_student
+  uq_guardian_registration_invitations_accepted_application
+  uq_guardian_registration_invitations_accepted_student
+  uq_guardian_registration_invitations_handoff_token
+  uq_staff_identity_applications_open_person_type
+  ix_enrollments_schedule_window
+  ix_assets_status_updated
+  ix_assets_name
+  ix_assets_source_purchase
+  ix_asset_assignments_person_active
+  uq_asset_assignments_active_asset
+  ix_asset_photos_updated
+  uq_procurement_settlement_centers_name_ci
+  ix_procurement_settlement_centers_active_name
+  ix_daily_purchase_records_date
+  ix_daily_purchase_records_center_date
+  ix_daily_purchase_records_settled_date
+  ix_daily_purchase_records_reimbursed_date
+  ix_daily_purchase_records_reserve_fund_center
+  ix_procurement_reserve_fund_entries_center_created
+  ix_procurement_invoices_date
+  ix_procurement_invoices_sha256
+  ix_procurement_invoice_purchases_invoice
+  uq_procurement_invoice_purchases_purchase
+  ix_travel_report_conversions_created
+  ix_travel_report_conversions_period
+  uq_admission_cases_open_self_service_choice
+  ix_project_coach_assignments_project_active
+  ix_project_coach_assignments_coach_active
+  uq_project_coach_assignments_project_coach
+)
+REQUIRED_CONSTRAINTS=(
+  ck_team_memberships_end_pair
+  ck_team_memberships_end_kind
+  ck_team_memberships_transfer_reason
+  ck_team_manager_assignments_end_pair
+  ck_team_manager_assignments_end_kind
+  ck_team_operations_fingerprint
+  ck_talent_sessions_state_times
+  ck_talent_sessions_abandon_pair
+  ck_talent_sessions_creation_digest
+  ck_talent_results_score
+  ck_talent_results_test_id
+  ck_talent_results_submission_digest
+  ck_ea_session_suite
+  ck_ea_session_state_times
+  ck_ea_session_creation_digest
+  ck_ea_session_abandon_pair
+  ck_ea_attempt_state
+  ck_ea_attempt_state_times
+  ck_ea_attempt_deadlines
+  ck_ea_attempt_seed
+  ck_ea_attempt_creation_digest
+  fk_ea_result_attempt_owner
+  ck_ea_result_score
+  ck_ea_result_grade
+  ck_ea_result_submission_digest
+  ck_ea_result_comparison_key
+  ck_ea_practice_suite
+  ck_ea_practice_difficulty
+  ck_ea_practice_state
+  ck_ea_practice_state_times
+  ck_ea_practice_deadlines
+  ck_ea_practice_seed
+  ck_ea_practice_creation_digest
+  ck_ea_practice_submission_pair
+  ck_ea_practice_comparison_key
+  uq_payments_manual_operation
+  ck_payments_operation_fingerprint
+  uq_payment_refunds_manual_operation
+  ck_payment_refunds_operation_fingerprint
+  ck_evaluation_quarantine_cleanup_key
+  ck_evaluation_quarantine_cleanup_attempts
+  uq_admission_cases_order_number
+  ck_admission_cases_order_number_format
+  uq_revenue_share_settlements_operation
+  uq_revenue_share_settlements_reference_key
+  ck_operations_alert_status
+  ck_operations_alert_severity
+  ck_people_legacy_email_cleared
+  ck_people_nickname_not_blank
+  ck_enrollments_schedule_mode
+  ck_enrollments_schedule_dates
+  ck_housing_room_issues_description
+  ck_housing_room_issues_previous_service_status
+  ck_housing_room_issues_status
+  ck_housing_room_issues_resolution
+  ck_housing_room_issues_resolved_at
+  ck_housing_stays_purpose
+  ck_housing_stays_duration_mode
+  ck_housing_stays_planned_range
+  ck_housing_stays_camp_cohort
+  ck_housing_stays_temporary_details
+  ck_housing_stays_status
+  ck_housing_stays_status_fields
+  ck_housing_stays_snapshot_names
+  ck_housing_stays_actual_range
+  ck_housing_stays_checkout_request_fields
+  ck_housing_stays_version
+  excl_housing_stays_person_active_overlap
+  ck_housing_transfers_distinct_stays
+  ck_housing_transfers_reason
+  uq_housing_transfers_from_stay
+  uq_housing_transfers_to_stay
+  ck_user_accounts_self_service_primary_purpose
+  ck_account_login_identifiers_kind
+  ck_registration_applications_primary_purpose
+  ck_registration_applications_state
+  ck_registration_applications_identifier_kind
+  ck_registration_applications_sex
+  ck_registration_applications_requested_staff_type
+  ck_registration_applications_staff_application_reason
+  ck_registration_applications_visit_reason
+  ck_registration_applications_purpose_fields
+  ck_registration_applications_identifier_pair
+  ck_registration_applications_finalization_match_kind
+  ck_registration_applications_finalized_at
+  ck_registration_applications_rejected_at
+  ck_registration_applications_review_reason
+  ck_registration_applications_review_state
+  ck_registration_applications_review_candidate
+  ck_registration_verification_challenges_purpose
+  ck_registration_verification_challenges_identifier_kind
+  ck_registration_verification_challenges_attempts
+  ck_guardian_registration_invitations_target
+  ck_guardian_registration_invitations_identifier_kind
+  ck_guardian_registration_invitations_status
+  ck_guardian_registration_invitations_acceptance
+  ck_guardian_registration_invitations_handoff_token
+  ck_staff_identity_applications_requested_type
+  ck_staff_identity_applications_status
+  ck_staff_identity_applications_reason
+  ck_staff_identity_applications_review_reason
+  ck_staff_identity_applications_review_state
+  ck_registration_consent_acceptances_subject
+  ck_registration_consent_acceptances_labels
+  ck_mail_delivery_settings_port
+  ck_mail_delivery_settings_tls_mode
+  ck_mail_delivery_settings_test_status
+  uq_mail_delivery_settings_singleton
+  ck_mail_templates_event_key
+  uq_mail_templates_event_key
+  ck_assets_status
+  ck_assets_name
+  ck_assets_warranty_range
+  ck_assets_warranty_channel
+  ck_operations_service_heartbeats_status
+  ck_operations_service_heartbeats_failures
+  ck_operations_service_heartbeats_result_count
+  ck_operations_service_heartbeats_error_code
+  ck_asset_assignments_return_range
+  ck_asset_photos_mime_type
+  ck_asset_photos_byte_size
+  ck_asset_photos_sha256
+  ck_procurement_settlement_centers_name
+  ck_procurement_reserve_fund_entries_amount
+  ck_daily_purchase_records_item_name
+  ck_daily_purchase_records_purchase_channel
+  ck_daily_purchase_records_product_url
+  ck_daily_purchase_records_quantity
+  ck_daily_purchase_records_unit_price
+  ck_daily_purchase_records_total_price
+  ck_daily_purchase_records_settlement
+  ck_procurement_invoices_amount
+  ck_procurement_invoices_mime_type
+  ck_procurement_invoices_extension
+  ck_procurement_invoices_byte_size
+  ck_procurement_invoices_sha256
+  ck_procurement_invoices_filename
+  ck_travel_report_source_size
+  ck_travel_report_converted_size
+  ck_travel_report_source_sha256
+  ck_travel_report_converted_sha256
+  ck_travel_report_billing_period
+  ck_travel_report_counts
+  ck_enrollment_programs_category
+  ck_enrollment_programs_price
+  ck_enrollment_programs_sort_order
+  ck_admission_cases_application_source
+  ck_admission_cases_payment_preference
+  ck_admission_cases_self_service_fields
+  uq_project_coach_assignments_project_coach
+)
+REQUIRED_TRIGGERS=(
+  trg_admission_order_number_immutable
+  trg_revenue_share_payment_insert
+  trg_revenue_share_refund_insert
+  trg_revenue_share_payment_paid_at
+)
+REQUIRED_SEQUENCES=(
+  admission_order_number_seq
+  registration_student_number_seq
+)
+REQUIRED_ENCRYPTED_COLUMNS=(
+  people.email_ciphertext
+  people.email_digest
+)
+REQUIRED_NULLABLE_LEGACY_COLUMNS=(
+  people.email
+  user_accounts.login_phone_digest
+  user_accounts.email_normalized
+)
+REQUIRED_ROLE_KEYS=(
+  registered_user
+  finance
+)
+REQUIRED_PERMISSION_KEYS=(
+  registration.review
+  registration.sensitive.read
+  staff_identity_applications.review
+  assets.read_self
+  assets.read
+  assets.manage
+  assets.assign
+  assets.export
+  revenue_share.read_self
+  revenue_share.finance
+  revenue_share.manage
+  revenue_share.export
+  procurement.read
+  procurement.manage
+  procurement.settle
+  procurement.export
+  procurement.centers.manage
+  procurement.invoices.manage
+  travel_reports.read
+  travel_reports.import
+  travel_reports.export
+  enrollment_applications.create
+  project_coaches.manage
+  talent_tests.take
+  talent_tests.read
+  esports_assessments.take
+  esports_assessments.read
+)

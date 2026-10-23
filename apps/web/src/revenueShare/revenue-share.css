@@ -1,0 +1,661 @@
+.revenueSharePage {
+  width: min(100%, 1280px);
+  margin: 0 auto;
+  color: var(--color-text-strong);
+}
+
+.revenueShareHeader,
+.revenueShareSectionHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.revenueShareHeader h1 {
+  margin: 0;
+  color: var(--color-navy-950);
+  font-size: 34px;
+  letter-spacing: 0;
+}
+
+.revenueShareHeader p:not(.pageEyebrow) {
+  margin: 8px 0 0;
+  color: var(--color-text-muted);
+}
+
+.revenueShareHeader button,
+.revenueShareForm button,
+.revenueShareRuleForm button,
+.revenueShareDialogActions button,
+.iconTextButton,
+.dangerTextButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.revenueShareHeader svg,
+.revenueShareForm button svg,
+.revenueShareRuleForm button svg,
+.revenueShareDialogActions svg,
+.iconTextButton svg,
+.dangerTextButton svg {
+  width: 15px;
+  height: 15px;
+}
+
+.revenueShareStatus,
+.revenueShareNotice,
+.revenueSharePage > .formError {
+  margin: 22px 0 0;
+  padding: 11px 13px;
+  border-radius: 6px;
+}
+
+.revenueShareStatus {
+  color: var(--color-text-muted);
+  background: #f5f7fa;
+}
+
+.revenueShareNotice {
+  color: #17633d;
+  border: 1px solid #a7d6bd;
+  background: #edf8f2;
+}
+
+.revenueShareStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.revenueShareStatsThree {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.revenueShareStats > div {
+  min-height: 88px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.revenueShareStats span,
+.revenueShareSectionHeading > span {
+  color: var(--color-text-subtle);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.revenueShareStats strong {
+  font-size: 23px;
+  font-variant-numeric: tabular-nums;
+}
+
+.revenueShareSection {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.revenueShareSectionHeading {
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.revenueShareSectionHeading h2,
+.revenueShareForm h3 {
+  margin: 0;
+  color: var(--color-navy-950);
+  letter-spacing: 0;
+}
+
+.revenueShareSectionHeading h2 {
+  font-size: 20px;
+}
+
+.revenueShareSectionActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.revenueShareSectionActions .primaryButton {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.revenueShareSectionActions svg {
+  width: 16px;
+  height: 16px;
+}
+
+.revenueShareForm h3 {
+  font-size: 15px;
+}
+
+.revenueShareFormColumns {
+  display: grid;
+  grid-template-columns: minmax(260px, .7fr) minmax(360px, 1.3fr);
+  gap: 14px;
+}
+
+.revenueShareForm,
+.revenueShareRuleForm {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.revenueShareRuleForm {
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  align-items: end;
+}
+
+.revenueShareForm label,
+.revenueShareRuleForm label,
+.revenueShareDialogForm label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.revenueShareForm label > span,
+.revenueShareRuleForm label > span,
+.revenueShareDialogForm label > span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.revenueShareForm input,
+.revenueShareForm select,
+.revenueShareRuleForm input,
+.revenueShareRuleForm select,
+.revenueShareDialogForm input,
+.revenueShareDialogForm textarea {
+  width: 100%;
+  min-height: 41px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-strong);
+  background: #fff;
+  font: inherit;
+}
+
+.revenueShareDialogForm textarea {
+  min-height: 86px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.revenueShareForm input:focus,
+.revenueShareForm select:focus,
+.revenueShareRuleForm input:focus,
+.revenueShareRuleForm select:focus,
+.revenueShareDialogForm input:focus,
+.revenueShareDialogForm textarea:focus {
+  border-color: var(--color-accent-500);
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.revenueShareSegmented {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.revenueShareSegmented label {
+  min-height: 39px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.revenueShareSegmented input {
+  width: 15px;
+  min-height: auto;
+  margin: 0;
+}
+
+.revenueShareTableWrap {
+  margin-top: 14px;
+  overflow-x: auto;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.revenueShareTable {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.revenueShareRulesTable {
+  min-width: 1020px;
+}
+
+.revenueShareTable th,
+.revenueShareTable td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-border-soft);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.revenueShareTable th {
+  color: var(--color-text-subtle);
+  background: #f8f9fb;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.revenueShareTable tr:last-child td {
+  border-bottom: 0;
+}
+
+.revenueShareTable code {
+  color: #2e566f;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.revenueShareTableActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.iconTextButton,
+.dangerTextButton {
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.iconTextButton {
+  color: #245b78;
+}
+
+.dangerTextButton,
+.negativeAmount {
+  color: #a12c2c;
+}
+
+.positiveAmount {
+  color: #17633d;
+}
+
+.iconTextButton:disabled,
+.dangerTextButton:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.revenueShareDialogBackdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgb(16 24 32 / .48);
+}
+
+.revenueShareDialog {
+  width: min(100%, 520px);
+  max-height: min(760px, calc(100vh - 36px));
+  overflow-y: auto;
+  padding: 18px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 22px 70px rgb(0 0 0 / .24);
+}
+
+.revenueShareDialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.revenueShareDialog h2 {
+  margin: 0;
+  font-size: 19px;
+  letter-spacing: 0;
+}
+
+.revenueShareIconButton {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  flex: 0 0 36px;
+  place-items: center;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  background: #fff;
+  cursor: pointer;
+}
+
+.revenueShareIconButton svg {
+  width: 17px;
+  height: 17px;
+}
+
+.revenueShareDialogForm {
+  display: grid;
+  gap: 13px;
+}
+
+.revenueShareDialogActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.revenueSharePayee {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-left: 3px solid #3b7a67;
+  background: #f3f8f6;
+}
+
+.revenueSharePayee span,
+.revenueSharePayee small {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.revenueShareQrDialog {
+  width: min(100%, 560px);
+}
+
+.revenueShareQrDialog > header > div {
+  min-width: 0;
+}
+
+.revenueShareQrDialog .pageEyebrow {
+  margin: 0 0 5px;
+}
+
+.revenueShareQrCode {
+  width: min(100%, 280px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+  padding: 14px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.revenueShareQrCode svg {
+  width: 100%;
+  height: 100%;
+}
+
+.revenueShareQrDetails {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0 0;
+}
+
+.revenueShareQrDetails > div {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.revenueShareQrDetails dt,
+.revenueShareQrDetails dd {
+  margin: 0;
+}
+
+.revenueShareQrDetails dt {
+  color: var(--color-text-subtle);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.revenueShareQrDetails dd {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.revenueShareQrHint,
+.revenueShareQrUrl,
+.revenueShareQrStatus,
+.revenueShareEmpty {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.revenueSharePagination,
+.revenueSharePagination > div,
+.revenueSharePagination label,
+.revenueShareReconcileProgress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.revenueSharePagination {
+  justify-content: flex-end;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.revenueSharePagination select {
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--color-text);
+}
+
+.revenueShareReconcileProgress {
+  justify-content: space-between;
+  padding: 16px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.revenueShareReconcileProgress p {
+  margin: 6px 0;
+}
+
+.revenueShareReconcileProgress small {
+  color: var(--color-text-muted);
+}
+
+.revenueShareQrHint {
+  margin: 16px 0 0;
+  padding: 11px 12px;
+  border-left: 3px solid #3b7a67;
+  background: #f3f8f6;
+}
+
+.revenueShareQrUrl {
+  margin: 10px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.revenueShareQrStatus {
+  min-height: 20px;
+  margin: 8px 0 0;
+  text-align: right;
+}
+
+.revenueShareReferralGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.revenueShareReferralItem {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.revenueShareReferralItem > div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.revenueShareReferralItem span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.revenueShareEmpty {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+}
+
+@media (max-width: 980px) {
+  .revenueShareRuleForm {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .revenueShareHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .revenueShareHeader h1 {
+    font-size: 29px;
+  }
+
+  .revenueShareStats,
+  .revenueShareStatsThree,
+  .revenueShareFormColumns,
+  .revenueShareRuleForm {
+    grid-template-columns: 1fr;
+  }
+
+  .revenueShareReferralGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .revenueShareStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .revenueShareStatsThree > div:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .revenueShareSectionHeading {
+    align-items: flex-start;
+  }
+
+  .revenueShareSectionActions {
+    align-items: flex-end;
+    flex-direction: column;
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .revenueShareQrDialog,
+  .revenueShareQrDialog * {
+    visibility: visible !important;
+  }
+
+  .revenueShareDialogBackdrop {
+    position: static;
+    padding: 0;
+    background: #fff;
+  }
+
+  .revenueShareQrDialog {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    box-shadow: none;
+  }
+
+  .revenueShareQrNoPrint {
+    display: none !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .revenueShareStats,
+  .revenueShareStatsThree {
+    grid-template-columns: 1fr;
+  }
+
+  .revenueShareStatsThree > div:last-child {
+    grid-column: auto;
+  }
+
+  .revenueShareReferralItem {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .revenueShareQrDialog .revenueShareDialogActions button {
+    flex: 1 1 128px;
+  }
+}

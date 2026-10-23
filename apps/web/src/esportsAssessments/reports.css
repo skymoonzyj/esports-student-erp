@@ -1,0 +1,29 @@
+.assessmentReports { display: grid; gap: 1.25rem; color: var(--text-primary, #18243b); min-width: 0; }
+.assessmentReports header h1 { margin: .4rem 0; }
+.assessmentReports a { color: #275f9b; text-underline-offset: 3px; }
+.assessmentReportsCard, .assessmentReportsComparison { border: 1px solid #dbe3eb; border-radius: 12px; padding: 1.1rem; background: #fff; min-width: 0; }
+.assessmentReports h2, .assessmentReports h3 { margin-top: 0; }
+.assessmentReportsMetrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .8rem; margin: 1rem 0; }
+.assessmentReportsMetrics > div { padding: .55rem; background: #f4f7fa; border-radius: 6px; }
+.assessmentReports dt { color: #526276; font-size: .9rem; }
+.assessmentReports dd { margin: .25rem 0 0; overflow-wrap: anywhere; }
+.assessmentReportsScore, .assessmentReportsPager, .assessmentReportsTabs { display: flex; gap: .8rem; flex-wrap: wrap; align-items: center; }
+.assessmentReportsScore strong { font-size: 1.4rem; }
+.assessmentReports button, .assessmentReports input, .assessmentReports select { font: inherit; min-height: 44px; border: 1px solid #bbc9d8; border-radius: 6px; padding: .45rem .7rem; }
+.assessmentReports button { background: #fff; cursor: pointer; }
+.assessmentReports button[aria-selected="true"] { background: #eaf3ff; border-color: #275f9b; }
+.assessmentReports button:disabled { opacity: .55; cursor: default; }
+.assessmentReports button:focus-visible, .assessmentReports a:focus-visible, .assessmentReports input:focus-visible { outline: 3px solid #448bd1; outline-offset: 2px; }
+.assessmentReportsWarning { border-left: 3px solid #aa6c14; padding: .65rem; background: #fff7e5; }
+.assessmentReportsHint { font-size: .9rem; color: #526276; }
+.assessmentReportsList { list-style: none; margin: 0; padding: 0; }
+.assessmentReportsList li { display: flex; gap: 1rem; justify-content: space-between; flex-wrap: wrap; border-bottom: 1px solid #dbe3eb; padding: .8rem 0; }
+.assessmentReportsFilters { display: flex; gap: .8rem; flex-wrap: wrap; align-items: end; }
+.assessmentReportsFilters label { display: grid; gap: .3rem; }
+.assessmentReportsFilters input { max-width: 100%; width: 12rem; box-sizing: border-box; }
+.assessmentReportsSetup { margin: .8rem 0; overflow-wrap: anywhere; }
+.assessmentReportsSetup summary { cursor: pointer; padding: .35rem 0; }
+.assessmentReportsSetup pre { max-height: 260px; white-space: pre-wrap; font-size: .8rem; overflow: auto; }
+.assessmentReportsColumns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.assessmentReportsCheckbox { display: inline-flex; gap: .5rem; align-items: center; }
+@media (max-width: 650px) { .assessmentReportsColumns { grid-template-columns: 1fr; } .assessmentReportsCard { padding: .85rem; } .assessmentReportsFilters label { flex: 1 1 10rem; } .assessmentReportsFilters input { width: 100%; } }

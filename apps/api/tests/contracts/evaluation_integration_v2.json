@@ -1,0 +1,840 @@
+{
+  "api_version": "v2",
+  "error_codes": [
+    "delegated_session_invalid",
+    "evaluation_access_denied",
+    "evaluation_idempotency_conflict",
+    "evaluation_operation_denied",
+    "evaluation_request_invalid",
+    "evaluation_resource_not_found",
+    "evaluation_result_invalid",
+    "integration_auth_invalid",
+    "media_validation_failed",
+    "validation_error"
+  ],
+  "error_envelopes": {
+    "delegated_session_invalid": {
+      "body": {
+        "code": "delegated_session_invalid",
+        "detail": "ERP 登录已失效，请重新连接",
+        "status": 401,
+        "title": "Unauthorized",
+        "type": "about:blank"
+      },
+      "http_status": 401,
+      "variable_fields": [
+        "request_id"
+      ]
+    },
+    "evaluation_access_denied": {
+      "body": {
+        "code": "evaluation_access_denied",
+        "detail": "评价中心权限已失效",
+        "status": 403,
+        "title": "Forbidden",
+        "type": "about:blank"
+      },
+      "http_status": 403,
+      "variable_fields": [
+        "request_id"
+      ]
+    },
+    "evaluation_idempotency_conflict": {
+      "body": {
+        "code": "evaluation_idempotency_conflict",
+        "detail": "幂等请求与原请求不一致",
+        "status": 409,
+        "title": "Conflict",
+        "type": "about:blank"
+      },
+      "http_status": 409,
+      "variable_fields": [
+        "request_id"
+      ]
+    },
+    "evaluation_operation_denied": {
+      "body": {
+        "code": "evaluation_operation_denied",
+        "detail": "没有执行此评价操作的权限",
+        "status": 403,
+        "title": "Forbidden",
+        "type": "about:blank"
+      },
+      "http_status": 403,
+      "variable_fields": [
+        "request_id"
+      ]
+    },
+    "evaluation_request_invalid": {
+      "body": {
+        "code": "evaluation_request_invalid",
+        "detail": "评价请求无效",
+        "status": 422,
+        "title": "Unprocessable Entity",
+        "type": "about:blank"
+      },
+      "http_status": 422,
+      "variable_fields": [
+        "request_id"
+      ]
+    },
+    "evaluation_resource_not_found": {
+      "body": {
+        "code": "evaluation_resource_not_found",
+        "detail": "评价资源不存在",
+        "status": 404,
+        "title": "Not Found",
+        "type": "about:blank"
+      },
+      "http_status": 404,
+      "variable_fields": []
+    },
+    "evaluation_result_invalid": {
+      "body": {
+        "code": "evaluation_result_invalid",
+        "detail": "评价结果无效",
+        "status": 422,
+        "title": "Unprocessable Entity",
+        "type": "about:blank"
+      },
+      "http_status": 422,
+      "variable_fields": [
+        "request_id"
+      ]
+    },
+    "integration_auth_invalid": {
+      "body": {
+        "code": "integration_auth_invalid",
+        "detail": "集成服务身份无效",
+        "status": 401,
+        "title": "Unauthorized",
+        "type": "about:blank"
+      },
+      "http_status": 401,
+      "variable_fields": [
+        "request_id"
+      ]
+    },
+    "media_validation_failed": {
+      "body": {
+        "code": "media_validation_failed",
+        "detail": "评价媒体无效",
+        "status": 422,
+        "title": "Unprocessable Entity",
+        "type": "about:blank"
+      },
+      "http_status": 422,
+      "variable_fields": [
+        "request_id"
+      ]
+    },
+    "validation_error": {
+      "body": {
+        "code": "validation_error",
+        "detail": "Request validation failed",
+        "status": 422,
+        "title": "Unprocessable Entity",
+        "type": "about:blank"
+      },
+      "http_status": 422,
+      "variable_fields": [
+        "request_id",
+        "errors"
+      ]
+    }
+  },
+  "headers": {
+    "authorization": "Authorization",
+    "delegated_session": "X-Evaluation-Delegated-Session",
+    "idempotency_key": "Idempotency-Key",
+    "lease_token": "X-Evaluation-Lease-Token",
+    "media_ticket": "X-Evaluation-Media-Ticket",
+    "task_version": "X-Evaluation-Task-Version",
+    "worker_identity": "X-Evaluation-Worker-Identity"
+  },
+  "limits": {
+    "lease_seconds": 300,
+    "max_attempts": 3
+  },
+  "media_types": [
+    "image/jpeg",
+    "image/png",
+    "image/webp"
+  ],
+  "paths": {
+    "capabilities": "GET /api/v1/integrations/evaluations/v2/capabilities",
+    "web_create_task": "POST /api/v1/integrations/evaluations/v2/web/upload-sessions/{session_id}/tasks",
+    "web_session_context": "POST /api/v1/integrations/evaluations/v2/web/session-context",
+    "web_task_detail": "GET /api/v1/integrations/evaluations/v2/web/tasks/{task_id}",
+    "web_tasks": "GET /api/v1/integrations/evaluations/v2/web/tasks",
+    "web_upload_context": "GET /api/v1/integrations/evaluations/v2/web/upload-context",
+    "web_upload_sessions": "POST /api/v1/integrations/evaluations/v2/web/upload-sessions",
+    "web_upload_slot": "PUT|DELETE /api/v1/integrations/evaluations/v2/web/upload-sessions/{session_id}/slots/{slot_key}",
+    "worker_claims": "POST /api/v1/integrations/evaluations/v2/worker/claims",
+    "worker_failures": "POST /api/v1/integrations/evaluations/v2/worker/tasks/{task_id}/attempts/{attempt}/failures",
+    "worker_media": "GET /api/v1/integrations/evaluations/v2/worker/tasks/{task_id}/attempts/{attempt}/media/{media_id}",
+    "worker_renew": "POST /api/v1/integrations/evaluations/v2/worker/tasks/{task_id}/attempts/{attempt}/renew",
+    "worker_results": "POST /api/v1/integrations/evaluations/v2/worker/tasks/{task_id}/attempts/{attempt}/results"
+  },
+  "schema_versions": {
+    "claim_request": "v2",
+    "claim_response": "v2",
+    "failure_request": "v2",
+    "result_request": "v2",
+    "web_request": "v2",
+    "web_response": "v2"
+  },
+  "schemas": {
+    "capabilities_response": {
+      "properties": {
+        "api_version": {
+          "const": "v2",
+          "default": "v2",
+          "title": "Api Version",
+          "type": "string"
+        },
+        "lease_seconds": {
+          "const": 300,
+          "default": 300,
+          "title": "Lease Seconds",
+          "type": "integer"
+        },
+        "max_attempts": {
+          "const": 3,
+          "default": 3,
+          "title": "Max Attempts",
+          "type": "integer"
+        }
+      },
+      "title": "EvaluationV2Capabilities",
+      "type": "object"
+    },
+    "claim_request": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "v2",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "supported_adapters": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Supported Adapters",
+          "type": "array"
+        },
+        "worker_identity": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Worker Identity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_version",
+        "worker_identity",
+        "supported_adapters"
+      ],
+      "title": "EvaluationWorkerClaimInput",
+      "type": "object"
+    },
+    "claim_response": {
+      "$defs": {
+        "EvaluationWorkerClaimMediaResponse": {
+          "properties": {
+            "media_id": {
+              "format": "uuid",
+              "title": "Media Id",
+              "type": "string"
+            },
+            "mime_type": {
+              "enum": [
+                "image/jpeg",
+                "image/png",
+                "image/webp"
+              ],
+              "title": "Mime Type",
+              "type": "string"
+            },
+            "position": {
+              "maximum": 3,
+              "minimum": 1,
+              "title": "Position",
+              "type": "integer"
+            },
+            "size_bytes": {
+              "exclusiveMinimum": 0,
+              "maximum": 20971520,
+              "title": "Size Bytes",
+              "type": "integer"
+            },
+            "slot_key": {
+              "title": "Slot Key",
+              "type": "string"
+            },
+            "ticket": {
+              "title": "Ticket",
+              "type": "string"
+            }
+          },
+          "required": [
+            "media_id",
+            "position",
+            "slot_key",
+            "mime_type",
+            "size_bytes",
+            "ticket"
+          ],
+          "title": "EvaluationWorkerClaimMediaResponse",
+          "type": "object"
+        },
+        "EvaluationWorkerClaimResponse": {
+          "properties": {
+            "adapter_id": {
+              "title": "Adapter Id",
+              "type": "string"
+            },
+            "adapter_version": {
+              "title": "Adapter Version",
+              "type": "string"
+            },
+            "attempt": {
+              "maximum": 3,
+              "minimum": 1,
+              "title": "Attempt",
+              "type": "integer"
+            },
+            "confidence_thresholds": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "title": "Confidence Thresholds",
+              "type": "object"
+            },
+            "lease_expires_at": {
+              "format": "date-time",
+              "title": "Lease Expires At",
+              "type": "string"
+            },
+            "lease_token": {
+              "title": "Lease Token",
+              "type": "string"
+            },
+            "media": {
+              "items": {
+                "$ref": "#/$defs/EvaluationWorkerClaimMediaResponse"
+              },
+              "title": "Media",
+              "type": "array"
+            },
+            "required_fields": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Required Fields",
+              "type": "array"
+            },
+            "result_schema_version": {
+              "title": "Result Schema Version",
+              "type": "string"
+            },
+            "scoring_rule_version": {
+              "title": "Scoring Rule Version",
+              "type": "string"
+            },
+            "task_id": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            },
+            "task_version": {
+              "minimum": 1,
+              "title": "Task Version",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "task_id",
+            "attempt",
+            "task_version",
+            "lease_token",
+            "lease_expires_at",
+            "adapter_id",
+            "adapter_version",
+            "scoring_rule_version",
+            "result_schema_version",
+            "required_fields",
+            "confidence_thresholds",
+            "media"
+          ],
+          "title": "EvaluationWorkerClaimResponse",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "api_version": {
+          "const": "v2",
+          "default": "v2",
+          "title": "Api Version",
+          "type": "string"
+        },
+        "claim": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvaluationWorkerClaimResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "claim"
+      ],
+      "title": "EvaluationWorkerClaimEnvelope",
+      "type": "object"
+    },
+    "failure_request": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "v2",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "error_class": {
+          "enum": [
+            "network",
+            "worker_interrupted",
+            "ocr_timeout",
+            "temporary_service",
+            "adapter_incompatible",
+            "media_invalid",
+            "result_schema_invalid"
+          ],
+          "title": "Error Class",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "safe_error_summary": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Safe Error Summary",
+          "type": "string"
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trace Id"
+        }
+      },
+      "required": [
+        "contract_version",
+        "error_class",
+        "safe_error_summary",
+        "idempotency_key"
+      ],
+      "title": "SystemEvaluationFailureInput",
+      "type": "object"
+    },
+    "failure_response": {
+      "properties": {
+        "api_version": {
+          "const": "v2",
+          "default": "v2",
+          "title": "Api Version",
+          "type": "string"
+        },
+        "attempt": {
+          "maximum": 3,
+          "minimum": 1,
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "available_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Available At"
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Failure Code"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "task_id": {
+          "format": "uuid",
+          "title": "Task Id",
+          "type": "string"
+        },
+        "task_status": {
+          "enum": [
+            "queued",
+            "manual_input"
+          ],
+          "title": "Task Status",
+          "type": "string"
+        },
+        "task_version": {
+          "minimum": 1,
+          "title": "Task Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "task_id",
+        "attempt",
+        "task_status",
+        "task_version",
+        "retryable",
+        "available_at",
+        "failure_code"
+      ],
+      "title": "EvaluationWorkerFailureResponse",
+      "type": "object"
+    },
+    "renew_response": {
+      "properties": {
+        "api_version": {
+          "const": "v2",
+          "default": "v2",
+          "title": "Api Version",
+          "type": "string"
+        },
+        "attempt": {
+          "maximum": 3,
+          "minimum": 1,
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "lease_expires_at": {
+          "format": "date-time",
+          "title": "Lease Expires At",
+          "type": "string"
+        },
+        "task_id": {
+          "format": "uuid",
+          "title": "Task Id",
+          "type": "string"
+        },
+        "task_version": {
+          "minimum": 1,
+          "title": "Task Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "task_id",
+        "attempt",
+        "task_version",
+        "lease_expires_at"
+      ],
+      "title": "EvaluationWorkerLeaseRenewalResponse",
+      "type": "object"
+    },
+    "result_request": {
+      "$defs": {
+        "SystemEvaluationComponentInput": {
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "maxLength": 80,
+              "minLength": 1,
+              "title": "Key",
+              "type": "string"
+            },
+            "score": {
+              "maximum": 100,
+              "minimum": 0,
+              "title": "Score",
+              "type": "number"
+            },
+            "summary": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Summary",
+              "type": "string"
+            },
+            "weight": {
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Weight",
+              "type": "number"
+            }
+          },
+          "required": [
+            "key",
+            "score",
+            "weight",
+            "summary"
+          ],
+          "title": "SystemEvaluationComponentInput",
+          "type": "object"
+        },
+        "SystemEvaluationWarningInput": {
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "maxLength": 80,
+              "minLength": 1,
+              "title": "Key",
+              "type": "string"
+            },
+            "severity": {
+              "enum": [
+                "info",
+                "warning",
+                "blocking"
+              ],
+              "title": "Severity",
+              "type": "string"
+            },
+            "summary": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Summary",
+              "type": "string"
+            }
+          },
+          "required": [
+            "key",
+            "severity",
+            "summary"
+          ],
+          "title": "SystemEvaluationWarningInput",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_version": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "advice": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Advice",
+          "type": "string"
+        },
+        "components": {
+          "items": {
+            "$ref": "#/$defs/SystemEvaluationComponentInput"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "title": "Components",
+          "type": "array"
+        },
+        "confidences": {
+          "additionalProperties": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "maxProperties": 200,
+          "title": "Confidences",
+          "type": "object"
+        },
+        "contract_version": {
+          "const": "v2",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "duration_ms": {
+          "maximum": 3600000,
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "fields": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "maxProperties": 200,
+          "title": "Fields",
+          "type": "object"
+        },
+        "grade": {
+          "maxLength": 24,
+          "minLength": 1,
+          "title": "Grade",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "missing_fields": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200,
+          "title": "Missing Fields",
+          "type": "array"
+        },
+        "result_schema_version": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Result Schema Version",
+          "type": "string"
+        },
+        "score": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Score",
+          "type": "number"
+        },
+        "scoring_rule_version": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Scoring Rule Version",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/SystemEvaluationWarningInput"
+          },
+          "maxItems": 100,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "contract_version",
+        "adapter_id",
+        "adapter_version",
+        "scoring_rule_version",
+        "result_schema_version",
+        "fields",
+        "confidences",
+        "missing_fields",
+        "warnings",
+        "score",
+        "grade",
+        "components",
+        "advice",
+        "duration_ms",
+        "idempotency_key"
+      ],
+      "title": "SystemEvaluationResultInput",
+      "type": "object"
+    },
+    "result_response": {
+      "properties": {
+        "api_version": {
+          "const": "v2",
+          "default": "v2",
+          "title": "Api Version",
+          "type": "string"
+        },
+        "result_id": {
+          "format": "uuid",
+          "title": "Result Id",
+          "type": "string"
+        },
+        "result_version": {
+          "minimum": 1,
+          "title": "Result Version",
+          "type": "integer"
+        },
+        "task_id": {
+          "format": "uuid",
+          "title": "Task Id",
+          "type": "string"
+        },
+        "task_status": {
+          "const": "needs_review",
+          "title": "Task Status",
+          "type": "string"
+        },
+        "task_version": {
+          "minimum": 1,
+          "title": "Task Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "task_id",
+        "result_id",
+        "result_version",
+        "task_status",
+        "task_version"
+      ],
+      "title": "EvaluationWorkerResultResponse",
+      "type": "object"
+    }
+  },
+  "service_identities": {
+    "capabilities": [
+      "web",
+      "worker"
+    ],
+    "web": "web",
+    "worker": "worker"
+  }
+}

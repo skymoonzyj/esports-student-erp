@@ -1,0 +1,438 @@
+.assetsPage,
+.assetScanPage,
+.myAssetsPage {
+  width: min(100%, 1240px);
+  margin: 0 auto;
+}
+
+.assetsPageHeader,
+.myAssetsHeader,
+.assetScanHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.assetHeaderActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.assetHeaderActions svg,
+.assetPhotoLink svg {
+  width: 14px;
+  height: 14px;
+}
+
+.assetsPageHeader h1,
+.myAssetsHeader h1,
+.assetScanHeader h1 {
+  margin: 0;
+  color: var(--color-navy-950);
+  font-size: clamp(30px, 4vw, 44px);
+  letter-spacing: -0.04em;
+}
+
+.assetsPageHeader p:not(.pageEyebrow),
+.myAssetsHeader p:not(.pageEyebrow),
+.assetScanHeader p:not(.pageEyebrow) {
+  margin: 10px 0 0;
+  color: var(--color-text-muted);
+}
+
+.assetStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.assetStat {
+  min-height: 84px;
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 12px;
+  background: white;
+  box-shadow: var(--shadow-card-soft);
+}
+
+.assetStat span {
+  color: var(--color-text-subtle);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.assetStat strong {
+  color: var(--color-navy-950);
+  font-size: 24px;
+}
+
+.assetFilters {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(150px, .8fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  margin-top: 28px;
+  padding: 16px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 14px;
+  background: white;
+  box-shadow: var(--shadow-card-soft);
+}
+
+.assetField {
+  display: grid;
+  gap: 7px;
+}
+
+.assetField label {
+  color: var(--color-text-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.assetField input,
+.assetField select,
+.assetField textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  color: var(--color-text-strong);
+  background: white;
+  font: inherit;
+}
+
+.assetField textarea {
+  min-height: 88px;
+  padding: 10px 11px;
+  resize: vertical;
+}
+
+.assetField input:focus,
+.assetField select:focus,
+.assetField textarea:focus {
+  border-color: var(--color-accent-500);
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.assetFiltersActions,
+.assetDialogActions,
+.assetRowActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.assetDirectory {
+  margin-top: 20px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 15px;
+  background: white;
+  box-shadow: var(--shadow-card-soft);
+}
+
+.assetDirectoryHeader {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.assetDirectoryHeader h2 {
+  margin: 0;
+  color: var(--color-navy-950);
+  font-size: 16px;
+}
+
+.assetDirectoryHeader span {
+  color: var(--color-text-subtle);
+  font-size: 12px;
+}
+
+.assetTableHeader,
+.assetTableRow {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.3fr) minmax(130px, .8fr) minmax(150px, 1fr) minmax(110px, .7fr) minmax(150px, 1.2fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.assetTableHeader {
+  min-height: 40px;
+  padding: 0 18px;
+  color: var(--color-text-subtle);
+  background: #fafbfe;
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: .04em;
+}
+
+.assetTableRow {
+  min-height: 84px;
+  padding: 13px 18px;
+  border-top: 1px solid var(--color-border-soft);
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.assetTableRow > div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.assetTableRow strong {
+  overflow: hidden;
+  color: var(--color-text-strong);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assetTableRow small {
+  overflow: hidden;
+  color: var(--color-text-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assetCode {
+  color: var(--color-accent-700);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.assetStatus {
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 780;
+}
+
+.assetStatus.available { color: var(--color-success-900); background: var(--color-success-soft); }
+.assetStatus.assigned { color: var(--color-accent-800); background: var(--color-accent-soft); }
+.assetStatus.maintenance { color: #945b00; background: #fff3d6; }
+.assetStatus.retired { color: var(--color-text-subtle); background: #eef0f4; }
+
+.assetActionButton {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  background: white;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.assetActionButton svg { width: 14px; height: 14px; }
+.assetActionButton:hover { color: var(--color-accent-800); border-color: var(--color-accent-300); background: var(--color-accent-soft); }
+.assetActionButton:disabled { opacity: .55; cursor: not-allowed; }
+
+.assetPhotoLink {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-accent-700);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.assetPhotoLink:hover { color: var(--color-accent-900); text-decoration: underline; }
+
+.assetPhotoControls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.assetCheckboxLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.assetCheckboxLabel input { width: auto; min-height: auto; }
+
+.assetState {
+  padding: 56px 20px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.myAssetGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin-top: 28px;
+}
+
+.myAssetCard {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 13px;
+  background: white;
+  box-shadow: var(--shadow-card-soft);
+}
+
+.myAssetCard header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.myAssetCard h2 { margin: 0; color: var(--color-navy-950); font-size: 17px; }
+.myAssetCard dl { display: grid; gap: 9px; margin: 0; }
+.myAssetCard dl div { display: flex; justify-content: space-between; gap: 12px; }
+.myAssetCard dt { color: var(--color-text-subtle); font-size: 11px; }
+.myAssetCard dd { margin: 0; color: var(--color-text-strong); font-size: 12px; text-align: right; }
+
+.assetDialogBackdrop {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(8 14 33 / 52%);
+}
+
+.assetDialog {
+  width: min(100%, 620px);
+  max-height: min(92dvh, 760px);
+  overflow: auto;
+  padding: 24px;
+  border-radius: 14px;
+  background: white;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 25%);
+}
+
+.assetDialog h2 { margin: 0; color: var(--color-navy-950); font-size: 22px; }
+.assetDialog > p:not(.pageEyebrow) { margin: 8px 0 20px; color: var(--color-text-muted); font-size: 12px; }
+.assetDialogForm { display: grid; gap: 13px; }
+.assetWarrantyFields { min-width: 0; display: grid; gap: 12px; margin: 0; padding: 14px; border: 1px solid var(--color-border-soft); border-radius: 12px; }
+.assetWarrantyFields legend { font-weight: 600; font-size: 13px; }
+.assetWarrantyDetails { margin-top: 8px; font-size: 12px; overflow-wrap: anywhere; }
+.assetWarrantyDetails summary { cursor: pointer; color: var(--color-text-strong); }
+.assetWarrantyDetails dl { display: grid; gap: 6px; margin: 10px 0; }
+.assetWarrantyDetails dl > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.assetWarrantyDetails dt { color: var(--color-text-muted); }
+.assetWarrantyDetails dd { margin: 0; }
+.assetDialogActions { justify-content: flex-end; margin-top: 20px; }
+
+.assetPeopleResults {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 9px;
+  background: #fafbfe;
+}
+
+.assetPeopleResults label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.assetPeopleResults label:hover { background: var(--color-accent-soft); }
+.assetPeopleResults span { display: grid; gap: 2px; }
+.assetPeopleResults strong { color: var(--color-text-strong); font-size: 12px; }
+.assetPeopleResults small { color: var(--color-text-subtle); font-size: 10px; }
+
+.assetQrDialog { width: min(100%, 430px); text-align: center; }
+.assetQrDialog .assetQrCode { display: grid; place-items: center; margin: 22px 0 16px; }
+.assetQrDialog .assetCode { display: block; margin-bottom: 16px; }
+.assetQrUrl { overflow-wrap: anywhere; color: var(--color-text-subtle); font-size: 11px; }
+
+.assetScanPage {
+  width: min(100%, 640px);
+  padding-top: clamp(28px, 8vw, 76px);
+}
+
+.assetScanCard {
+  display: grid;
+  gap: 18px;
+  margin-top: 28px;
+  padding: clamp(22px, 5vw, 36px);
+  border: 1px solid var(--color-border-soft);
+  border-radius: 16px;
+  background: white;
+  box-shadow: var(--shadow-card);
+}
+
+.assetScanCard dl { display: grid; gap: 12px; margin: 0; }
+.assetScanCard dl div { display: flex; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--color-border-soft); padding-bottom: 10px; }
+.assetScanCard dt { color: var(--color-text-subtle); font-size: 12px; }
+.assetScanCard dd { margin: 0; color: var(--color-text-strong); font-size: 13px; font-weight: 650; text-align: right; }
+
+.personAssetsPanel { margin-top: 20px; }
+.personAssetsPanel .detailCardHeader { margin-bottom: 12px; }
+.personAssetsList { display: grid; gap: 8px; }
+.personAssetLine { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-top: 1px solid var(--color-border-soft); }
+.personAssetLine strong { color: var(--color-text-strong); font-size: 12px; }
+.personAssetLine span { color: var(--color-text-muted); font-size: 11px; }
+.personAssetActions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
+
+@media (max-width: 900px) {
+  .assetFilters { grid-template-columns: 1fr 1fr; }
+  .assetFiltersActions { grid-column: 1 / -1; }
+  .assetTableHeader { display: none; }
+  .assetTableRow { grid-template-columns: 1fr auto; gap: 8px 16px; padding: 16px; }
+  .assetTableRow > div:nth-child(2),
+  .assetTableRow > div:nth-child(3),
+  .assetTableRow > div:nth-child(4) { grid-column: 1; }
+  .assetTableRow > div:nth-child(5) { grid-column: 2; grid-row: 1 / span 4; align-self: center; justify-self: end; }
+  .assetRowActions { justify-content: flex-end; }
+}
+
+@media (max-width: 620px) {
+  .assetStats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .assetsPageHeader, .myAssetsHeader, .assetScanHeader { display: grid; }
+  .assetFilters { grid-template-columns: 1fr; }
+  .assetFiltersActions { grid-column: auto; }
+  .assetTableRow > div:nth-child(5) { grid-column: 1 / -1; grid-row: auto; justify-self: start; }
+  .assetRowActions { justify-content: flex-start; }
+}
+
+@media print {
+  body:has(.assetQrDialog) * { visibility: hidden; }
+  body:has(.assetQrDialog) .assetQrDialog,
+  body:has(.assetQrDialog) .assetQrDialog * { visibility: visible; }
+  body:has(.assetQrDialog) .assetQrDialogBackdrop { background: white; }
+  body:has(.assetQrDialog) .assetQrDialog { box-shadow: none; }
+}

@@ -1,0 +1,64 @@
+name: esports-erp-e2e
+
+services:
+  db:
+    environment:
+      POSTGRES_DB: erp_e2e
+      POSTGRES_USER: erp_e2e
+      POSTGRES_PASSWORD: erp-e2e-only
+    ports: !override
+      - "127.0.0.1:${E2E_DB_PORT:-55433}:5432"
+    volumes: !override
+      - postgres_e2e_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erp_e2e -d erp_e2e"]
+
+  api:
+    build:
+      target: e2e
+    environment:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://erp_e2e:erp-e2e-only@db:5432/erp_e2e
+      SESSION_COOKIE_SECURE: "false"
+      SESSION_TTL_MINUTES: "120"
+      FIELD_ENCRYPTION_MASTER_KEY: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+      FIELD_LOOKUP_KEY: Hy4tLCsqKSgnJiUkIyIhIB8eHRwbGhkYFxYVFBMSERA=
+      SESSION_TOKEN_PEPPER: EBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8=
+      EVALUATION_TOOL_SERVICE_TOKEN: e2e-evaluation-v1-service-token-2026
+      EVALUATION_TOOL_WEB_SERVICE_TOKEN: e2e-evaluation-web-service-token-2026
+      EVALUATION_TOOL_WORKER_SERVICE_TOKEN: e2e-evaluation-worker-token-2026
+    volumes: !reset []
+    command: !reset []
+
+  scheduler:
+    profiles:
+      - manual-scheduler
+    build:
+      target: e2e
+    environment:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://erp_e2e:erp-e2e-only@db:5432/erp_e2e
+      SESSION_COOKIE_SECURE: "false"
+      SESSION_TTL_MINUTES: "120"
+      COHORT_SCHEDULER_INTERVAL_SECONDS: "5"
+      FIELD_ENCRYPTION_MASTER_KEY: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+      FIELD_LOOKUP_KEY: Hy4tLCsqKSgnJiUkIyIhIB8eHRwbGhkYFxYVFBMSERA=
+      SESSION_TOKEN_PEPPER: EBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8=
+      EVALUATION_TOOL_SERVICE_TOKEN: e2e-evaluation-v1-service-token-2026
+      EVALUATION_TOOL_WEB_SERVICE_TOKEN: e2e-evaluation-web-service-token-2026
+      EVALUATION_TOOL_WORKER_SERVICE_TOKEN: e2e-evaluation-worker-token-2026
+    volumes: !reset []
+
+  web:
+    build:
+      target: production
+    volumes: !reset []
+    command: !reset []
+    user: "101:101"
+
+  proxy:
+    ports: !override
+      - "127.0.0.1:${E2E_HTTP_PORT:-18080}:8080"
+
+volumes:
+  postgres_e2e_data:

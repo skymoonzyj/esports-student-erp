@@ -1,0 +1,129 @@
+.chimp-game {
+  align-items: center;
+  background: linear-gradient(145deg, #174f83, #2563a6 55%, #2879b9);
+  border-radius: 16px;
+  color: #fff;
+  display: flex;
+  justify-content: center;
+  min-height: min(540px, calc(100svh - 180px));
+  overflow: hidden;
+  padding: 24px;
+  text-align: center;
+  touch-action: manipulation;
+  user-select: none;
+  width: 100%;
+}
+
+.chimp-game__panel {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  max-width: 760px;
+}
+
+.chimp-game__panel h2 {
+  font-size: clamp(2.5rem, 8vw, 4.5rem);
+  font-weight: 500;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.chimp-game__panel p {
+  font-size: clamp(1rem, 3vw, 1.5rem);
+  line-height: 1.5;
+  margin: 16px 0 0;
+}
+
+.chimp-game__panel button {
+  background: #fff;
+  border: 0;
+  border-radius: 8px;
+  color: #174f83;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  margin-top: 28px;
+  min-height: 48px;
+  padding: 12px 28px;
+}
+
+.chimp-game__panel button:focus-visible,
+.chimp-game__cell:focus-visible {
+  outline: 4px solid #fde047;
+  outline-offset: 2px;
+}
+
+.chimp-game--playing {
+  flex-direction: column;
+  padding-block: 0;
+}
+
+.chimp-game__status {
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.chimp-game__board {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  max-width: 720px;
+  width: 100%;
+}
+
+.chimp-game__slot {
+  align-items: center;
+  aspect-ratio: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.chimp-game__cell {
+  align-items: center;
+  background: transparent;
+  border: 3px solid rgb(255 255 255 / 14%);
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  font-size: clamp(1rem, 6vw, 1.5rem);
+  height: calc(100% - 4px);
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  touch-action: manipulation;
+  width: calc(100% - 4px);
+}
+
+.chimp-game__cell:hover {
+  border-color: rgb(255 255 255 / 55%);
+}
+
+.chimp-game__cell--masked {
+  background: #fff;
+  border-color: #fff;
+  color: transparent;
+}
+
+@media (min-width: 700px) {
+  .chimp-game__cell {
+    border-width: 5px;
+    border-radius: 10px;
+    font-size: 3.125rem;
+    height: calc(100% - 10px);
+    width: calc(100% - 10px);
+  }
+}
+
+@media (max-width: 640px) {
+  .chimp-game {
+    border-radius: 12px;
+    min-height: min(480px, calc(100svh - 128px));
+    padding-inline: 8px;
+  }
+}

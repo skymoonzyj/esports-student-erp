@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# A failed deployment never rewrites the local commit. The deploy script emits
+# the reason; runtime/migration failure may require forward recovery.
+hook_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+# Use exactly the launcher's default source selection (.nas-release-sync when
+# present), rather than forcing this repository's older main checkout.
+if ! "$hook_root/scripts/deploy-nas.sh" --from-hook; then
+  echo "NAS automatic deployment did not complete; the local commit is preserved." >&2
+fi

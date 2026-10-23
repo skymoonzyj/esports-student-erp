@@ -1,0 +1,5 @@
+# The public HTTPS listener owns NAS port 18080.  Keep the ERP proxy internal
+# so HTTP cannot accidentally be exposed on the same port.
+services:
+  proxy:
+    ports: !override []
