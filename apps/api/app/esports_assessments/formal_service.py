@@ -52,7 +52,6 @@ from .schemas import (
 )
 from .scoring import score_result
 
-_RUN_LEASE = timedelta(seconds=90)
 _SUBMIT_WINDOW = timedelta(minutes=30)
 
 
@@ -231,7 +230,15 @@ class FormalAssessmentService:
                     code="esports_active_session",
                     active_session_id=active_id,
                 )
-            suite = catalog.get_suite(request.suite_id)
+            suite = (
+                catalog.get_suite(request.suite_id)
+                if request.attack_mode is None
+                else catalog.get_suite(request.suite_id, attack_mode=request.attack_mode)
+            )
+            if suite.catalog_version in ("pc-moba-v4", "pc-moba-v5") and request.attack_mode is None:
+                raise AssessmentConflict(
+                    "请选择近战或远程人物", code="esports_attack_mode_required"
+                )
             snapshot = suite.model_dump(mode="json")
             row = AssessmentSession(
                 person_id=current.person.id,
@@ -353,7 +360,7 @@ class FormalAssessmentService:
                 state="running",
                 creation_key=request.operation_key,
                 creation_request_digest=digest,
-                run_until=now + _RUN_LEASE,
+                run_until=now + timedelta(milliseconds=config.duration_ms + 30000),
                 submit_until=now + _SUBMIT_WINDOW,
                 created_at=now,
                 updated_at=now,

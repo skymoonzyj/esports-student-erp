@@ -38,7 +38,7 @@ NOW = datetime(2026, 9, 23, 2, tzinfo=UTC)
 def _practice_create() -> PracticeCreate:
     return PracticeCreate(
         suite_id="pc-fps",
-        test_id="precision",
+        test_id="gridshot",
         difficulty=3,
         settings=settings("pc-fps"),
         environment=environment("pc-fps"),
@@ -53,12 +53,12 @@ def test_formal_early_first_save_keeps_original_operation(db: Session) -> None:
     run = service.start_attempt(
         actor,
         session.id,
-        attempt_request("pc-fps", "precision"),
+        attempt_request("pc-fps", "gridshot"),
         NOW,
     )
     request = result_request(
         "pc-fps",
-        "precision",
+        "gridshot",
         seed=run.seed,
         catalog_version=run.config.catalog_version,
     )
@@ -102,7 +102,7 @@ def test_practice_early_first_save_keeps_original_operation(db: Session) -> None
     run = service.start(actor, _practice_create(), NOW)
     request = result_request(
         "pc-fps",
-        "precision",
+        "gridshot",
         seed=run.seed,
         catalog_version=run.config.catalog_version,
     )
@@ -142,7 +142,7 @@ def test_formal_and_practice_allow_first_save_at_90_seconds(db: Session) -> None
     formal_run = formal_service.start_attempt(
         formal_actor,
         session.id,
-        attempt_request("pc-fps", "precision"),
+        attempt_request("pc-fps", "gridshot"),
         NOW,
     )
 
@@ -151,7 +151,7 @@ def test_formal_and_practice_allow_first_save_at_90_seconds(db: Session) -> None
         formal_run.id,
         result_request(
             "pc-fps",
-            "precision",
+            "gridshot",
             seed=formal_run.seed,
             catalog_version=formal_run.config.catalog_version,
         ),
@@ -166,7 +166,7 @@ def test_formal_and_practice_allow_first_save_at_90_seconds(db: Session) -> None
         practice_run.id,
         result_request(
             "pc-fps",
-            "precision",
+            "gridshot",
             seed=practice_run.seed,
             catalog_version=practice_run.config.catalog_version,
         ),
@@ -184,7 +184,7 @@ def test_formal_and_practice_reject_first_save_at_30_minute_boundary(db: Session
     formal_run = formal_service.start_attempt(
         formal_actor,
         session.id,
-        attempt_request("pc-fps", "precision"),
+        attempt_request("pc-fps", "gridshot"),
         NOW,
     )
 
@@ -194,7 +194,7 @@ def test_formal_and_practice_reject_first_save_at_30_minute_boundary(db: Session
             formal_run.id,
             result_request(
                 "pc-fps",
-                "precision",
+                "gridshot",
                 seed=formal_run.seed,
                 catalog_version=formal_run.config.catalog_version,
             ),
@@ -211,7 +211,7 @@ def test_formal_and_practice_reject_first_save_at_30_minute_boundary(db: Session
             practice_run.id,
             result_request(
                 "pc-fps",
-                "precision",
+                "gridshot",
                 seed=practice_run.seed,
                 catalog_version=practice_run.config.catalog_version,
             ),
@@ -234,19 +234,19 @@ def test_formal_success_replay_order_stays_payload_bound_terminal_and_authorized
     run = service.start_attempt(
         actor,
         session.id,
-        attempt_request("pc-fps", "precision"),
+        attempt_request("pc-fps", "gridshot"),
         NOW,
     )
     request = result_request(
         "pc-fps",
-        "precision",
+        "gridshot",
         seed=run.seed,
         catalog_version=run.config.catalog_version,
     )
     saved = service.submit(actor, run.id, request, NOW + timedelta(seconds=63))
     changed_payload = result_request(
         "pc-fps",
-        "precision",
+        "gridshot",
         seed=run.seed,
         key=request.operation_key,
         quality_updates={"long_frame_gap_total_ms": 1},
@@ -282,14 +282,14 @@ def test_practice_success_replay_order_stays_payload_bound_terminal_and_authoriz
     run = service.start(actor, _practice_create(), NOW)
     request = result_request(
         "pc-fps",
-        "precision",
+        "gridshot",
         seed=run.seed,
         catalog_version=run.config.catalog_version,
     )
     saved = service.submit(actor, run.id, request, NOW + timedelta(seconds=63))
     changed_payload = result_request(
         "pc-fps",
-        "precision",
+        "gridshot",
         seed=run.seed,
         key=request.operation_key,
         quality_updates={"long_frame_gap_total_ms": 1},

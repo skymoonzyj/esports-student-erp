@@ -232,7 +232,7 @@ def test_unknown_and_foreign_attempts_are_identical_and_gets_do_not_write(
     attempt = service.start_attempt(
         other,
         session.id,
-        attempt_request("pc-fps", "precision"),
+        attempt_request("pc-fps", "gridshot"),
         NOW,
     )
     _login(db_client, platform_users)
@@ -272,7 +272,7 @@ def test_unknown_and_foreign_completed_session_and_report_are_private_without_wr
     service = FormalAssessmentService(db)
     session = service.create(other, session_request(), NOW)
     saved = None
-    for index, test_id in enumerate(("precision", "tracking", "switching", "recognition")):
+    for index, test_id in enumerate(("gridshot", "sixshot", "spheretrack90")):
         started_at = NOW + timedelta(seconds=index * 90)
         attempt = service.start_attempt(
             other,
@@ -326,7 +326,7 @@ def test_related_guardian_cannot_read_partial_runs_but_global_superadmin_can(
     attempt = formal.start_attempt(
         actor,
         session.id,
-        attempt_request("pc-fps", "precision"),
+        attempt_request("pc-fps", "gridshot"),
         NOW,
     )
     formal.interrupt(actor, attempt.id, uuid4(), NOW + timedelta(seconds=1))
@@ -334,6 +334,7 @@ def test_related_guardian_cannot_read_partial_runs_but_global_superadmin_can(
         actor,
         PracticeCreate(
             suite_id="pc-moba",
+            attack_mode="melee",
             test_id="last-hit",
             difficulty=3,
             settings=settings("pc-moba"),
@@ -374,12 +375,12 @@ def test_live_read_revocation_removes_recovery_history_detail_and_replay(
     saved_attempt = service.start_attempt(
         actor,
         session.id,
-        attempt_request("pc-fps", "precision"),
+        attempt_request("pc-fps", "gridshot"),
         NOW,
     )
     saved_request = result_request(
         "pc-fps",
-        "precision",
+        "gridshot",
         seed=saved_attempt.seed,
         catalog_version=saved_attempt.config.catalog_version,
     )
@@ -392,7 +393,7 @@ def test_live_read_revocation_removes_recovery_history_detail_and_replay(
     pending = service.start_attempt(
         actor,
         session.id,
-        attempt_request("pc-fps", "tracking"),
+        attempt_request("pc-fps", "spheretrack90"),
         NOW + timedelta(seconds=90),
     )
 

@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowRight,
   BedDouble,
   BadgeCheck,
   BrainCircuit,
@@ -7,6 +8,7 @@ import {
   Building2,
   CalendarDays,
   ChevronDown,
+  ChevronRight,
   ClipboardList,
   ClipboardPenLine,
   ChartNoAxesCombined,
@@ -572,6 +574,10 @@ export function AppShell({
   const mobilePrimaryItems = hasMobileOverflow ? mobileItems.slice(0, 3) : mobileItems
   const mobileOverflowItems = hasMobileOverflow ? mobileItems.slice(3) : []
   const initial = userName.trim().slice(0, 1) || "用"
+  const currentItem = visibleItems.flatMap((item) => [item, ...(item.children ?? []).filter((child) =>
+    hasVisibleNavigationItem(child, permissions, isSuperAdmin, portalContext, teamContext, assistedContext),
+  )]).filter((item) => item.to === location.pathname || (item.to !== "/" && location.pathname.startsWith(`${item.to}/`)))
+    .sort((left, right) => right.to.length - left.to.length)[0]
 
   const toggleNavigationGroup = useCallback((to: string) => {
     setExpandedNavigationGroups((current) => {
@@ -580,6 +586,14 @@ export function AppShell({
       else next.add(to)
       return next
     })
+  }, [])
+
+  const closeMobileNavigationGroups = useCallback(() => {
+    // Hidden phone navigation shares desktop expansion state; only a real phone
+    // leaf action should dismiss its overlay, not a desktop child navigation.
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      setExpandedNavigationGroups(new Set())
+    }
   }, [])
 
   const closeMore = useCallback(() => {
@@ -636,6 +650,7 @@ export function AppShell({
             <small>教育运营平台</small>
           </span>
         </div>
+        <p className="shellNavigationCaption">工作空间</p>
         <nav className="shellPrimaryNavigation" aria-label="主导航">
           <NavigationLinks
             items={visibleItems}
@@ -651,8 +666,8 @@ export function AppShell({
         <div className="shellSecurityNote">
           <span aria-hidden="true">✓</span>
           <p>
-            <strong>资料安全保护中</strong>
-            <small>敏感操作均留有审计记录</small>
+            <strong>权限与隐私保护</strong>
+            <small>敏感操作按授权范围开放</small>
           </p>
         </div>
       </aside>
@@ -663,15 +678,19 @@ export function AppShell({
             <span className="shellBrandMark compact">竞</span>
             <strong>竞学 ERP</strong>
           </div>
-          <div className="shellHeaderContext">
-            <span className="shellStatusDot" aria-hidden="true" />
-            <span>系统运行正常</span>
+          <div className="shellHeaderContext" aria-label="当前位置">
+            <span>工作空间</span>
+            <ChevronRight aria-hidden="true" />
+            <strong>{currentItem?.label ?? "竞学 ERP"}</strong>
           </div>
           <div className="shellUser">
             <span className="shellAvatar" aria-hidden="true">
               {initial}
             </span>
-            <span className="shellUserName">{userName}</span>
+            <span className="shellUserIdentity">
+              <span className="shellUserName">{userName}</span>
+              <small>{isSuperAdmin ? "超级管理员" : "已登录账号"}</small>
+            </span>
             {onLogout ? (
               <button
                 type="button"
@@ -707,6 +726,7 @@ export function AppShell({
         <NavigationLinks
           items={mobilePrimaryItems}
           mobile
+          onNavigate={closeMobileNavigationGroups}
           permissions={permissions}
           isSuperAdmin={isSuperAdmin}
           portalContext={portalContext}
@@ -783,35 +803,49 @@ export function AppShell({
   )
 }
 
-export function DashboardPage({ embedded = false }: { embedded?: boolean } = {}) {
+export function DashboardPage({ embedded = false, permissions = new Set<string>(), housingAvailable = false, isSuperAdmin = false }: { embedded?: boolean; permissions?: ReadonlySet<string>; housingAvailable?: boolean; isSuperAdmin?: boolean } = {}) {
+  const entries = [
+    { permission: "people.list", to: "/people", title: "人员与实名档案", action: "进入人员中心", description: "人员档案与业务归属", icon: Users },
+    { permission: "housing.read", to: "/housing", title: "住宿管理", action: "进入住宿管理", description: "查看房态、入住与预约", icon: BedDouble },
+    { permission: "teaching.read", to: "/teaching/cohorts", title: "招生教学", action: "进入招生教学", description: "营期、班级与教学安排", icon: BookOpenCheck },
+    { permission: "admission_cases.read", to: "/teaching/admission-cases", title: "招生线索", action: "进入招生线索", description: "跟进招生与入学进度", icon: ClipboardList },
+    { permission: "payments.read", to: "/teaching/payments", title: "收款管理", action: "进入收款管理", description: "查看学费与收款记录", icon: WalletCards },
+    { permission: "assets.read", to: "/assets", title: "资产台账", action: "进入资产台账", description: "资产使用、租期与归还", icon: Package },
+    { permission: "procurement.read", to: "/procurement", title: "日常采购", action: "进入日常采购", description: "采购申请与日常物资", icon: ShoppingCart },
+    { permission: "travel_reports.read", to: "/travel-reports", title: "订票报表", action: "进入订票报表", description: "出行安排与报表查询", icon: PlaneTakeoff },
+    { permission: "revenue_share.finance", to: "/finance/revenue-share", title: "财务结算", action: "进入财务结算", description: "查看结算与分成记录", icon: Landmark },
+    { permission: "enrollments.read", to: "/teaching/enrollments", title: "学员入学", action: "进入学员入学", description: "查看已授权的入学信息", icon: ClipboardPenLine },
+    { permission: "food_preferences.export", to: "/people/food-preferences", title: "餐饮统计", action: "进入餐饮统计", description: "营期餐饮偏好与统计", icon: Utensils },
+    { permission: "accounts.read", to: "/settings/accounts", title: "账号与细分权限", action: "进入账号管理", description: "账号状态与访问权限", icon: UserCog },
+    { permission: "audit.read", to: "/settings/audit", title: "敏感操作审计", action: "进入安全审计", description: "查询授权范围内的操作记录", icon: ShieldCheck },
+  ].filter((entry) => permissions.has(entry.permission) && (entry.permission !== "housing.read" || housingAvailable) && (entry.permission !== "audit.read" || isSuperAdmin))
   return (
     <div className={`dashboardPage${embedded ? " embedded" : ""}`}>
       {!embedded ? (
         <div className="pageHeadingRow">
           <div>
-            <p className="pageEyebrow">PLATFORM FOUNDATION</p>
+            <p className="pageEyebrow">WORKSPACE / 工作空间</p>
             <h1>工作台</h1>
-            <p>账号、人员与安全能力已经接入，业务模块将按阶段逐步开放。</p>
+            <p>从已授权的业务入口开始，处理日常运营工作。</p>
           </div>
-          <span className="foundationBadge">平台基础阶段</span>
+          <span className="foundationBadge">按当前权限展示</span>
         </div>
       ) : null}
-      <section className="foundationGrid" aria-label="平台能力概览">
-        <article>
-          <span className="foundationNumber">01</span>
-          <h2>人员与实名档案</h2>
-          <p>统一维护学员、家长、教练、生活老师和其他工作人员。</p>
-        </article>
-        <article>
-          <span className="foundationNumber">02</span>
-          <h2>账号与细分权限</h2>
-          <p>角色默认权限与账号级授权并行，显式拒绝始终优先。</p>
-        </article>
-        <article>
-          <span className="foundationNumber">03</span>
-          <h2>敏感操作审计</h2>
-          <p>完整手机号和身份证默认隐藏，查看时需要用途并记录日志。</p>
-        </article>
+      <section className="dashboardOperations" aria-label="业务快捷入口">
+        <header className="dashboardSectionHeading">
+          <h2>业务快捷入口</h2>
+          <p>仅展示当前账号可访问的模块</p>
+        </header>
+        <div className="foundationGrid">
+          {entries.map(({ to, title, action, description, icon: Icon }) => (
+            <article key={to}>
+              <span className="dashboardEntryIcon"><Icon aria-hidden="true" /></span>
+              <h3>{title}</h3>
+              <p>{description}</p>
+              <Link to={to} aria-label={action}>进入模块<ArrowRight aria-hidden="true" /></Link>
+            </article>
+          ))}
+        </div>
       </section>
     </div>
   )

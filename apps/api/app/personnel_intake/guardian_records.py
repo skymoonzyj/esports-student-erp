@@ -16,6 +16,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.time import business_date_at
+from app.identity.document_identity import (
+    DocumentIdentityKeys,
+    DocumentType,
+    document_identity_keys,
+    normalize_document_identity,
+)
 from app.identity.models import GuardianProfile, GuardianRelationship, Person
 from app.identity.readiness import is_minor
 from app.personnel_intake.errors import PersonnelIntakeError
@@ -47,6 +53,9 @@ class _PersonEvidence(BaseModel):
     full_name: str
     identity_number: str
     identity_digest: str
+    document_type: DocumentType = "cn_id"
+    document_issuing_country: str | None = None
+    passport_number_digest: str | None = None
     sex: str
     date_of_birth: date
     phone: str | None
@@ -66,7 +75,7 @@ class _PendingPersonEvidence(BaseModel):
     material_version: Literal[2]
     sex: Literal["male", "female"] | None
     date_of_birth: date | None
-    document_type: Literal["cn_id", "passport"]
+    document_type: DocumentType
     document_issuing_country: str | None
     passport_number_digest: str | None
 
@@ -226,6 +235,12 @@ def person_facts(person: Person, cipher: EnvelopeCipher) -> dict[str, object]:
             document_issuing_country=person.document_issuing_country,
             passport_number_digest=person.passport_number_digest,
         )
+    elif person.document_type != "cn_id":
+        facts.update(
+            document_type=person.document_type,
+            document_issuing_country=person.document_issuing_country,
+            passport_number_digest=person.passport_number_digest,
+        )
     return facts
 
 
@@ -300,16 +315,38 @@ def facts_match(
     cipher: EnvelopeCipher,
 ) -> bool:
     facts = person_facts(person, cipher)
-    return not person.deleted_at and all(
-        facts[key] == expected
-        for key, expected in {
-            "full_name": value.full_name,
-            "identity_number": value.identity_number,
-            "sex": value.sex,
-            "date_of_birth": value.date_of_birth.isoformat() if value.date_of_birth else None,
-            "phone": value.phone,
-            "email": value.email,
-        }.items()
+    return (
+        not person.deleted_at
+        and person.document_type == value.document_type
+        and person.document_issuing_country == value.document_issuing_country
+        and all(
+            facts[key] == expected
+            for key, expected in {
+                "full_name": value.full_name,
+                "identity_number": value.identity_number,
+                "sex": value.sex,
+                "date_of_birth": value.date_of_birth.isoformat() if value.date_of_birth else None,
+                "phone": value.phone,
+                "email": value.email,
+            }.items()
+        )
+    )
+
+
+def payload_identity_keys(
+    value: IntakePayloadView | PendingIntakePayloadView | AssistedGuardianView,
+    lookup: LookupDigest,
+) -> DocumentIdentityKeys:
+    return document_identity_keys(
+        normalize_document_identity(
+            value.document_type,
+            value.identity_number,
+            issuing_country=value.document_issuing_country,
+            sex=value.sex,
+            date_of_birth=value.date_of_birth,
+            allow_pending=isinstance(value, PendingIntakePayloadView),
+        ),
+        lookup,
     )
 
 
@@ -320,10 +357,14 @@ def insert_person(
     cipher: EnvelopeCipher,
     lookup: LookupDigest,
 ) -> Person:
+    keys = payload_identity_keys(value, lookup)
     person = Person(
         full_name=value.full_name,
         identity_ciphertext=cipher.encrypt(value.identity_number, field_name="identity_number"),
-        identity_digest=lookup.digest(value.identity_number),
+        identity_digest=keys.identity_digest,
+        document_type=value.document_type,
+        document_issuing_country=keys.issuing_country,
+        passport_number_digest=keys.passport_number_digest,
         phone_ciphertext=cipher.encrypt(value.phone, field_name="phone"),
         phone_digest=lookup.digest(value.phone),
         email_ciphertext=cipher.encrypt(value.email, field_name="email") if value.email else None,
@@ -348,7 +389,7 @@ def end_replaced_assisted_relationships(
     lookup: LookupDigest,
 ) -> None:
     """Explicit correction may close only its own still-unverified approved edges."""
-    desired = {lookup.digest(value.identity_number): value for value in guardians}
+    desired = {payload_identity_keys(value, lookup).identity_digest: value for value in guardians}
     today = business_date_at(now)
     rows = db.scalars(
         select(GuardianRelationship)
@@ -406,19 +447,26 @@ class AssistedGuardianWriter:
         guardians: list[AssistedGuardianInput] | list[AssistedGuardianView],
         reference_date: date,
     ) -> tuple[UUID, ...]:
-        from app.identity.normalization import normalize_cn_id, normalize_email, normalize_phone
+        from app.identity.normalization import normalize_email, normalize_phone
 
         result = []
         for raw in guardians:
             if isinstance(raw, AssistedGuardianInput):
-                identity = normalize_cn_id(
-                    raw.identity_number.get_secret_value(), expected_birth_date=raw.date_of_birth
+                identity = normalize_document_identity(
+                    raw.document_type,
+                    raw.identity_number.get_secret_value(),
+                    issuing_country=raw.document_issuing_country,
+                    sex=raw.sex,
+                    date_of_birth=raw.date_of_birth,
+                    allow_pending=False,
                 )
                 if identity.sex != raw.sex:
                     raise conflict()
                 value = AssistedGuardianView(
                     full_name=raw.full_name,
                     identity_number=identity.number,
+                    document_type=raw.document_type,
+                    document_issuing_country=identity.issuing_country,
                     phone=normalize_phone(raw.phone.get_secret_value()),
                     email=normalize_email(raw.email.get_secret_value()) if raw.email else None,
                     sex=raw.sex,
@@ -435,7 +483,8 @@ class AssistedGuardianWriter:
                 raise conflict()
             guardian = self.db.scalar(
                 select(Person).where(
-                    Person.identity_digest == self.lookup.digest(value.identity_number)
+                    Person.identity_digest
+                    == payload_identity_keys(value, self.lookup).identity_digest
                 )
             )
             if guardian is None:

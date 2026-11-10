@@ -6,6 +6,7 @@ from io import BytesIO, StringIO
 from uuid import UUID
 from zipfile import ZipFile
 
+import pytest
 from openpyxl import load_workbook
 
 from app.housing.reporting_renderer import (
@@ -90,6 +91,22 @@ def projection(*, guardians: bool = True) -> HousingReportProjectionV1:
         residents=(resident,),
         guardians=guardian_rows,
     )
+
+
+@pytest.mark.parametrize(
+    "person_type,label",
+    [("team_manager", "战队经理"), ("assistant_coach", "助教")],
+)
+def test_staff_classification_renders_chinese_labels_in_both_formats(person_type, label):
+    payload = projection(guardians=False).model_dump(mode="json")
+    payload["residents"][0]["person_type"] = person_type
+    current = HousingReportProjectionV1.model_validate(payload)
+
+    xlsx, _ = xlsx_tables(render_xlsx(current))
+    csv_zip = csv_tables(render_csv_zip(current))
+
+    assert xlsx == csv_zip
+    assert label in xlsx[RESIDENT_SHEET_NAME][1]
 
 
 def xlsx_tables(content: bytes) -> tuple[dict[str, list[list[str]]], object]:

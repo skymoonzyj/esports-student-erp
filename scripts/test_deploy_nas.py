@@ -1,6 +1,8 @@
 """Exercise the actual remote deployment body with only Docker/network mocked."""
 
+import json
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -15,7 +17,7 @@ LAUNCHER = Path(
 
 
 class DeploymentTests(unittest.TestCase):
-    def run_deploy(self, fault="", with_backup=False, prior_state=None):
+    def run_deploy(self, fault="", with_backup=False, prior_state=None, reactionx=None):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         base = Path(self.temp.name).resolve()
@@ -58,6 +60,51 @@ class DeploymentTests(unittest.TestCase):
             (incoming / name).write_text("services: {}\n")
         for helper in SOURCE.glob("scripts/nas-deploy-*"):
             shutil.copyfile(helper, incoming / "scripts" / helper.name)
+        bundle_digest = "unavailable"
+        if reactionx is not None:
+            import hashlib
+            import struct
+
+            (incoming / "apps/api/app/reactionx").mkdir(parents=True)
+            for name in ("__init__.py", "release_bundle.py"):
+                shutil.copyfile(SOURCE / "apps/api/app/reactionx" / name,
+                                incoming / "apps/api/app/reactionx" / name)
+            shutil.copyfile(SOURCE / "scripts/reactionx-release-bundle.py",
+                            incoming / "scripts/reactionx-release-bundle.py")
+            bundle = app / "incoming/new-reactionx-bundle"
+            bundle.mkdir()
+            data = bytearray(512)
+            data[:2] = b"MZ"
+            struct.pack_into("<I", data, 60, 128)
+            data[128:132] = b"PE\0\0"
+            struct.pack_into("<H", data, 148, 240)
+            struct.pack_into("<H", data, 152, 0x20B)
+            struct.pack_into("<I", data, 260, 16)
+            manifest = {"schema_version": 1, "protocol_version": 1, "version": "0.3.0",
+                        "source_commit": "a" * 40, "filename": "ReactionXConnectorSetup.exe",
+                        "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
+                        "signature_status": "unsigned"}
+            raw = json.dumps(manifest).encode()
+            (bundle / "manifest.json").write_bytes(raw)
+            (bundle / "ReactionXConnectorSetup.exe").write_bytes(data)
+            bundle_digest = hashlib.sha256(raw + hashlib.sha256(data).digest()).hexdigest()
+            if reactionx == "corrupt":
+                (bundle / "ReactionXConnectorSetup.exe").write_bytes(b"tampered")
+            elif reactionx == "wrong_digest":
+                bundle_digest = "0" * 64
+            elif reactionx == "unexpected":
+                bundle_digest = "unavailable"
+        old_bundle = previous / "runtime/reactionx-release"
+        old_bundle.mkdir(parents=True)
+        (old_bundle / "old.exe").write_bytes(b"must never inherit")
+        # Asset helper has its own real merge/archive/image-boundary tests. This
+        # deployment boundary injects its failure to prove activation is gated.
+        (incoming / 'scripts/nas-web-assets.py').write_text(
+            "import os, sys\nfrom pathlib import Path\n"
+            "app=Path(os.environ['MOCK_APP'])\n"
+            "(app/'assets-called').write_text(str((app/'current').resolve()))\n"
+            "raise SystemExit(29 if os.environ['MOCK_FAULT']=='assets_failed' else 0)\n"
+        )
         if with_backup:
             shutil.copyfile(
                 SOURCE / "scripts/erp-backup-install.py",
@@ -203,6 +250,8 @@ sys.exit(0)
                 "https://skymoonzyj.l.cd:18080",
                 "127.0.0.1",
                 digest,
+                "[]",
+                bundle_digest,
             ],
             input=body,
             text=True,
@@ -222,6 +271,40 @@ sys.exit(0)
         result, app, _ = self.run_deploy()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((app / "flock.log").read_text().splitlines()[0], "-x -w 50 9")
+
+    def test_absent_release_bundle_never_inherits_previous_package(self):
+        result, app, previous = self.run_deploy()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(list((app / "releases/new/runtime/reactionx-release").iterdir()), [])
+        self.assertTrue((previous / "runtime/reactionx-release/old.exe").is_file())
+
+    def test_verified_bundle_uses_separate_transport_then_candidate_read_only_files(self):
+        result, app, _ = self.run_deploy(reactionx="valid")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        package = app / "releases/new/runtime/reactionx-release/ReactionXConnectorSetup.exe"
+        self.assertEqual(package.stat().st_size, 512)
+        self.assertEqual(package.stat().st_mode & 0o222, 0)
+
+    def test_bad_optional_bundle_blocks_before_candidate_activation(self):
+        for fault in ("corrupt", "wrong_digest", "unexpected"):
+            with self.subTest(fault=fault):
+                result, app, previous = self.run_deploy(reactionx=fault)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual((app / "current").resolve(), previous)
+                self.assertFalse((app / "releases/new").exists())
+
+    def test_asset_merge_runs_before_active_pointer_or_migration_can_change(self):
+        result, app, previous = self.run_deploy()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((app / 'assets-called').exists(), 'asset compatibility gate was skipped')
+        self.assertEqual((app / 'assets-called').read_text(), str(previous))
+
+    def test_asset_merge_failure_keeps_prior_service_pointer_and_backup_eligibility(self):
+        result, app, previous = self.run_deploy('assets_failed', prior_state='verified')
+        self.assertEqual(result.returncode, 29, result.stderr)
+        self.assertEqual((app / 'current').resolve(), previous)
+        self.assertEqual((app / '.active-release').read_text().strip(), str(previous))
+        self.assertIn('active_unchanged=true', (app / '.deployment-state').read_text())
 
     def test_lock_timeout_preserves_previous_release_without_preparation(self):
         result, app, previous = self.run_deploy("lock_timeout", prior_state="verified")
@@ -458,6 +541,87 @@ sys.exit(0)
 
 
 class SnapshotTests(unittest.TestCase):
+    def test_alias_source_rejects_physical_in_tree_bundle_before_preflight(self):
+        import hashlib
+        import struct
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            source = root / "physical-source"
+            (source / "apps/api/app/reactionx").mkdir(parents=True)
+            (source / "apps/api/alembic.ini").write_text("fixture")
+            (source / "scripts").mkdir()
+            for name in ("nas-deploy-guard.py", "nas-web-assets.py", "reactionx-release-bundle.py"):
+                shutil.copyfile(SOURCE / "scripts" / name, source / "scripts" / name)
+            for name in ("__init__.py", "release_bundle.py"):
+                shutil.copyfile(SOURCE / "apps/api/app/reactionx" / name,
+                                source / "apps/api/app/reactionx" / name)
+            (source / ".venv/bin").mkdir(parents=True)
+            alembic = source / ".venv/bin/alembic"
+            alembic.write_text("#!/bin/sh\necho 'head (head)'\n")
+            alembic.chmod(0o755)
+            alias = root / "logical-source"
+            alias.symlink_to(source, target_is_directory=True)
+            self.assertEqual(alias.resolve(), source)
+            bundle = source / "bundle"
+            bundle.mkdir()
+            data = bytearray(512)
+            data[:2] = b"MZ"
+            struct.pack_into("<I", data, 60, 128)
+            data[128:132] = b"PE\0\0"
+            struct.pack_into("<H", data, 148, 240)
+            struct.pack_into("<H", data, 152, 0x20B)
+            struct.pack_into("<I", data, 260, 16)
+            (bundle / "ReactionXConnectorSetup.exe").write_bytes(data)
+            (bundle / "manifest.json").write_text(json.dumps({
+                "schema_version": 1, "protocol_version": 1, "version": "0.3.0",
+                "source_commit": "a" * 40, "filename": "ReactionXConnectorSetup.exe",
+                "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
+                "signature_status": "unsigned",
+            }))
+            key = root / "key"
+            key.write_text("synthetic-key")
+            bindir = root / "bin"
+            bindir.mkdir()
+            for name, code in {
+                "git": '#!/bin/sh\ncase "$*" in *rev-parse*) echo abcdef012345;; esac\n',
+                "ssh": '#!/bin/sh\ntouch "$MOCK_SSH_LOG"\nexit 9\n',
+            }.items():
+                executable = bindir / name
+                executable.write_text(code)
+                executable.chmod(0o755)
+            marker = root / "preflight-reached"
+            result = subprocess.run(
+                ["bash", str(LAUNCHER), "--source", str(alias), "--dry-run",
+                 "--reactionx-release-bundle", str(bundle)],
+                capture_output=True, text=True, check=False,
+                env={**os.environ, "PATH": str(bindir) + os.pathsep + os.environ["PATH"],
+                     "NAS_SSH_IDENTITY_FILE": str(key), "MOCK_SSH_LOG": str(marker)},
+            )
+            self.assertFalse(marker.exists(), result.stderr)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("outside source repository/image context", result.stderr)
+
+    def test_remote_bash_preserves_json_and_literal_shell_characters(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ssh = root / 'ssh'
+            # OpenSSH joins command arguments and the remote login shell parses
+            # them once more. Reproduce that boundary without any network.
+            ssh.write_text('#!/usr/bin/env python3\nimport subprocess, sys\nraise SystemExit(subprocess.run(" ".join(sys.argv[2:]), shell=True, input=sys.stdin.read(), text=True).returncode)\n')
+            ssh.chmod(0o755)
+            marker = root / 'injected'
+            values = ['[{"release_id":"old","image_id":"sha256:abc"}]', f'literal $(touch {marker}) with spaces']
+            function = LAUNCHER.read_text().split('remote_bash() {\n', 1)[1].split('\n}', 1)[0]
+            body = ('ssh_options=()\nremote_target=fixture\nremote_bash() {\n' + function + '\n}\n' +
+                    'remote_bash ' + ' '.join(shlex.quote(v) for v in values) + " <<'REMOTE'\n" +
+                    'python3 - "$@" <<\'PY\'\nimport json, sys\nprint(json.dumps(sys.argv[1:]))\nPY\nREMOTE\n')
+            result = subprocess.run(['bash', '-s'], input=body, capture_output=True, text=True, check=False,
+                                    env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH']})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(marker.exists(), 'remote argument was interpreted as shell code')
+            self.assertEqual(json.loads(result.stdout), values)
+
     def test_default_and_hook_select_established_release_tree(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -472,6 +636,7 @@ class SnapshotTests(unittest.TestCase):
                 SOURCE / "scripts/nas-deploy-guard.py",
                 source / "scripts/nas-deploy-guard.py",
             )
+            shutil.copyfile(SOURCE / 'scripts/nas-web-assets.py', source / 'scripts/nas-web-assets.py')
             (source / ".venv/bin").mkdir(parents=True)
             alembic = source / ".venv/bin/alembic"
             alembic.write_text(
@@ -532,7 +697,7 @@ class SnapshotTests(unittest.TestCase):
 
     def test_dry_run_hashes_untracked_content_and_performs_no_remote_writes(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             source = root / "source"
             (source / "apps/api").mkdir(parents=True)
             (source / "apps/api/alembic.ini").write_text("fixture")
@@ -541,6 +706,7 @@ class SnapshotTests(unittest.TestCase):
                 SOURCE / "scripts/nas-deploy-guard.py",
                 source / "scripts/nas-deploy-guard.py",
             )
+            shutil.copyfile(SOURCE / 'scripts/nas-web-assets.py', source / 'scripts/nas-web-assets.py')
             (source / ".venv/bin").mkdir(parents=True)
             alembic = source / ".venv/bin/alembic"
             alembic.write_text(
@@ -554,7 +720,7 @@ class SnapshotTests(unittest.TestCase):
             bindir.mkdir()
             for name, code in {
                 "git": '#!/bin/sh\ncase "$*" in *rev-parse*) echo abcdef012345;; esac\n',
-                "ssh": "#!/usr/bin/env python3\nimport sys\nb=sys.stdin.read()\nif 'REMOTE' in b or 'mkdir' in b or 'compose' in b and 'test -f' not in b: raise SystemExit('unexpected remote write')\nif 'select version_num' in b: print('head')\n",
+                "ssh": "#!/usr/bin/env python3\nimport os,sys\nfrom pathlib import Path\np=Path(os.environ['MOCK_SSH_LOG']); p.write_text(p.read_text()+'call\\n' if p.exists() else 'call\\n')\nb=sys.stdin.read()\nif 'REMOTE' in b or 'mkdir' in b or 'compose' in b and 'test -f' not in b: raise SystemExit('unexpected remote write')\nif 'select version_num' in b: print('head')\n",
             }.items():
                 executable = bindir / name
                 executable.write_text(code)
@@ -563,11 +729,12 @@ class SnapshotTests(unittest.TestCase):
                 **os.environ,
                 "PATH": str(bindir) + os.pathsep + os.environ["PATH"],
                 "NAS_SSH_IDENTITY_FILE": str(key),
+                "MOCK_SSH_LOG": str(root / "ssh.log"),
             }
 
-            def dry_run():
+            def dry_run(*extra):
                 result = subprocess.run(
-                    ["bash", str(LAUNCHER), "--source", str(source), "--dry-run"],
+                    ["bash", str(LAUNCHER), "--source", str(source), "--dry-run", *extra],
                     capture_output=True,
                     text=True,
                     check=False,
@@ -583,6 +750,52 @@ class SnapshotTests(unittest.TestCase):
             first = dry_run()
             (source / "untracked.txt").write_text("second")
             self.assertNotEqual(first, dry_run())
+            # Exercise local freezing and dry-run transport without a network
+            # connection; supplied missing input must fail before even preflight.
+            (source / "apps/api/app/reactionx").mkdir(parents=True)
+            for name in ("__init__.py", "release_bundle.py"):
+                shutil.copyfile(SOURCE / "apps/api/app/reactionx" / name,
+                                source / "apps/api/app/reactionx" / name)
+            shutil.copyfile(SOURCE / "scripts/reactionx-release-bundle.py",
+                            source / "scripts/reactionx-release-bundle.py")
+            calls = (root / "ssh.log").read_text()
+            invalid = subprocess.run(
+                ["bash", str(LAUNCHER), "--source", str(source), "--dry-run",
+                 "--reactionx-release-bundle", str(root / "missing")],
+                capture_output=True, text=True, check=False, env=env,
+            )
+            self.assertNotEqual(invalid.returncode, 0)
+            self.assertEqual((root / "ssh.log").read_text(), calls)
+            import hashlib
+            import struct
+
+            bundle = root / "bundle"
+            bundle.mkdir()
+            data = bytearray(512)
+            data[:2] = b"MZ"
+            struct.pack_into("<I", data, 60, 128)
+            data[128:132] = b"PE\0\0"
+            struct.pack_into("<H", data, 148, 240)
+            struct.pack_into("<H", data, 152, 0x20B)
+            struct.pack_into("<I", data, 260, 16)
+            (bundle / "ReactionXConnectorSetup.exe").write_bytes(data)
+            (bundle / "manifest.json").write_text(json.dumps({
+                "schema_version": 1, "protocol_version": 1, "version": "0.3.0",
+                "source_commit": "a" * 40, "filename": "ReactionXConnectorSetup.exe",
+                "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
+                "signature_status": "unsigned",
+            }))
+            self.assertTrue(dry_run("--reactionx-release-bundle", str(bundle)).startswith("rx"))
+            inside = source / "bundle-must-not-enter-source-image"
+            shutil.copytree(bundle, inside)
+            calls = (root / "ssh.log").read_text()
+            invalid = subprocess.run(
+                ["bash", str(LAUNCHER), "--source", str(source), "--dry-run",
+                 "--reactionx-release-bundle", str(inside)],
+                capture_output=True, text=True, check=False, env=env,
+            )
+            self.assertNotEqual(invalid.returncode, 0)
+            self.assertEqual((root / "ssh.log").read_text(), calls)
 
     def test_actual_untracked_bytes_change_digest_but_location_does_not(self):
         with tempfile.TemporaryDirectory() as directory:

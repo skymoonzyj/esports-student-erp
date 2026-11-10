@@ -14,6 +14,11 @@ from sqlalchemy.orm import Session
 
 from app.auth.identifiers import NormalizedLoginIdentifier, login_identifier_digest
 from app.auth.models import AccountLoginIdentifier, UserAccount
+from app.identity.document_identity import (
+    DocumentIdentityConflict,
+    DocumentIdentityKeys,
+    require_document_available,
+)
 from app.identity.models import Person
 from app.identity.normalization import normalize_cn_id, normalize_email
 from app.personnel_intake.claims.reservations import expire_claim_reservations_in_transaction
@@ -147,8 +152,18 @@ class CredentialReservationPolicy:
         identity: str,
         person_id: UUID | None = None,
         request_id: UUID | None = None,
+        identity_keys: DocumentIdentityKeys | None = None,
     ) -> None:
-        digest = self.lookup.digest(normalize_cn_id(identity).number)
+        digest = (
+            identity_keys.identity_digest
+            if identity_keys
+            else self.lookup.digest(normalize_cn_id(identity).number)
+        )
+        if identity_keys:
+            try:
+                require_document_available(self.db, identity_keys, exclude_person_id=person_id)
+            except DocumentIdentityConflict as exc:
+                raise CredentialReservationConflict() from exc
         self.require_reservation_available(
             kind="identity", digest=digest, person_id=person_id, request_id=request_id
         )
@@ -207,9 +222,13 @@ class CredentialReservationPolicy:
         request_id: UUID | None,
         profile_claim_id: UUID | None = None,
         registration_application_id: UUID | None = None,
+        identity_keys: DocumentIdentityKeys | None = None,
     ) -> None:
         self.require_identity_available(
-            identity=identity, person_id=person_id, request_id=request_id
+            identity=identity,
+            person_id=person_id,
+            request_id=request_id,
+            identity_keys=identity_keys,
         )
         if email is not None:
             self.require_email_available(

@@ -63,7 +63,7 @@ it.each(suites)('lets a superadmin create and enter a closed %s formal round whe
   fireEvent.click(within(card).getByRole('button', { name: `${name} 正式测试` }))
   expect(await screen.findByRole('heading', { name: '正式评测项目' })).toBeVisible()
   expect(screen.getByText('已保存 0 / 4')).toBeVisible()
-  expect(writes).toEqual([{ path: '/api/v1/esports-assessments/sessions', body: { suite_id: suite, operation_key: expect.any(String) } }])
+  expect(writes).toEqual([{ path: '/api/v1/esports-assessments/sessions', body: { suite_id: suite, operation_key: expect.any(String), ...(suite === 'pc-moba' ? { attack_mode: 'melee' } : {}) } }])
 })
 
 it.each(suites)('lets a superadmin enter a closed %s practice without allocating a result', async (suite, name) => {

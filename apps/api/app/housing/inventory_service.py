@@ -5,16 +5,22 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import NoReturn, cast
+from typing import Literal, NoReturn, cast
 from uuid import UUID
 
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.privacy import (
+    contains_email,
+    contains_labeled_sensitive_value,
+    contains_phone_or_identity,
+)
 from app.core.transactions import write_transaction
 from app.housing.access import HousingAccessService
 from app.housing.errors import (
+    HousingBatchConflict,
     HousingCatalogHasChildren,
     HousingDuplicateCatalogEntry,
     HousingInvalidRoomConfiguration,
@@ -36,6 +42,7 @@ from app.housing.occupancy_service import (
     HousingOccupancyService,
     RoomOccupancyProjection,
 )
+from app.housing.property_models import HousingPropertyChange
 from app.housing.schemas import (
     BuildingCreate,
     BuildingUpdate,
@@ -46,6 +53,7 @@ from app.housing.schemas import (
     HousingCatalogResponse,
     HousingFloorItem,
     HousingOverviewResponse,
+    HousingQuickFilter,
     HousingRoomCard,
     HousingSummary,
     RoomCreate,
@@ -89,6 +97,7 @@ _ROOM_CONFIGURATION_CONSTRAINTS = frozenset(
         "ck_housing_rooms_area",
         "ck_housing_rooms_verification",
         "ck_housing_rooms_version",
+        "ck_housing_rooms_cleaning_frequency",
     }
 )
 _STRUCTURAL_ROOM_FIELDS = frozenset(
@@ -106,11 +115,13 @@ class HousingOverviewFilters:
     service_statuses: frozenset[str] = frozenset()
     cleaning_statuses: frozenset[str] = frozenset()
     daily_cleaning_enabled: bool | None = None
+    cleaning_frequencies: frozenset[str] = frozenset()
     current_gender: str | None = None
     occupancy: str | None = None
     assignability: str | None = None
     cohort_id: UUID | None = None
     person_type: str | None = None
+    quick_filter: HousingQuickFilter | None = None
 
 
 RoomAuthorizer = Callable[[HousingRoom], None]
@@ -247,7 +258,7 @@ class HousingInventoryService:
         if room.service_status == "problem":
             return "问题房"
         if room.cleaning_status == "pending":
-            return "待保洁"
+            return "退房待保洁"
         if cls._is_assignable(room, building, floor):
             return "空闲，可入住"
         return "已停用"
@@ -302,8 +313,9 @@ class HousingInventoryService:
             ),
         )
 
-    @staticmethod
+    @classmethod
     def _matches_filters(
+        cls,
         card: HousingRoomCard,
         filters: HousingOverviewFilters,
         projection: RoomOccupancyProjection,
@@ -314,12 +326,14 @@ class HousingInventoryService:
             return False
         query = unicodedata.normalize("NFKC", filters.query or "").strip().casefold()
         if query and not any(
-            query in value.casefold()
+            query in unicodedata.normalize("NFKC", value).casefold()
             for value in (
                 card.room_number,
                 card.building_code,
                 card.building_name,
                 card.floor_name,
+                *(stay.person_name for stay in projection.current_stays),
+                *projection.current_resident_nicknames,
             )
         ):
             return False
@@ -337,6 +351,8 @@ class HousingInventoryService:
         if filters.daily_cleaning_enabled is not None and (
             card.daily_cleaning_enabled != filters.daily_cleaning_enabled
         ):
+            return False
+        if filters.cleaning_frequencies and card.cleaning_frequency not in filters.cleaning_frequencies:
             return False
         if filters.current_gender == "unspecified" and card.current_gender is not None:
             return False
@@ -358,20 +374,72 @@ class HousingInventoryService:
             return False
         if filters.assignability == "assignable" and not card.is_assignable:
             return False
+        if filters.assignability == "full" and not cls._is_full(card):
+            return False
         return not (
             filters.assignability == "unassignable" and card.is_assignable
         )
 
     @staticmethod
-    def _summary(cards: Sequence[HousingRoomCard]) -> HousingSummary:
+    def _is_full(card: HousingRoomCard) -> bool:
+        return card.capacity > 0 and card.current_occupants >= card.capacity
+
+    @staticmethod
+    def _is_problem(card: HousingRoomCard) -> bool:
+        return card.service_status in {"problem", "maintenance", "disabled"}
+
+    @classmethod
+    def _is_vacant(cls, card: HousingRoomCard) -> bool:
+        return card.current_occupants == 0 and not cls._is_problem(card)
+
+    @classmethod
+    def _has_eligible_beds(cls, card: HousingRoomCard) -> bool:
+        return card.room_type != "functional" and not cls._is_problem(card)
+
+    @classmethod
+    def _matches_quick_filter(
+        cls, card: HousingRoomCard, quick_filter: HousingQuickFilter | None,
+    ) -> bool:
+        if quick_filter is None:
+            return True
+        if quick_filter == "occupied":
+            return card.current_occupants > 0
+        if quick_filter == "vacant":
+            return cls._is_vacant(card)
+        if quick_filter == "assignable":
+            return card.is_assignable
+        if quick_filter == "full":
+            return cls._is_full(card)
+        if quick_filter == "problem":
+            return cls._is_problem(card)
+        if quick_filter == "pending_verification":
+            return card.verification_status == "pending_verification"
+        if quick_filter == "pending_cleaning":
+            return card.cleaning_status == "pending"
+        if quick_filter in {"cleaning_daily", "cleaning_weekly", "cleaning_on_demand"}:
+            return card.cleaning_frequency == quick_filter.removeprefix("cleaning_")
+        if quick_filter == "functional":
+            return card.room_type == "functional"
+        if not cls._has_eligible_beds(card):
+            return False
+        if quick_filter == "usable":
+            return True
+        if quick_filter == "remaining":
+            return card.remaining_capacity > 0
+        return card.room_type == quick_filter
+
+    @classmethod
+    def _summary(cls, cards: Sequence[HousingRoomCard]) -> HousingSummary:
         total = len(cards)
         assignable = sum(card.is_assignable for card in cards)
-        total_capacity = sum(card.capacity for card in cards)
+        bed_cards = [card for card in cards if cls._has_eligible_beds(card)]
+        total_capacity = sum(card.capacity for card in bed_cards)
         current_occupants = sum(card.current_occupants for card in cards)
+        bed_occupants = sum(card.current_occupants for card in bed_cards)
         occupied = sum(card.occupancy_status == "occupied" for card in cards)
-        remaining_capacity = sum(card.remaining_capacity for card in cards)
+        remaining_capacity = sum(card.remaining_capacity for card in bed_cards)
         occupancy_rate = (
-            (Decimal(current_occupants) * Decimal(100) / Decimal(total_capacity)).quantize(
+            (Decimal(bed_occupants) * Decimal(100) / Decimal(total_capacity)).quantize(
                 Decimal("0.01")
             )
             if total_capacity
@@ -380,11 +448,15 @@ class HousingInventoryService:
         return HousingSummary(
             total_rooms=total,
             occupied_rooms=occupied,
-            unoccupied_rooms=total - occupied,
+            unoccupied_rooms=sum(cls._is_vacant(card) for card in cards),
             assignable_rooms=assignable,
             unassignable_rooms=total - assignable,
-            problem_rooms=sum(card.service_status == "problem" for card in cards),
+            full_rooms=sum(cls._is_full(card) for card in cards),
+            problem_rooms=sum(cls._is_problem(card) for card in cards),
             pending_cleaning_rooms=sum(card.cleaning_status == "pending" for card in cards),
+            daily_cleaning_rooms=sum(card.cleaning_frequency == "daily" for card in cards),
+            weekly_cleaning_rooms=sum(card.cleaning_frequency == "weekly" for card in cards),
+            on_demand_cleaning_rooms=sum(card.cleaning_frequency == "on_demand" for card in cards),
             pending_verification_rooms=sum(
                 card.verification_status == "pending_verification" for card in cards
             ),
@@ -392,10 +464,10 @@ class HousingInventoryService:
             current_occupants=current_occupants,
             remaining_capacity=remaining_capacity,
             occupancy_rate=occupancy_rate,
-            single_rooms=sum(card.room_type == "single" for card in cards),
-            double_rooms=sum(card.room_type == "double" for card in cards),
-            triple_rooms=sum(card.room_type == "triple" for card in cards),
-            custom_rooms=sum(card.room_type == "custom" for card in cards),
+            single_rooms=sum(card.room_type == "single" for card in bed_cards),
+            double_rooms=sum(card.room_type == "double" for card in bed_cards),
+            triple_rooms=sum(card.room_type == "triple" for card in bed_cards),
+            custom_rooms=sum(card.room_type == "custom" for card in bed_cards),
             functional_rooms=sum(card.room_type == "functional" for card in cards),
         )
 
@@ -424,16 +496,20 @@ class HousingInventoryService:
             )
             for room in visible_rooms
         ]
-        filtered = [
+        base_filtered = [
             card
             for card in cards
             if self._matches_filters(card, filters, projections[card.id])
+        ]
+        filtered = [
+            card for card in base_filtered
+            if self._matches_quick_filter(card, filters.quick_filter)
         ]
         offset = (page - 1) * page_size
         return HousingOverviewResponse(
             access_revision=access.access_revision,
             as_of=as_of,
-            summary=self._summary(filtered),
+            summary=self._summary(base_filtered),
             rooms=filtered[offset : offset + page_size],
             page=page,
             page_size=page_size,
@@ -757,6 +833,7 @@ class HousingInventoryService:
                     verification_status="pending_verification",
                     service_status="available",
                     daily_cleaning_enabled=input.daily_cleaning_enabled,
+                    cleaning_frequency=input.cleaning_frequency,
                     notes=input.notes,
                     version=1,
                     created_by_user_id=actor_user_id,
@@ -801,7 +878,7 @@ class HousingInventoryService:
                         )
                         .with_for_update()
                     )
-                    if open_issue_id is not None:
+                    if open_issue_id is not None or room.service_status == "problem":
                         raise HousingIssueWorkflowRequired(
                             "open housing issue must use the housing issue workflow"
                         )
@@ -866,7 +943,11 @@ class HousingInventoryService:
                     room.notes = input.notes
                 if input.daily_cleaning_enabled is not None:
                     room.daily_cleaning_enabled = input.daily_cleaning_enabled
-                if structural_changed:
+                if input.cleaning_frequency is not None:
+                    room.cleaning_frequency = input.cleaning_frequency
+                if input.service_status is not None:
+                    room.verification_status = "verified"
+                elif structural_changed:
                     room.verification_status = "pending_verification"
                 room.version += 1
                 room.updated_by_user_id = actor_user_id
@@ -885,6 +966,15 @@ class HousingInventoryService:
             room = self._locked_room(room_id)
             if authorize_room is not None:
                 authorize_room(room)
+            # Submit also locks this room before inserting. Do not lock proposals
+            # here: review/withdraw lock the proposal before locking its room.
+            historical_proposal = self.db.scalar(
+                select(HousingPropertyChange.id)
+                .where(HousingPropertyChange.room_id == room.id)
+                .limit(1)
+            )
+            if historical_proposal is not None:
+                raise HousingCatalogHasChildren("housing room has property proposal history")
             historical_issue = self.db.scalar(
                 select(HousingRoomIssue.id)
                 .where(HousingRoomIssue.room_id == room.id)
@@ -983,3 +1073,94 @@ class HousingInventoryService:
             self.db.flush()
             result = [rooms_by_id[item.room_id] for item in inputs]
         return result
+
+    def update_rooms_service_status(
+        self,
+        inputs: Sequence[RoomVersionInput],
+        *,
+        service_status: Literal["available", "maintenance", "disabled"],
+        actor_user_id: UUID,
+        authorize_rooms: RoomBatchAuthorizer | None = None,
+    ) -> list[HousingRoom]:
+        requested_ids = [item.room_id for item in inputs]
+        if (
+            not 1 <= len(inputs) <= 500
+            or len(requested_ids) != len(set(requested_ids))
+            or service_status not in {"available", "maintenance", "disabled"}
+        ):
+            raise HousingInvalidRoomConfiguration("invalid room service status batch")
+        with write_transaction(self.db):
+            locked_rooms = list(
+                self.db.scalars(
+                    select(HousingRoom)
+                    .where(HousingRoom.id.in_(requested_ids))
+                    .order_by(HousingRoom.id)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+            )
+            rooms_by_id = {room.id: room for room in locked_rooms}
+            if set(rooms_by_id) != set(requested_ids):
+                raise HousingResourceNotFound("one or more housing rooms were not found")
+
+            # Lock related facts in two bounded queries, never one query per room.
+            issue_room_ids = set(
+                self.db.scalars(
+                    select(HousingRoomIssue.room_id)
+                    .where(HousingRoomIssue.room_id.in_(requested_ids), HousingRoomIssue.status == "open")
+                    .order_by(HousingRoomIssue.room_id, HousingRoomIssue.id)
+                    .with_for_update()
+                )
+            )
+            active_stay_room_ids: set[UUID] = set()
+            if service_status in {"maintenance", "disabled"}:
+                active_stay_room_ids = set(
+                    self.db.scalars(
+                        select(HousingStay.room_id)
+                        .where(
+                            HousingStay.room_id.in_(requested_ids),
+                            or_(
+                                HousingStay.status.in_(("checked_in", "checkout_pending")),
+                                (HousingStay.status == "planned")
+                                & or_(
+                                    HousingStay.planned_check_out_at.is_(None),
+                                    HousingStay.planned_check_out_at > datetime.now(UTC),
+                                ),
+                            ),
+                        )
+                        .order_by(HousingStay.room_id, HousingStay.id)
+                        .with_for_update()
+                    )
+                )
+            requested_rooms = [rooms_by_id[item.room_id] for item in inputs]
+            # No conflict labels or partial results may escape before fresh auth.
+            if authorize_rooms is not None:
+                authorize_rooms(requested_rooms)
+            errors: list[dict[str, str]] = []
+            for item in inputs:
+                room = rooms_by_id[item.room_id]
+                reason = None
+                if room.version != item.version:
+                    reason = "房间版本已更新，请刷新后重试"
+                elif room.id in issue_room_ids or room.service_status == "problem":
+                    reason = "问题房间须通过问题处理流程修改"
+                elif room.id in active_stay_room_ids and room.service_status != service_status:
+                    reason = "房间存在已入住、待退房或有效预约，不可设为维修或停用"
+                if reason is not None:
+                    label = room.room_number
+                    if (
+                        contains_phone_or_identity(label)
+                        or contains_email(label)
+                        or contains_labeled_sensitive_value(label)
+                    ):
+                        label = "房间（敏感房号已隐藏）"
+                    errors.append({"field": f"rooms.{room.id}", "message": f"{label}：{reason}"})
+            if errors:
+                raise HousingBatchConflict(errors)
+            for room in requested_rooms:
+                room.service_status = service_status
+                room.verification_status = "verified"
+                room.version += 1
+                room.updated_by_user_id = actor_user_id
+            self.db.flush()
+        return requested_rooms

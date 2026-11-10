@@ -106,9 +106,9 @@ async function verifyRoom(page: Page, room: string): Promise<string> {
   }
   const filters = page.locator(".housingFilters")
   await filters.getByLabel("搜索房间").fill(room)
-  await filters.getByRole("button", { name: "应用筛选" }).click()
   const card = page.locator(".housingRoomCard").filter({ hasText: room })
   await expect(card).toHaveCount(1)
+  if ((page.viewportSize()?.width ?? 1440) < 720) await filters.getByRole("button", { name: "关闭筛选" }).click()
   await card.getByRole("button", { name: `核对房间 ${room}`, exact: true }).click()
   await expect(card.getByText("空闲，可入住", { exact: true })).toBeVisible()
   await card.getByRole("button", { name: `查看房间 ${room} 详情`, exact: true }).click()
@@ -297,6 +297,7 @@ for (const kind of ["player", "student"] as const) {
       expect(guardianBefore).toHaveLength(1)
       if (kind === "player") expect(guardianBefore).toEqual([{
         full_name: "E2E实测监护player", identity_number: makeCnId("19800103", 901),
+        document_type: "cn_id", document_issuing_country: null,
         phone: "19900009889", email: null, relationship: "father", sex: "male",
         date_of_birth: "1980-01-03", is_primary: true,
       }])

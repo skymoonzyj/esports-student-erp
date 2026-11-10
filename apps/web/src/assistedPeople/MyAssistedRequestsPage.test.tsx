@@ -24,6 +24,8 @@ function install(handler?: Handler, caps = context) {
     calls.push({ path, init })
     if (path.endsWith("/auth/me")) return Response.json({ account_id: account, person_id: account, full_name: "测试管理员", email: null, force_password_change: false, permissions: [] })
     if (path.endsWith("/auth/csrf")) return Response.json({ csrf_token: "test-csrf" })
+    if (path.endsWith("/activation-role-options")) return Response.json({ items: [{ key: "coach", name: "教练", assignable: true, reason: null }] })
+    if (path.endsWith("/management-identity-context")) return Response.json({ role_options: [{ key: "student", name: "学员", assignable: false, reason: "无角色委派权限" }, { key: "coach", name: "教练", assignable: true, reason: null }], can_assign_staff_teams: false, staff_team_reason: "须由有权人员分配", staff_team_options: [] })
     if (handler) return handler(path, init)
     if (path.endsWith("/context")) return Response.json(caps)
     if (path.includes("/requests?")) return Response.json({ items: [item], total: 21, page: 1, page_size: 20 })
@@ -38,6 +40,33 @@ function mount(page = <MyAssistedRequestsPage />) {
   return { ...result, client }
 }
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); focusManager.setFocused(undefined) })
+
+it("reads a complete strict-staff management record without allowing ordinary resubmit or review actions", async () => {
+  const staff = { ...item, kind: "staff", status: "approved", approved_person_id: id, allowed_actions: ["resubmit", "approve", "return", "withdraw"] }
+  const calls = install(path => {
+    if (path.endsWith("/context")) return Response.json(context)
+    if (path.includes("/requests?")) return Response.json({ items: [staff], total: 1, page: 1, page_size: 20 })
+    return Response.json({ ...staff, scoped_payload: { ...person, kind: "staff", coach_person_ids: [], team_id: null }, returned_reason: null, profile_version: 1 })
+  })
+  mount(<AssistedRequestReviewPage />)
+  await userEvent.click(await screen.findByRole("button", { name: "查看申请 1" }))
+  expect(await screen.findByText("测试人员")).toBeVisible()
+  expect(screen.queryByRole("button", { name: /提交申请|审核通过|退回修改|撤回申请/ })).not.toBeInTheDocument()
+  expect(calls.filter(call => call.init.method === "POST")).toHaveLength(0)
+})
+
+it.each(["strict", "pending"])("labels authorized %s HK facts distinctly from mainland documents", async (mode) => {
+  install((path) => {
+    if (path.endsWith("/context")) return Response.json(context)
+    if (path.includes("/requests?")) return Response.json({ items: [{ ...item, status: "approved", allowed_actions: [] }], total: 1, page: 1, page_size: 20 })
+    return Response.json({ ...detail, status: "approved", allowed_actions: [], scoped_payload: { ...person, document_type: "hk_id", document_issuing_country: null,
+      identity_number: "A1234563", ...(mode === "pending" ? { material_version: 2, team_allocation_status: "pending" } : {}) } })
+  })
+  mount(); fireEvent.click(await screen.findByRole("button", { name: "查看申请 1" }))
+  expect(await screen.findByText("A1234563")).toBeVisible()
+  expect(screen.getByText("香港身份证")).toBeVisible()
+  expect(screen.queryByText("中国居民身份证")).not.toBeInTheDocument()
+})
 
 it.each(["mine", "review"])("reads an approved pending staff passport in the %s workspace without activating or editing it", async (view) => {
   const staff = { ...item, kind: "staff", status: "approved", approved_person_id: id, allowed_actions: [] }
@@ -141,6 +170,8 @@ it("mounts returned detail before editing and preserves draft on focus and confl
   const user = userEvent.setup()
   await user.click(await screen.findByRole("button", { name: "查看申请 1" }))
   const name = await screen.findByLabelText("姓名")
+  expect(screen.queryByLabelText("主要身份")).not.toBeInTheDocument()
+  expect(calls.some(call => call.path.endsWith("/management-identity-context"))).toBe(false)
   expect(name).toHaveValue("测试人员")
   await user.clear(name); await user.type(name, "保留草稿")
   await act(async () => { focusManager.setFocused(false); focusManager.setFocused(true) })
@@ -200,6 +231,7 @@ it("hides private form and clears cached detail when context is revoked on focus
 
 async function fillAdult() {
   const user = userEvent.setup()
+  if (screen.queryByLabelText("主要身份")) await user.selectOptions(screen.getByLabelText("主要身份"), "student")
   await user.type(screen.getByLabelText("姓名"), person.full_name)
   await user.type(screen.getByLabelText("身份证"), person.identity_number)
   await user.type(screen.getByLabelText("手机号"), person.phone)
@@ -275,7 +307,9 @@ it("direct-create confirms explicitly, reuses retry key, changes key for edited 
   expect(bodies[0].idempotency_key).toMatch(/^[0-9a-f-]{36}$/)
   expect(bodies[1].idempotency_key).toBe(bodies[0].idempotency_key)
   expect(bodies[2].idempotency_key).not.toBe(bodies[0].idempotency_key)
-  expect(bodies[0]).toMatchObject(person)
+  const { kind: _legacyKind, ...facts } = person
+  void _legacyKind
+  expect(bodies[0]).toMatchObject({ ...facts, identity_selection: { primary_identity: "student", concurrent_identities: [], primary_staff_identity: null }, staff_teams: [] })
   expect(calls.filter((call) => call.init.method === "POST").every((call) => call.path.endsWith("/direct-create"))).toBe(true)
   await user.click(screen.getByRole("button", { name: "开始新的管理建档" }))
   expect(screen.getByLabelText("姓名")).toHaveValue("")

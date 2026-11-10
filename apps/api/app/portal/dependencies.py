@@ -1,13 +1,41 @@
+import base64
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.core.database import get_db
 from app.portal.coach_service import PortalCoachService
 from app.portal.context_service import PortalContextService
+from app.portal.departure_service import PortalDepartureService
 from app.portal.learning_service import PortalLearningService
 from app.portal.payment_service import PortalPaymentService
+from app.security.encryption import EnvelopeCipher, LookupDigest
+
+
+def get_portal_departure_service(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> PortalDepartureService:
+    settings: Settings = request.app.state.settings
+    return PortalDepartureService(
+        db,
+        cipher=EnvelopeCipher(
+            base64.b64decode(
+                settings.field_encryption_master_key.get_secret_value(),
+                altchars=b"-_",
+                validate=True,
+            )
+        ),
+        lookup=LookupDigest(
+            base64.b64decode(
+                settings.field_lookup_key.get_secret_value(),
+                altchars=b"-_",
+                validate=True,
+            )
+        ),
+    )
 
 
 def get_portal_context_service(

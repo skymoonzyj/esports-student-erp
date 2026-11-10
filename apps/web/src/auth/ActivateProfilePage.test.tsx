@@ -71,6 +71,19 @@ it("starts email-only without disclosing an identity or pretending phone verific
   expect(fetchMock).not.toHaveBeenCalled()
 })
 
+it("directs a verified activation with invalidated role authority to reconfirmation without claiming success", async () => {
+  const fetchMock = activationNetwork()
+  const respond = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((url, init) => String(url).endsWith("/complete") ? Promise.resolve(json({ code: "activation_roles_invalidated", detail: "private" }, 409)) : respond(url, init))
+  const user = userEvent.setup()
+  renderPage(); await verifyCode(user)
+  await user.type(screen.getByLabelText("新密码"), "Valid123!")
+  await user.click(screen.getByRole("button", { name: "完成激活" }))
+  expect(await screen.findByRole("alert")).toHaveTextContent("激活角色授权已失效，请联系管理员重新确认")
+  expect(screen.queryByRole("heading", { name: "登录页面" })).not.toBeInTheDocument()
+  expect(screen.getByLabelText("新密码")).toBeVisible()
+})
+
 it("accepts a server-authorized staff preview without claiming account activation or granting staff authority", async () => {
   const fetchMock = activationNetwork()
   const respond = fetchMock.getMockImplementation()!

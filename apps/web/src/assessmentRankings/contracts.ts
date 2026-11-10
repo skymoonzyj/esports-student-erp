@@ -1,21 +1,30 @@
 import { z } from 'zod'
 
 const date = z.iso.datetime({ offset: true })
+const topScores = z.array(z.strictObject({ rank: z.number().int().positive(), score: z.number().finite().min(0).max(100), gap: z.number().finite().min(-100).max(100) })).max(3).default([])
+function validTopScores(rows: z.infer<typeof topScores>, score: number, participants: number): boolean {
+  return rows.length <= participants && rows.every((row, index) => row.rank <= participants
+    && Math.abs(row.gap - (row.score - score)) < 1e-6
+    && (index === 0 ? row.rank === 1 : row.score === rows[index - 1].score ? row.rank === rows[index - 1].rank : row.score < rows[index - 1].score && row.rank === index + 1))
+}
 export const assessmentRankingSchema = z.strictObject({
   report_id: z.uuid(), calculated_at: date, status: z.enum(['ranked', 'not_eligible']),
   reason: z.enum(['quality_warning', 'incomplete_results', 'incompatible_input']).nullable(),
   best_report_id: z.uuid().nullable(), best_completed_at: date.nullable(),
   overall_score: z.number().min(0).max(100).nullable(), overall_rank: z.number().int().positive().nullable(),
   participant_count: z.number().int().nonnegative(),
-  items: z.array(z.strictObject({ test_id: z.string().min(1), score: z.number().int().min(0).max(100), rank: z.number().int().positive() })).max(8),
+  top_scores: topScores,
+  items: z.array(z.strictObject({ test_id: z.string().min(1), score: z.number().int().min(0).max(100), rank: z.number().int().positive(), top_scores: topScores })).max(8),
 }).refine(value => {
   if (value.status === 'not_eligible') return value.reason !== null && value.best_report_id === null
     && value.best_completed_at === null && value.overall_score === null && value.overall_rank === null
-    && value.participant_count === 0 && value.items.length === 0
+    && value.participant_count === 0 && value.items.length === 0 && value.top_scores.length === 0
   return value.reason === null && value.best_report_id !== null && value.best_completed_at !== null
     && value.overall_score !== null && value.overall_rank !== null && value.participant_count > 0
     && value.overall_rank <= value.participant_count && value.items.length > 0
     && value.items.every(item => item.rank <= value.participant_count)
+    && validTopScores(value.top_scores, value.overall_score!, value.participant_count)
+    && value.items.every(item => validTopScores(item.top_scores, item.score, value.participant_count))
     && new Set(value.items.map(item => item.test_id)).size === value.items.length
 }, 'invalid ranking state')
 export type AssessmentRanking = z.infer<typeof assessmentRankingSchema>

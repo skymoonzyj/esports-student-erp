@@ -1213,3 +1213,157 @@
 .teamAllocationCard textarea { min-width: 0; box-sizing: border-box; }
 .peoplePagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.75rem; padding: 1rem 0; }
 .peopleIdentityCell > span:last-child { display: grid; min-width: 0; gap: 3px; }
+
+/* Local directory and profile surfaces; never style unrelated form/game elements. */
+.peoplePage, .personDetailPage, .personFormPage { min-width: 0; max-width: 1440px; color: var(--color-text); }
+.peoplePageHeading, .personDetailHeading, .personFormHeading { gap: 20px; }
+.peoplePageHeading > div, .personDetailHeading > div, .personFormHeading > div { min-width: 0; }
+.peoplePageHeading h1, .personDetailHeading h1, .personFormHeading h1 { font-size: clamp(26px, 3vw, 34px); color: var(--color-text-strong); line-height: 1.2; overflow-wrap: anywhere; }
+.peoplePageHeading p:not(.pageEyebrow), .personDetailHeading p:not(.pageEyebrow), .personFormHeading p:not(.pageEyebrow) { margin-top: 9px; font-size: 14px; line-height: 1.7; }
+.peopleCounts { grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 12px; margin-top: 26px; }
+.peopleCountCard { min-height: 100px; gap: 12px; border-radius: var(--ui-radius-md, 14px); padding: 18px; background: var(--color-surface); box-shadow: 0 3px 14px rgb(25 55 58 / 3%); }
+.peopleCountCard span { color: var(--color-text-muted); font-size: 12px; font-weight: 600; }
+.peopleCountCard strong { color: var(--color-text-strong); font-size: 27px; font-variant-numeric: tabular-nums; letter-spacing: -.04em; }
+div.peopleCountCard { cursor: default; }
+div.peopleCountCard:hover { transform: none; border-color: var(--color-border-soft); box-shadow: 0 3px 14px rgb(25 55 58 / 3%); }
+.peopleCountCard.isActive { border-color: var(--color-accent-600); box-shadow: inset 0 3px 0 var(--color-accent-600); background: var(--color-accent-soft); }
+.peopleCountCard.isActive span, .peopleCountCard.isActive strong { color: var(--color-accent-800); }
+.peopleCountCard:focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }
+.peopleFilters { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 24px; padding: 20px; gap: 16px; border-radius: var(--ui-radius-lg, 18px); background: var(--color-surface); box-shadow: none; }
+.peopleFilterField { min-width: 0; }
+.peopleFilterField label { color: var(--color-text-muted); font-size: 12px; }
+.peopleFilterField :is(input, select) { min-width: 0; border-radius: var(--ui-radius-sm, 9px); }
+.peopleFilterActions { flex-wrap: wrap; }
+.peopleDirectory { container: people-directory / inline-size; margin-top: 20px; border-radius: var(--ui-radius-lg, 18px); background: var(--color-surface); box-shadow: 0 4px 20px rgb(25 55 58 / 3%); }
+.peopleResultHeader { min-height: 72px; padding: 16px 22px; }
+.peopleResultHeader > div { flex-wrap: wrap; min-width: 0; }
+.peopleResultHeader h2 { color: var(--color-text-strong); }
+.peopleResultHeader span { color: var(--color-text-muted); font-size: 12px; }
+.peopleTableHeader, .peopleTableRow { grid-template-columns: minmax(160px, 1.3fr) minmax(84px, .65fr) minmax(145px, 1.1fr) minmax(145px, 1fr) minmax(145px, 1fr) 88px; gap: 14px; }
+.peopleTableHeader { min-height: 46px; background: var(--color-canvas); color: var(--color-text-muted); font-size: 11px; letter-spacing: .025em; }
+.peopleTableRow { min-height: 98px; padding: 18px 20px; }
+.peopleTableHeader > :nth-child(4), .peopleTableRow > :nth-child(4) { display: grid; }
+.peopleTableRow:hover { background: color-mix(in srgb, var(--color-accent-soft) 28%, var(--color-surface)); }
+.peopleTableRow strong { font-size: 13px; }
+.peopleTableRow small { font-size: 11px; line-height: 1.6; }
+.peopleTableRow .peopleIdentityCell { grid-template-columns: 40px minmax(0, 1fr); gap: 10px; }
+.peopleInitial { width: 40px; height: 40px; border-radius: 12px; }
+.peopleNameLink, .peopleDetailLink { display: inline-flex; min-height: 44px; align-items: center; }
+.peopleNameLink { max-width: 100%; }
+.peopleDetailLink { justify-content: center; border-radius: 8px; padding-inline: 6px; font-size: 12px; }
+.peopleDetailLink:hover { background: var(--color-accent-soft); }
+.peoplePage .guardianPendingBadge { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 9px; font-size: 11px; }
+.peoplePage :is(.guardianReadyBadge, .ageBadge) { font-size: 11px; }
+.personDetailPage .backLink, .personFormPage .backLink { min-height: 44px; align-items: center; margin-bottom: 12px; }
+.personDetailGrid { gap: 20px; margin-top: 26px; }
+.personDetailPage .detailCard, .personDetailPage .guardianPanel { min-width: 0; border-radius: var(--ui-radius-lg, 18px); padding: 24px; background: var(--color-surface); box-shadow: 0 3px 16px rgb(25 55 58 / 3%); }
+.personDetailPage .detailCardHeader { flex-wrap: wrap; align-items: center; gap: 12px; padding-bottom: 18px; }
+.personDetailPage .detailCardHeader h2 { color: var(--color-text-strong); font-size: 17px; }
+.personDetailPage .detailCardEyebrow { color: var(--color-accent-700); font-size: 10px; letter-spacing: .1em; }
+.personDetailPage .detailList { gap: 0 24px; }
+.personDetailPage .detailList > div { padding-block: 18px; }
+.personDetailPage .detailList dt { color: var(--color-text-muted); font-size: 12px; font-weight: 500; }
+.personDetailPage .detailList dd { flex-wrap: wrap; font-size: 13px; line-height: 1.7; }
+.personDetailPage .detailList dd button { min-height: 44px; min-width: 44px; font-size: 12px; }
+.personDetailPage :is(.guardianRemoveButton, .guardianRemoveConfirm button) { min-height: 44px; padding-inline: 12px; font-size: 12px; }
+.personDetailPage .guardianNameLine { flex-wrap: wrap; }
+.personDetailPage .readinessBanner { padding: 14px 16px; font-size: 12px; line-height: 1.7; }
+.personDetailPage .guardianList small { font-size: 12px; }
+.personDetailPage .guardianIssue { font-size: 12px; line-height: 1.7; }
+.personDetailPage .guardianRepairLinks a { display: inline-flex; align-items: center; min-height: 44px; }
+.personFormPage :is(.personTypeChooser, .formSection) { border-radius: var(--ui-radius-lg, 18px); background: var(--color-surface); padding: 24px; box-shadow: 0 3px 16px rgb(25 55 58 / 3%); }
+.personFormPage .formSectionHeading h2 { color: var(--color-text-strong); font-size: 17px; }
+.personFormPage .formSectionHeading p { font-size: 12px; line-height: 1.6; }
+.personFormPage .formField { min-width: 0; }
+.personFormPage .formField :is(input, select, textarea) { min-width: 0; }
+.personFormPage .personTypeChooser label:has(input:focus-visible) { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }
+.personDetailPage .staffProfileForm { gap: 16px; margin-top: 18px; }
+.personDetailPage .staffProfileForm :is(input:not([type="checkbox"]), select, textarea) { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 9px); padding: 10px 12px; color: var(--color-text-strong); background: var(--color-surface); font: inherit; }
+.personDetailPage .staffProfileForm textarea { min-height: 88px; resize: vertical; }
+.personDetailPage :is(.revealDialog, .guardianDialog) { max-height: calc(100dvh - 32px); overflow: auto; border: 1px solid var(--color-border); border-radius: var(--ui-radius-lg, 18px); background: var(--color-surface); }
+.personDetailPage .dialogActions { flex-wrap: wrap; }
+
+html[data-ui-theme="command"] .peopleCounts { gap: 0; overflow: hidden; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-surface); }
+html[data-ui-theme="command"] .peopleCountCard { min-height: 78px; gap: 9px; border: 0; border-right: 1px solid var(--color-border-soft); border-bottom: 1px solid var(--color-border-soft); border-radius: 0; padding: 12px 15px; box-shadow: none; }
+html[data-ui-theme="command"] .peopleCountCard strong { font-size: 23px; }
+html[data-ui-theme="command"] .peopleCountCard:hover { transform: none; box-shadow: none; }
+html[data-ui-theme="command"] .peopleCountCard.isActive { box-shadow: inset 0 3px 0 var(--color-accent-600); }
+html[data-ui-theme="command"] .peopleFilters { margin-top: 18px; gap: 12px; border-radius: 7px; padding: 14px 16px; }
+html[data-ui-theme="command"] .peopleDirectory { margin-top: 16px; border-radius: 7px; box-shadow: none; }
+html[data-ui-theme="command"] .peopleResultHeader { min-height: 58px; padding-block: 10px; }
+html[data-ui-theme="command"] .peopleTableHeader { min-height: 40px; }
+html[data-ui-theme="command"] .peopleTableRow { min-height: 84px; padding-block: 10px; }
+html[data-ui-theme="command"] .peopleTableRow:nth-child(odd) { background: var(--color-canvas); }
+html[data-ui-theme="command"] .peopleInitial { border-radius: 6px; }
+html[data-ui-theme="command"] .personDetailGrid { gap: 14px; margin-top: 20px; }
+html[data-ui-theme="command"] .personDetailPage :is(.detailCard, .guardianPanel), html[data-ui-theme="command"] .personFormPage :is(.personTypeChooser, .formSection) { border-radius: 7px; padding: 18px; box-shadow: none; }
+html[data-ui-theme="command"] .personDetailPage .detailList > div { padding-block: 12px; }
+html[data-ui-theme="command"] .personDetailPage .detailCardHeader { padding-bottom: 12px; }
+html[data-ui-theme="command"] .personDetailPage :is(.guardianDialog, .revealDialog) { border-radius: 7px; }
+html[data-ui-theme="command"] .personFormPage .personTypeChooser label { min-height: 78px; border-radius: 6px; }
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  .peopleTableHeader, .peopleTableRow { grid-template-columns: minmax(150px, 1.3fr) minmax(76px, .65fr) minmax(130px, 1fr) minmax(125px, 1fr) 84px; gap: 10px; padding-inline: 14px; }
+  .peopleFilters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 767px) {
+  .peoplePage, .personDetailPage, .personFormPage { padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
+  .peopleCounts { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 20px; }
+  .peopleCountCard { min-height: 70px; gap: 7px; padding: 10px; }
+  .peopleCountCard span { font-size: 11px; }
+  .peopleCountCard strong { font-size: 22px; }
+  .peopleFilters { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+  .peopleFilterActions { display: grid; grid-template-columns: 1fr 1fr; }
+  .peopleDirectory { border: 0; background: transparent; box-shadow: none; }
+  .peopleTableHeader { display: none; }
+  .peopleResultHeader { padding-inline: 0; border-bottom: 0; }
+  .peopleTableRow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 18px; gap: 14px; border-radius: var(--ui-radius-md, 14px); background: var(--color-surface); }
+  .peopleTableRow > div::before { color: var(--color-text-muted); font-size: 11px; }
+  .peopleTableRow > :nth-child(4) { display: grid; }
+  .peopleTableRow .peopleIdentityCell { grid-column: 1 / -1; }
+  .peopleTableRow > :last-child { align-content: end; }
+  .peopleDetailLink { padding-inline: 10px; background: var(--color-accent-soft); }
+  .peopleTableRow .maskedValue { overflow-wrap: anywhere; font-size: 11px; }
+  .personDetailPage .detailCard, .personDetailPage .guardianPanel, .personFormPage :is(.personTypeChooser, .formSection) { padding: 18px; }
+  .personDetailPage .detailList { grid-template-columns: minmax(0, 1fr); }
+  .personDetailHeading, .personFormHeading { gap: 14px; }
+  .personDetailActions { width: 100%; }
+  .personDetailActions > :is(button, a) { flex: 1 1 auto; justify-content: center; }
+  .personDetailPage .guardianPanelHeader { flex-wrap: wrap; }
+  .personDetailPage .guardianList article { grid-template-columns: 40px minmax(0, 1fr); }
+  .personDetailPage .dialogBackdrop { padding: 12px; }
+  .personDetailPage :is(.guardianDialog, .revealDialog) { padding: 18px; max-height: calc(100dvh - 24px); }
+  html[data-ui-theme="command"] .peopleTable { gap: 1px; overflow: hidden; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-border); }
+  html[data-ui-theme="command"] .peopleTableRow { border: 0; border-radius: 0; padding: 14px; }
+  html[data-ui-theme="command"] .peopleDirectory { border: 0; background: transparent; }
+  html[data-ui-theme="command"] .peopleCountCard { min-height: 64px; gap: 6px; padding: 9px 10px; }
+}
+@container people-directory (max-width: 980px) {
+  .peopleTableHeader, .peopleTableRow { grid-template-columns: minmax(150px, 1.3fr) minmax(76px, .65fr) minmax(130px, 1fr) minmax(125px, 1fr) 84px; gap: 10px; padding-inline: 14px; }
+  .peopleTableHeader > :nth-child(4), .peopleTableRow > :nth-child(4) { display: none; }
+}
+@container people-directory (max-width: 680px) {
+  .peopleTableHeader { display: none; }
+  .peopleTable { display: grid; gap: 10px; }
+  .peopleTableRow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin: 0 10px 10px; border: 1px solid var(--color-border-soft); border-radius: 12px; padding: 16px; }
+  .peopleTableRow .peopleIdentityCell { grid-column: 1 / -1; }
+  .peopleTableRow > :nth-child(4) { display: grid; }
+  .peopleTableRow > div::before { content: attr(data-label); color: var(--color-text-muted); font-size: 11px; }
+  .peopleTableRow .peopleIdentityCell::before { display: none; }
+  .peopleTableRow > :last-child { align-content: end; justify-items: end; }
+  .peopleDetailLink { padding-inline: 10px; background: var(--color-accent-soft); }
+}
+@media (max-width: 767px) {
+  .peopleTableRow { margin: 0; }
+  html[data-ui-theme="command"] .peopleTableRow { border-radius: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .peopleCountCard { transition: none; }
+  .peopleCountCard:hover { transform: none; }
+}
+@media print {
+  .peoplePage, .personDetailPage, .personFormPage { width: 100%; padding: 0; }
+  .peoplePage :is(.peopleFilters, .peoplePagination, .peopleCreateButton), .personDetailActions, .personDetailPage .backLink { display: none; }
+  .peopleDirectory { overflow: visible; box-shadow: none; }
+  .peopleTableRow, .personDetailPage .detailCard { break-inside: avoid; box-shadow: none; }
+}

@@ -6,6 +6,12 @@ import { beforeEach, expect, it, vi } from "vitest"
 import type { PurchasePage, PurchaseRecord, SettlementCenter } from "./api"
 import { ProcurementPage } from "./ProcurementPage"
 
+const assetApiMocks = vi.hoisted(() => ({ listAssetCategories: vi.fn() }))
+vi.mock("../assets/api", async (importOriginal) => ({ ...(await importOriginal()), ...assetApiMocks }))
+vi.mock("../auth/AuthProvider", () => ({
+  useOptionalAuth: () => ({ status: "authenticated", user: { account_id: "procurement-test-account", is_super_admin: false, permissions: ["assets.manage"] } }),
+}))
+
 const apiMocks = vi.hoisted(() => ({
   addSettlementCenterReserveFund: vi.fn(),
   createPurchase: vi.fn(),
@@ -98,6 +104,8 @@ function renderPage(
 }
 
 beforeEach(() => {
+  assetApiMocks.listAssetCategories.mockReset()
+  assetApiMocks.listAssetCategories.mockResolvedValue({ groups: [{ key: "computers", label: "电脑与电竞设备", options: ["平板电脑", "显示器"] }], legacy_categories: [] })
   for (const mock of Object.values(apiMocks)) mock.mockReset()
   apiMocks.listSettlementCenters.mockResolvedValue([center])
   apiMocks.listPurchases.mockResolvedValue(purchasePage())
@@ -135,6 +143,14 @@ beforeEach(() => {
     blob: new Blob(["purchase report"]),
     filename: "procurement.xlsx",
   })
+})
+
+it("exposes the wide procurement ledger as a keyboard-accessible named region without hiding totals", async () => {
+  renderPage({ canManage: true, canSettle: true, canExport: true, canManageCenters: true, canManageInvoices: true })
+  const ledger = await screen.findByRole("region", { name: "采购台账，可横向滚动" })
+  expect(ledger).toHaveAttribute("tabindex", "0")
+  expect(within(ledger).getByRole("columnheader", { name: "总价" })).toBeVisible()
+  expect(within(ledger).getByRole("cell", { name: "¥32.48" })).toBeVisible()
 })
 
 it("keeps a purchase operation key after network failure and renews it for a new dialog", async () => {
@@ -448,8 +464,12 @@ it("creates one independent asset record per purchased item", async () => {
   await user.type(within(dialog).getByLabelText("数量"), "2")
   await user.type(within(dialog).getByLabelText("单价（元）"), "2500")
   await user.selectOptions(within(dialog).getByLabelText("归属结算中心"), center.id)
+  expect(assetApiMocks.listAssetCategories).not.toHaveBeenCalled()
   await user.click(within(dialog).getByLabelText("同步加入资产管理"))
-  await user.type(within(dialog).getByLabelText("资产分类（选填）"), "训练设备")
+  const category = within(dialog).getByLabelText("资产分类（选填）")
+  expect(category.tagName).toBe("SELECT")
+  await waitFor(() => expect(within(category).getByRole("option", { name: "平板电脑" })).toBeVisible())
+  await user.selectOptions(category, "平板电脑")
   fireEvent.change(within(dialog).getByLabelText("保修到期日（选填）"), {
     target: { value: "2028-08-30" },
   })
@@ -460,10 +480,44 @@ it("creates one independent asset record per purchased item", async () => {
       item_name: "训练平板",
       quantity: "2",
       add_to_assets: true,
-      asset_category: "训练设备",
+      asset_category: "平板电脑",
       asset_warranty_expires_on: "2028-08-30",
     }),
   ))
+})
+
+// Catches missing nested hardware propagation and stale values leaking from hidden fields.
+it.each(["computer", "noncomputer", "not-assets"])("submits hardware only for an asset computer (%s)", async (mode) => {
+  assetApiMocks.listAssetCategories.mockResolvedValue({ groups: [{ key: "computers", label: "电脑", options: ["台式电脑", "显示器"] }], legacy_categories: [] })
+  const user = userEvent.setup()
+  renderPage({ canManage: true, canSettle: false, canExport: false, canManageCenters: false, canManageInvoices: false, canCreateAssets: true })
+  await user.click(await screen.findByRole("button", { name: "新增采购" }))
+  const dialog = screen.getByRole("dialog", { name: "录入日常采购" })
+  await user.type(within(dialog).getByLabelText("物品名称"), "训练电脑")
+  await user.type(within(dialog).getByLabelText("单价（元）"), "2500")
+  await user.selectOptions(within(dialog).getByLabelText("归属结算中心"), center.id)
+  await user.click(within(dialog).getByLabelText("同步加入资产管理"))
+  const category = within(dialog).getByLabelText("资产分类（选填）")
+  await waitFor(() => expect(within(category).getByRole("option", { name: "台式电脑" })).toBeVisible())
+  await user.selectOptions(category, "台式电脑")
+  expect(within(dialog).getByLabelText("CPU 型号")).toBeRequired()
+  for (const [label, value] of [["CPU 型号", " R7 "], ["内存容量", "32GB"], ["GPU 型号", "核显"], ["硬盘容量", "1TB SSD"]]) await user.type(within(dialog).getByLabelText(label), value)
+  if (mode === "noncomputer") await user.selectOptions(category, "显示器")
+  if (mode === "not-assets") await user.click(within(dialog).getByLabelText("同步加入资产管理"))
+  await user.click(within(dialog).getByRole("button", { name: "保存采购记录" }))
+  await waitFor(() => expect(apiMocks.createPurchase).toHaveBeenCalled())
+  const payload = apiMocks.createPurchase.mock.calls[0][0]
+  if (mode === "computer") expect(payload.asset_hardware).toEqual({ cpu_model: "R7", memory_capacity: "32GB", gpu_model: "核显", disk_capacity: "1TB SSD" })
+  else expect(payload).not.toHaveProperty("asset_hardware")
+})
+
+it("never reads asset categories when procurement cannot create assets", async () => {
+  renderPage({ canManage: true, canSettle: false, canExport: false, canManageCenters: false, canManageInvoices: false, canCreateAssets: false })
+  await userEvent.click(await screen.findByRole("button", { name: "新增采购" }))
+  const dialog = screen.getByRole("dialog", { name: "录入日常采购" })
+  expect(within(dialog).queryByLabelText("同步加入资产管理")).not.toBeInTheDocument()
+  expect(within(dialog).queryByLabelText("资产分类（选填）")).not.toBeInTheDocument()
+  expect(assetApiMocks.listAssetCategories).not.toHaveBeenCalled()
 })
 
 it("uploads an invoice only after its amount matches selected purchases", async () => {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-EXPECTED_ALEMBIC_HEAD=0071_housing_room_care
+EXPECTED_ALEMBIC_HEAD=0090_administration_team_mgmt
 MIGRATION_CHAIN=(
   0013_system_evaluation_manual_review
   0014_teaching_reports
@@ -61,8 +61,36 @@ MIGRATION_CHAIN=(
   0069_pending_profile_intake
   0070_housing_history_void
   0071_housing_room_care
+  0072_operations_request_errors
+  0073_asset_ownership_rentals
+  0074_person_profile_assignments
+  0075_global_appearance
+  0076_asset_batch_hardware
+  0077_hk_identity_documents
+  0078_hk_mo_permit_documents
+  0079_talent_item_ranking_indexes
+  0080_reactionx_foundation
+  0081_housing_cleaning_frequency
+  0082_housing_room_cards
+  0083_housing_property_changes
+  0084_team_staff_roles
+  0085_team_staff_assignments
+  0086_intake_activation_roles
+  0087_intake_identity_teams
+  0088_intake_role_intents
+  0089_quick_intake_housing
+  0090_administration_team_mgmt
 )
 REQUIRED_TABLES=(
+  quick_intake_receipts
+  intake_role_intents intake_role_decisions
+  intake_identity_selections person_team_staff_positions person_team_staff_authorizations
+  intake_activation_role_plans
+  housing_room_cards housing_property_changes
+  reactionx_connectors reactionx_pairings reactionx_commands reactionx_runs
+  reactionx_events reactionx_result_receipts
+  global_appearance
+  person_assignment_states person_project_assignments person_assignment_operations
   housing_room_photos
   housing_stay_void_operations
   profile_claim_sessions profile_claims profile_claim_bindings profile_claim_decisions
@@ -105,7 +133,7 @@ REQUIRED_TABLES=(
   registration_verification_challenges registration_sessions
   guardian_registration_invitations staff_identity_applications
   registration_consent_acceptances registration_channel_settings mail_delivery_settings mail_templates
-  assets asset_assignments asset_photos
+  assets asset_assignments asset_photos asset_rental_operations asset_rental_renewals asset_batch_operations
   revenue_share_organizations referral_codes student_referral_bindings
   revenue_share_rules revenue_share_payment_statuses revenue_share_ledger_entries
   revenue_share_reconcile_queue
@@ -113,15 +141,24 @@ REQUIRED_TABLES=(
   daily_purchase_records
   procurement_invoices procurement_invoice_purchases
   operations_service_heartbeats
-  operations_metric_batches operations_request_minutes operations_alerts
+  operations_metric_batches operations_request_minutes operations_request_errors operations_alerts
   travel_report_conversions
   enrollment_programs
   talent_test_sessions talent_test_results talent_test_reports
   esports_assessment_sessions esports_assessment_attempts esports_assessment_results
   esports_assessment_reports esports_assessment_practice_runs
-  team_memberships team_manager_assignments team_operations
+  team_memberships team_manager_assignments team_staff_assignments team_operations
 )
 ROW_COUNT_TABLES=(
+  quick_intake_receipts
+  intake_role_intents intake_role_decisions
+  intake_identity_selections person_team_staff_positions person_team_staff_authorizations
+  intake_activation_role_plans
+  housing_room_cards housing_property_changes
+  reactionx_connectors reactionx_pairings reactionx_commands reactionx_runs
+  reactionx_events reactionx_result_receipts
+  global_appearance
+  person_assignment_states person_project_assignments person_assignment_operations
   housing_room_photos
   housing_stay_void_operations
   profile_claim_sessions profile_claims profile_claim_bindings profile_claim_decisions
@@ -163,7 +200,7 @@ ROW_COUNT_TABLES=(
   registration_verification_challenges registration_sessions
   guardian_registration_invitations staff_identity_applications
   registration_consent_acceptances registration_channel_settings mail_delivery_settings mail_templates
-  assets asset_assignments asset_photos
+  assets asset_assignments asset_photos asset_rental_operations asset_rental_renewals asset_batch_operations
   revenue_share_organizations referral_codes student_referral_bindings
   revenue_share_rules revenue_share_payment_statuses revenue_share_ledger_entries
   revenue_share_reconcile_queue
@@ -171,15 +208,28 @@ ROW_COUNT_TABLES=(
   daily_purchase_records
   procurement_invoices procurement_invoice_purchases
   operations_service_heartbeats
-  operations_metric_batches operations_request_minutes operations_alerts
+  operations_metric_batches operations_request_minutes operations_request_errors operations_alerts
   travel_report_conversions
   enrollment_programs
   talent_test_sessions talent_test_results talent_test_reports
   esports_assessment_sessions esports_assessment_attempts esports_assessment_results
   esports_assessment_reports esports_assessment_practice_runs
-  team_memberships team_manager_assignments team_operations
+  team_memberships team_manager_assignments team_staff_assignments team_operations
 )
 REQUIRED_INDEXES=(
+  quick_intake_receipts_pkey
+  uq_role_intent_person uq_role_decision_intent uq_role_decision_operation
+  intake_identity_selections_pkey
+  uq_person_team_staff_current uq_person_team_staff_account_assignment
+  ix_person_team_staff_person_current ix_person_team_staff_team_current ix_person_team_staff_origin
+  uq_person_team_staff_authorization_version
+  uq_activation_role_plan_version uq_activation_role_plan_operation ix_activation_role_plan_authorizer
+  ix_reactionx_connectors_actor_account_id ix_reactionx_pairings_actor_account_id
+  ix_reactionx_runs_actor_account_id ix_reactionx_runs_subject_person_id
+  uq_reactionx_connector_active_run ix_reactionx_commands_run_id
+  ix_reactionx_result_receipts_comparison_key
+  ix_reactionx_rank_group ix_reactionx_result_page
+  uq_person_project_assignments_open
   uq_housing_room_photos_room_slot
   uq_housing_stay_void_actor_key uq_housing_stay_void_stay
   ix_profile_claim_session_expiry ix_profile_claim_session_identity ix_profile_claim_session_email
@@ -217,12 +267,16 @@ REQUIRED_INDEXES=(
   uq_team_manager_assignments_open_account_team
   ix_team_manager_assignments_account_history
   ix_team_manager_assignments_team_history
+  uq_team_staff_assignments_open_account_team_role
+  ix_team_staff_assignments_account_history
+  ix_team_staff_assignments_team_history
   uq_team_operations_actor_key
   uq_talent_sessions_person_creation
   uq_talent_sessions_active_person
   ix_talent_sessions_person_created
   uq_talent_results_session_test
   uq_talent_results_session_submission
+  ix_talent_results_item_conditions
   uq_talent_reports_session
   ix_talent_reports_created
   uq_ea_session_creator_creation
@@ -253,6 +307,8 @@ REQUIRED_INDEXES=(
   uq_operations_alert_active_key
   ix_operations_alert_first_seen
   ix_operations_metric_batches_created_at
+  ix_operations_request_errors_occurred
+  ix_operations_request_errors_account_time ix_operations_request_errors_source_time
   ix_people_email_digest
   ix_people_passport_number_digest
   uq_housing_room_issues_open_room
@@ -277,6 +333,7 @@ REQUIRED_INDEXES=(
   ix_assets_status_updated
   ix_assets_name
   ix_assets_source_purchase
+  ix_assets_rental_expiry ix_asset_rental_renewals_asset_time
   ix_asset_assignments_person_active
   uq_asset_assignments_active_asset
   ix_asset_photos_updated
@@ -300,6 +357,25 @@ REQUIRED_INDEXES=(
   uq_project_coach_assignments_project_coach
 )
 REQUIRED_CONSTRAINTS=(
+  ck_quick_intake_fingerprint ck_quick_intake_status
+  fk_role_intent_approval_person ck_role_intent_version ck_role_intent_roles ck_role_intent_digest ck_role_decision_digest
+  fk_intake_identity_selection_approval_person ck_intake_identity_selection_digest
+  fk_person_team_staff_approval_person ck_person_team_staff_role
+  ck_person_team_staff_version ck_person_team_staff_end
+  uq_person_team_staff_authorization_version ck_person_team_staff_authorization_version
+  ck_person_team_staff_authorization_role ck_person_team_staff_authorization_digest
+  fk_activation_role_plan_approval_person ck_activation_role_plan_version ck_activation_role_plan_digests ck_activation_role_plan_non_admin
+  ck_reactionx_connector_status ck_reactionx_connector_digest
+  ck_reactionx_run_status ck_reactionx_run_sequence ck_reactionx_event_seq
+  reactionx_connectors_credential_digest_key reactionx_pairings_challenge_digest_key
+  reactionx_pairings_connector_id_key reactionx_commands_operation_id_key
+  uq_reactionx_command_sequence reactionx_events_pkey reactionx_result_receipts_pkey
+  reactionx_result_receipts_result_id_key
+  ck_reactionx_rank_complete ck_reactionx_rank_domain_1 ck_reactionx_rank_domain_2
+  ck_global_appearance_singleton ck_global_appearance_theme ck_global_appearance_revision
+  ck_person_assignment_state_version
+  ck_person_project_assignment_end
+  uq_person_assignment_operations_actor_key
   ck_housing_rooms_cleaning_status ck_housing_rooms_cleaning_pending_fact
   ck_housing_rooms_cleaning_completed_fact fk_housing_rooms_cleaning_completed_actor
   uq_housing_room_photos_room_slot ck_housing_room_photos_slot
@@ -336,11 +412,15 @@ REQUIRED_CONSTRAINTS=(
   uq_assisted_activation_token uq_assisted_activation_challenge fk_assisted_activation_approval
   ck_assisted_activation_state ck_assisted_activation_digests ck_assisted_activation_expiry
   ck_assisted_activation_times ck_user_accounts_access_origin fk_user_accounts_assisted_approval_person
+  ck_operations_request_errors_status
   ck_team_memberships_end_pair
   ck_team_memberships_end_kind
   ck_team_memberships_transfer_reason
   ck_team_manager_assignments_end_pair
   ck_team_manager_assignments_end_kind
+  ck_team_staff_assignments_role
+  ck_team_staff_assignments_end_pair
+  ck_team_staff_assignments_end_kind
   ck_team_operations_fingerprint
   ck_talent_sessions_state_times
   ck_talent_sessions_abandon_pair
@@ -456,6 +536,9 @@ REQUIRED_CONSTRAINTS=(
   ck_assets_name
   ck_assets_warranty_range
   ck_assets_warranty_channel
+  ck_assets_rental_facts ck_assets_rental_revision
+  ck_asset_batch_hash ck_asset_batch_quantity ck_asset_batch_result
+  ck_asset_rental_renewals_period ck_asset_rental_renewals_range
   ck_operations_service_heartbeats_status
   ck_operations_service_heartbeats_failures
   ck_operations_service_heartbeats_result_count
@@ -494,6 +577,11 @@ REQUIRED_CONSTRAINTS=(
   uq_project_coach_assignments_project_coach
 )
 REQUIRED_TRIGGERS=(
+  intake_role_intents_immutable intake_role_decisions_immutable
+  intake_identity_selections_immutable person_team_staff_authorizations_immutable
+  person_staff_authorization_role
+  person_team_staff_positions_history_guard
+  reactionx_events_immutable reactionx_result_receipts_immutable
   trg_housing_stays_void_fact_immutable
   trg_housing_stay_void_operations_immutable
   trg_accounts_identity_facts trg_people_account_identity_facts
@@ -527,6 +615,18 @@ REQUIRED_SCOPE_COLUMNS=(
   personnel_intake_requests.target_coach_person_ids
   personnel_intake_requests.target_team_id
   guardian_relationships.requires_verification
+  intake_identity_selections.person_id intake_identity_selections.origin_approval_id
+  intake_identity_selections.primary_identity intake_identity_selections.concurrent_identities
+  intake_identity_selections.primary_staff_identity intake_identity_selections.resolved_staff_type
+  intake_identity_selections.operation_summary intake_identity_selections.operation_digest
+  person_team_staff_positions.person_id person_team_staff_positions.team_id
+  person_team_staff_positions.staff_role person_team_staff_positions.origin_approval_id
+  person_team_staff_positions.started_at person_team_staff_positions.ended_at
+  person_team_staff_positions.version person_team_staff_positions.account_assignment_id
+  person_team_staff_authorizations.position_id person_team_staff_authorizations.version
+  person_team_staff_authorizations.authorizer_user_id person_team_staff_authorizations.authorized_role_key
+  person_team_staff_authorizations.role_plan_id person_team_staff_authorizations.operation_id
+  person_team_staff_authorizations.evidence_digest
 )
 REQUIRED_ENCRYPTED_COLUMNS=(
   housing_stays.void_reason_ciphertext
@@ -561,6 +661,7 @@ REQUIRED_ROLE_KEYS=(
   finance
 )
 REQUIRED_PERMISSION_KEYS=(
+  operations.appearance.manage
   registration.review
   registration.sensitive.read
   staff_identity_applications.review

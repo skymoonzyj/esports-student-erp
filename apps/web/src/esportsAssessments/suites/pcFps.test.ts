@@ -35,5 +35,8 @@ describe('PC FPS suite factory', () => {
     expect(instructions).toMatch(/形状/)
     expect(instructions).toMatch(/文字/)
     expect(instructions).not.toMatch(/打字|记忆/)
+    expect(instructions).toMatch(/每次按下.*一枪/)
+    expect(instructions).toMatch(/长按不连发/)
+    expect(instructions).toMatch(/跟枪.*无需.*射击/)
   })
 })

@@ -8,6 +8,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.admissions import models as admissions_models  # noqa: F401
+from app.appearance import models as appearance_models  # noqa: F401
 from app.asset_management import models as asset_management_models  # noqa: F401
 from app.audit import models as audit_models  # noqa: F401
 from app.auth import models as auth_models  # noqa: F401
@@ -15,12 +16,15 @@ from app.core.models import Base
 from app.esports_assessments import models as esports_assessment_models  # noqa: F401
 from app.evaluations import models as evaluations_models  # noqa: F401
 from app.food_preferences import models as food_preference_models  # noqa: F401
-from app.housing import (
-    history_void_models,  # noqa: F401
-    reporting_models,  # noqa: F401
+from app.housing import (  # noqa: F401
+    history_void_models,
+    property_models,
+    reporting_models,
+    room_card_models,
 )
 from app.housing import models as housing_models  # noqa: F401
 from app.identity import models as identity_models  # noqa: F401
+from app.identity.assignments import models as person_assignment_models  # noqa: F401
 from app.mail import models as mail_models  # noqa: F401
 from app.operations import (
     cloud_auth_models,  # noqa: F401
@@ -31,6 +35,7 @@ from app.personnel_intake import models as personnel_intake_models  # noqa: F401
 from app.personnel_intake.claims import models as profile_claim_models  # noqa: F401
 from app.procurement import models as procurement_models  # noqa: F401
 from app.rbac import models as rbac_models  # noqa: F401
+from app.reactionx import models as reactionx_models  # noqa: F401
 from app.registration import models as registration_models  # noqa: F401
 from app.revenue_share import models as revenue_share_models  # noqa: F401
 from app.talent_tests import models as talent_test_models  # noqa: F401

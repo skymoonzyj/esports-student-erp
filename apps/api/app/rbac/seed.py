@@ -24,6 +24,8 @@ class PermissionSeed:
 
 
 ROLES = {
+    "assistant_coach": RoleSeed(UUID("10000000-0000-4000-8000-000000000015"), "助教"),
+    "property": RoleSeed(UUID("10000000-0000-4000-8000-000000000014"), "物业"),
     "admin": RoleSeed(UUID("10000000-0000-4000-8000-000000000001"), "管理员"),
     "coach": RoleSeed(UUID("10000000-0000-4000-8000-000000000002"), "教练"),
     "customer_service": RoleSeed(UUID("10000000-0000-4000-8000-000000000003"), "客服"),
@@ -47,15 +49,29 @@ ROLES = {
         UUID("10000000-0000-4000-8000-000000000011"),
         "财务",
     ),
-    "team_member": RoleSeed(
-        UUID("10000000-0000-4000-8000-000000000012"), "队员"
-    ),
-    "team_manager": RoleSeed(
-        UUID("10000000-0000-4000-8000-000000000013"), "队伍管理"
-    ),
+    "team_member": RoleSeed(UUID("10000000-0000-4000-8000-000000000012"), "队员"),
+    "team_manager": RoleSeed(UUID("10000000-0000-4000-8000-000000000013"), "队伍管理"),
 }
 
 PERMISSIONS = {
+    "housing.changes.submit": PermissionSeed(
+        UUID("20000000-0000-4000-8000-000000000094"), "提交房态变更", True
+    ),
+    "housing.changes.review": PermissionSeed(
+        UUID("20000000-0000-4000-8000-000000000095"), "审核房态变更", True
+    ),
+    "housing.keycards.manage": PermissionSeed(
+        UUID("20000000-0000-4000-8000-000000000096"), "管理房卡日期", True
+    ),
+    "housing.exports.basic": PermissionSeed(
+        UUID("20000000-0000-4000-8000-000000000097"), "导出基本住宿清单", True
+    ),
+    "reactionx.manage": PermissionSeed(
+        UUID("20000000-0000-4000-8000-000000000092"), "管理 ReactionX 连接器", True
+    ),
+    "reactionx.conduct": PermissionSeed(
+        UUID("20000000-0000-4000-8000-000000000093"), "ReactionX 现场代测", True
+    ),
     "people.list": PermissionSeed(UUID("20000000-0000-4000-8000-000000000001"), "查看人员列表"),
     "people.read": PermissionSeed(UUID("20000000-0000-4000-8000-000000000002"), "查看人员档案"),
     "people.create": PermissionSeed(UUID("20000000-0000-4000-8000-000000000003"), "创建人员"),
@@ -445,14 +461,20 @@ PERMISSIONS = {
     "housing.history.void": PermissionSeed(
         UUID("20000000-0000-4000-8000-000000000090"), "作废历史入住记录", True
     ),
+    "operations.appearance.manage": PermissionSeed(
+        UUID("20000000-0000-4000-8000-000000000091"), "管理全局系统外观", True
+    ),
 }
 
 SUPER_ADMIN_ONLY_PERMISSIONS = frozenset(
     {
+        "reactionx.manage",
+        "reactionx.conduct",
         "permissions.manage",
         "audit.read",
         "mail.settings.manage",
         "operations.monitor.read",
+        "operations.appearance.manage",
         "project_coaches.manage",
         "housing.history.void",
     }
@@ -486,6 +508,10 @@ ADMIN_GLOBAL_ASSET_PERMISSIONS = frozenset(
 
 ADMIN_DEFAULT_EXCLUDED_PERMISSIONS = frozenset(
     {
+        "housing.changes.submit",
+        "housing.changes.review",
+        "housing.keycards.manage",
+        "housing.exports.basic",
         "talent_tests.read",
         "esports_assessments.read",
         "team_memberships.read",
@@ -512,7 +538,18 @@ EVALUATION_ACCESS_ROLE_GRANTS = [
 ]
 
 ROLE_PERMISSION_GRANTS = [
-    *[(role_key, "referrals.read_invited_housing", "self") for role_key in ROLES],
+    ("property", "housing.read", "global"),
+    ("property", "housing.changes.submit", "global"),
+    ("property", "housing.keycards.manage", "global"),
+    ("property", "housing.exports.basic", "global"),
+    ("administration", "housing.changes.review", "global"),
+    ("administration", "housing.keycards.manage", "global"),
+    ("administration", "housing.exports.basic", "global"),
+    *[
+        (role_key, "referrals.read_invited_housing", "self")
+        for role_key in ROLES
+        if role_key not in {"property", "assistant_coach"}
+    ],
     *[
         ("super_admin", permission, "global")
         for permission in PERMISSIONS
@@ -537,6 +574,12 @@ ROLE_PERMISSION_GRANTS = [
     ("coach", "enrollments.read", "assigned_class"),
     ("administration", "people.list", "global"),
     ("administration", "people.read", "global"),
+    ("administration", "personnel_intake.review", "global"),
+    ("administration", "professional_teams.manage", "global"),
+    ("administration", "team_memberships.read", "global"),
+    ("administration", "team_memberships.manage", "global"),
+    ("administration", "team_memberships.transfer", "global"),
+    ("administration", "team_manager_assignments.manage", "global"),
     ("administration", "accounts.read", "global"),
     ("administration", "housing.read", "global"),
     ("administration", "housing.rooms.manage", "global"),
@@ -627,6 +670,9 @@ ROLE_PERMISSION_GRANTS = [
     ("team_member", "team_memberships.read", "self"),
     ("team_manager", "team_memberships.read", "assigned_team"),
     ("team_manager", "team_memberships.manage", "assigned_team"),
+    ("coach", "team_memberships.read", "assigned_team"),
+    ("assistant_coach", "team_memberships.read", "assigned_team"),
+    ("assistant_coach", "personnel_intake.housing.read", "global"),
     ("guardian", "esports_assessments.read", "family"),
     ("coach", "esports_assessments.read", "assigned_class"),
     ("guardian", "evaluation_media.original.read", "family"),

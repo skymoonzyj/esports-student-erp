@@ -32,6 +32,13 @@ class FakePointerLockEvents implements PointerLockEventSource {
 }
 
 describe('DesktopInputRouter', () => {
+  it('keeps lane point input live through five minutes without extending legacy input', () => {
+    const actions: InputAction[] = []
+    const router = new DesktopInputRouter({ suite_id: 'pc-moba', sensitivity: 1, duration_ms: 300000,
+      bounds: { x: 0, y: 0, width: 1000, height: 562.5 }, logical_size: { width: 1000, height: 562.5 } }, action => actions.push(action))
+    for (const at_ms of [60000, 299999, 300000]) router.down({ pointerId: 1, button: 0, x: 400, y: 300, at_ms })
+    expect(actions.map(action => action.at_ms)).toEqual([60000, 299999])
+  })
   it('converts mouse movement to sensitivity-adjusted angular deltas', () => {
     const actions: InputAction[] = []
     const router = new DesktopInputRouter({

@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.esports_assessments.catalog import AVAILABLE_SUITES, get_suite, get_task, next_u32
+from app.esports_assessments.catalog import get_suite, get_task, next_u32
 from app.esports_assessments.config_schemas import SuiteConfig, TaskConfig
 
 MEMBERS = {
@@ -17,15 +17,14 @@ MEMBERS = {
 
 @pytest.mark.parametrize("suite, members", MEMBERS.items())
 def test_frozen_members_are_the_only_accepted_tasks(suite, members):
-    config = get_suite(suite)
+    config = get_suite(suite, catalog_version=f"{suite}-v3")
     assert config.test_ids == members
     assert tuple(config.tasks) == members
     for test in members:
-        assert get_task(suite, test).difficulty == 3
+        assert get_task(suite, test, catalog_version=f"{suite}-v3").difficulty == 3
     for alien in set(sum(MEMBERS.values(), ())) - set(members):
         with pytest.raises(ValueError):
-            get_task(suite, alien)
-    assert not AVAILABLE_SUITES
+            get_task(suite, alien, catalog_version=f"{suite}-v3")
 
 
 @pytest.mark.parametrize(
@@ -39,7 +38,7 @@ def test_frozen_members_are_the_only_accepted_tasks(suite, members):
     ],
 )
 def test_practice_parameters_apply_relevant_columns_only(difficulty, size, speed, window, distance):
-    aim = get_task("pc-fps", "precision", difficulty).params
+    aim = get_task("pc-fps", "precision", difficulty, catalog_version="pc-fps-v3").params
     assert aim.target_diameter_deg == pytest.approx(3 * size)
     assert aim.angle_distances_deg == pytest.approx((10 * distance, 20 * distance, 30 * distance))
     track = get_task("mobile-fps", "tracking", difficulty).params
@@ -48,25 +47,27 @@ def test_practice_parameters_apply_relevant_columns_only(difficulty, size, speed
     assert skill.target_radius == pytest.approx(22 * size)
     assert skill.target_speed == pytest.approx(80 * speed)
     assert skill.projectile_speed == 600
-    mini = get_task("pc-moba", "map-awareness", difficulty).params
+    mini = get_task("pc-moba", "map-awareness", difficulty, catalog_version="pc-moba-v3").params
     assert mini.event_window_ms == pytest.approx(1000 * window)
     assert mini.target_radius == 24
     dodge = get_task("pc-moba", "dodge", difficulty, catalog_version="pc-moba-v2").params
     assert dodge.warning_ms == pytest.approx(400 * window)
     assert dodge.projectile_speed == pytest.approx(400 * speed)
     assert dodge.warning_ms + 240 / dodge.projectile_speed * 1000 <= 2000
-    assert get_task("pc-fps", "precision").params.target_diameter_deg == 3
+    assert (
+        get_task("pc-fps", "precision", catalog_version="pc-fps-v3").params.target_diameter_deg == 3
+    )
 
 
 @pytest.mark.parametrize("value", [0, 6, True, 3.0, "3"])
 def test_difficulty_is_a_strict_registered_integer(value):
     with pytest.raises(ValueError):
-        get_task("pc-fps", "precision", value)
+        get_task("pc-fps", "precision", value, catalog_version="pc-fps-v3")
 
 
 def test_catalog_is_deeply_immutable_and_returns_independent_snapshots():
-    one = get_suite("pc-fps")
-    two = get_suite("pc-fps")
+    one = get_suite("pc-fps", catalog_version="pc-fps-v3")
+    two = get_suite("pc-fps", catalog_version="pc-fps-v3")
     assert one is not two
     with pytest.raises(TypeError):
         one.tasks["precision"] = one.tasks["tracking"]
@@ -78,7 +79,7 @@ def test_catalog_is_deeply_immutable_and_returns_independent_snapshots():
     "field,value", [("catalog_version", "unknown"), ("duration_ms", True), ("extra", 1)]
 )
 def test_unknown_or_malformed_config_cannot_be_used(field, value):
-    payload = get_task("pc-fps", "precision").model_dump(mode="json")
+    payload = get_task("pc-fps", "precision", catalog_version="pc-fps-v3").model_dump(mode="json")
     payload[field] = value
     with pytest.raises(ValidationError):
         TaskConfig.model_validate(payload)
@@ -102,7 +103,8 @@ def test_current_frontend_catalog_matches_every_backend_field():
         / "web/src/esportsAssessments/testSupport/catalog-v3.json"
     )
     assert json.loads(path.read_text()) == {
-        suite: get_suite(suite).model_dump(mode="json") for suite in MEMBERS
+        suite: get_suite(suite, catalog_version=f"{suite}-v3").model_dump(mode="json")
+        for suite in MEMBERS
     }
 
 
@@ -153,7 +155,7 @@ def test_rng_golden_sequence(seed, expected):
     "field,value", [("opportunity_count", 39), ("target_diameter_deg", 99), ("fire_interval_ms", 1)]
 )
 def test_named_version_cannot_silently_change_registered_parameters(field, value):
-    payload = get_task("pc-fps", "precision").model_dump(mode="json")
+    payload = get_task("pc-fps", "precision", catalog_version="pc-fps-v3").model_dump(mode="json")
     payload["params"][field] = value
     with pytest.raises(ValidationError):
         TaskConfig.model_validate(payload)
@@ -163,13 +165,13 @@ def test_named_version_cannot_silently_change_registered_parameters(field, value
 @pytest.mark.parametrize("difficulty", [1, 2, 3, 4, 5])
 def test_all_eighty_registered_configs_are_feasible(suite, difficulty):
     for test in MEMBERS[suite]:
-        config = get_task(suite, test, difficulty)
+        config = get_task(suite, test, difficulty, catalog_version=f"{suite}-v3")
         assert TaskConfig.model_validate_json(config.model_dump_json()) == config
 
 
 @pytest.mark.parametrize("suite", MEMBERS)
 def test_suite_json_roundtrip_ignores_task_mapping_key_order(suite):
-    original = get_suite(suite)
+    original = get_suite(suite, catalog_version=f"{suite}-v3")
     payload = original.model_dump(mode="json")
     payload["tasks"] = dict(reversed(tuple(payload["tasks"].items())))
     restored = SuiteConfig.model_validate_json(json.dumps(payload, sort_keys=True))

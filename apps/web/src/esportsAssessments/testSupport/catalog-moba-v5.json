@@ -1,0 +1,29 @@
+{
+  "suite_id": "pc-moba",
+  "catalog_version": "pc-moba-v5",
+  "test_ids": ["last-hit"],
+  "tasks": {
+    "last-hit": {
+      "suite_id": "pc-moba", "test_id": "last-hit",
+      "catalog_version": "pc-moba-v5", "engine_version": "pc-moba-v5",
+      "scoring_version": "pc-moba-v5", "report_version": "pc-moba-v5",
+      "duration_ms": 300000, "difficulty": 3,
+      "params": {
+        "logical_width": 1000, "logical_height": 562.5, "player_radius": 12,
+        "player_speed": 250, "attack_range": 55,
+        "kind": "lane_last_hit_towers", "attack_mode": "melee",
+        "wave_interval_ms": 20000, "wave_count": 15, "melee_per_wave": 3, "ranged_per_wave": 2,
+        "attack_windup_ms": 300, "attack_interval_ms": 1100, "attack_damage": 70, "projectile_speed": 0,
+        "hero_health": 1000, "respawn_ms": 5000, "tower_damage": 180,
+        "tower_interval_ms": 1200, "tower_windup_ms": 300, "tower_range": 240,
+        "tower_projectile_speed": 650,
+        "tower_positions": [
+          { "id": "ally-rear", "team": "ally", "x": 70, "y": 162.5 },
+          { "id": "ally-front", "team": "ally", "x": 280, "y": 400 },
+          { "id": "enemy-front", "team": "enemy", "x": 720, "y": 162.5 },
+          { "id": "enemy-rear", "team": "enemy", "x": 930, "y": 400 }
+        ]
+      }
+    }
+  }
+}

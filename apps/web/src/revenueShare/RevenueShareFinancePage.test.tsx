@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, expect, it, vi } from "vitest"
 
@@ -24,6 +24,15 @@ function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={queryClient}><RevenueShareFinancePage /></QueryClientProvider>)
 }
+
+it("keeps settlement amounts and actions in a keyboard-accessible ledger region", async () => {
+  renderPage()
+  const ledger = await screen.findByRole("region", { name: "收款对象余额，可横向滚动" })
+  expect(ledger).toHaveAttribute("tabindex", "0")
+  expect(within(ledger).getAllByRole("cell", { name: "¥100.00" })).toHaveLength(2)
+  expect(within(ledger).getByRole("button", { name: "登记打款" })).toBeEnabled()
+  expect(mocks.settle).not.toHaveBeenCalled()
+})
 
 it("retains the operation key after a lost response and replays the same settlement", async () => {
   mocks.settle.mockRejectedValueOnce(new TypeError("network lost")).mockResolvedValueOnce({ id: "record" })

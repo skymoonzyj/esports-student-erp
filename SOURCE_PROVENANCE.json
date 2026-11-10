@@ -1,17 +1,31 @@
 {
-  "snapshot_schema": 1,
+  "snapshot_schema": 2,
   "source_workspace": "profile-housing-edit",
   "source_revision": "62cb1a29b325112af62f164e52477c29f9e1b69d",
-  "exported_at_utc": "2026-10-23T15:59:22.908766+00:00",
+  "source_worktree_dirty": true,
+  "source_inventory_sha256": "7459dadda0a0a99c5e105f32445bc5ac9c9cbe3911a67ec2afabdee8955d9183",
+  "source_status_sha256": "4d4e1ca49c33359d407cce585b0fd60e9d99e68ba4d7607a3d217b61b47a1a7d",
+  "exported_at_utc": "2026-11-10T10:20:38.394578+00:00",
+  "publication_base_revision": "ed79ea358e45382268095ea5142e42149c2221f6",
   "original_history_included": false,
   "original_credentials_included": false,
   "synthetic_fixture_role_count": 28,
-  "source_file_count": 1808,
-  "credential_references_sanitized": 145,
+  "synthetic_fixture_sha256": "394db4ed1e363179a9c870f4f8eddb594ade2bf879e51a6a2073c2f0c7c16890",
+  "environment_example_origin": "previously_published_safe_example",
+  "source_file_count": 2308,
+  "credential_references_sanitized": 198,
+  "privacy_replacement_counts": {
+    "extra_privacy": 10,
+    "fixture_identifier": 182,
+    "fixture_identifier_fullwidth": 1,
+    "fixture_password": 5
+  },
+  "nas_release_id": "20261110T084601Z-62cb1a29b325-449326746b7f",
+  "nas_alembic_head": "0090_administration_team_mgmt",
+  "deployment_performed_by_exporter": false,
   "generated_files": [
     "SOURCE_SNAPSHOT.md",
     "SOURCE_PROVENANCE.json",
     "SOURCE_MANIFEST.sha256"
-  ],
-  "environment_example_origin": "main-working-tree/.env.example"
+  ]
 }

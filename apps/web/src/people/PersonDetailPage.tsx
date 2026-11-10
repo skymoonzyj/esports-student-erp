@@ -6,8 +6,9 @@ import { Link, useParams } from "react-router-dom"
 import { ProblemDetailsError } from "../api/client"
 import { useOptionalAuth } from "../auth/AuthProvider"
 import { AssistedProfileCorrectionPanel } from "../assistedPeople/AssistedProfileCorrectionPanel"
-import { CoachResponsibilityPanel } from "../assistedPeople/CoachResponsibilityPanel"
+import { documentTypeLabel } from "../assistedPeople/documentFacts"
 import { formatDateOnly } from "../shared/date"
+import { ModuleErrorBoundary } from "../shared/ModuleErrorBoundary"
 import { StudentMatchingPanel } from "../evaluations/StudentMatchingPanel"
 import { PersonAssetsPanel } from "../assets/PersonAssetsPanel"
 import { FoodPreferencesPanel } from "../foodPreferences/FoodPreferencesPanel"
@@ -16,11 +17,15 @@ import { GuardianPanel } from "./GuardianPanel"
 import { StaffProfilePanel } from "./StaffProfilePanel"
 import { PersonHousingPanel } from "./PersonHousingPanel"
 import { TeamAllocationPanel } from "./TeamAllocationPanel"
+import { PersonAffiliationsSection } from "./PersonAffiliationsSection"
 import { getPerson, revealSensitive } from "./api"
 import { ageText, personAccountStatusLabels, personTypeText, staffTypeLabels, teamProjectionText } from "./presentation"
 import "./people.css"
 
 const AssessmentReportsPanel = lazy(() => import("../esportsAssessments/AssessmentReportsPanel").then(module => ({ default: module.AssessmentReportsPanel })))
+const ReactionxReportsPanel = lazy(() => import("../reactionx/ReactionxReportsPanel").then(module => ({ default: module.ReactionxReportsPanel })))
+const ActivationRolesPanel = lazy(() => import("../assistedPeople/ActivationRolesPanel").then(module => ({ default: module.ActivationRolesPanel })))
+const PendingRoleIntentPanel = lazy(() => import("../assistedPeople/PendingRoleIntentPanel").then(module => ({ default: module.PendingRoleIntentPanel })))
 
 type SensitiveField = "phone" | "identity_number"
 export const SENSITIVE_REVEAL_DURATION_MS = 60_000
@@ -87,6 +92,7 @@ function AccountPersonDetailPage({
     Partial<Record<SensitiveField, ReturnType<typeof setTimeout>>>
   >({})
   const routeVersion = useRef(0)
+  const accountRequestVersion = useRef(0)
   const person = useQuery({
     queryKey: ["person", personId, accountId, scope],
     queryFn: ({ signal }) => getPerson(personId ?? "", signal),
@@ -143,14 +149,19 @@ function AccountPersonDetailPage({
 
   async function openAccount(): Promise<void> {
     if (!personId || accountPending) return
+    const requestRouteVersion = routeVersion.current
+    const requestVersion = ++accountRequestVersion.current
+    const isCurrentRequest = () => requestRouteVersion === routeVersion.current && requestVersion === accountRequestVersion.current
     setAccountPending(true)
     setAccountError(null)
     setAccountNeedsGuardian(false)
     try {
       const created = await createAccount(personId)
+      if (!isCurrentRequest()) return
       setAccountDialogOpen(false)
       setTemporaryPassword(created.temporary_password)
     } catch (error) {
+      if (!isCurrentRequest()) return
       if (error instanceof ProblemDetailsError && hasGuardianError(error)) {
         setAccountError(GUARDIAN_ACCOUNT_MESSAGE)
         setAccountNeedsGuardian(true)
@@ -160,7 +171,7 @@ function AccountPersonDetailPage({
         )
       }
     } finally {
-      setAccountPending(false)
+      if (isCurrentRequest()) setAccountPending(false)
     }
   }
 
@@ -264,6 +275,7 @@ function AccountPersonDetailPage({
       </div>
 
       {canUpdate ? <StaffProfilePanel key={`${accountId}:${detail.id}`} personId={detail.id} accountId={accountId} /> : null}
+      <PersonAffiliationsSection key={`affiliations:${scope}:${detail.id}`} detail={detail} />
       {detail.team_allocation ? <TeamAllocationPanel key={`allocation:${accountId}:${detail.id}`} personId={detail.id} projection={detail.team_allocation} /> : null}
 
       <div className="personDetailGrid">
@@ -279,6 +291,10 @@ function AccountPersonDetailPage({
             <div>
               <dt>昵称</dt>
               <dd>{detail.nickname ?? "未设置"}</dd>
+            </div>
+            <div>
+              <dt>证件类型</dt>
+              <dd>{documentTypeLabel(detail.document_type)}</dd>
             </div>
             <div>
               <dt>证件号码</dt>
@@ -387,14 +403,28 @@ function AccountPersonDetailPage({
       {permissions.has("assets.read") ? <PersonAssetsPanel personId={detail.id} /> : null}
 
       {permissions.has("esports_assessments.read") || scopedPermissions.has("esports_assessments.read") ? (
-        <Suspense fallback={<p role="status">正在加载天赋评测报告面板…</p>}>
-          <AssessmentReportsPanel personId={detail.id} />
-        </Suspense>
+        <ModuleErrorBoundary key={`assessment:${accountId}:${personId}`} moduleName="天赋评测报告">
+          <Suspense fallback={<p role="status">正在加载天赋评测报告面板…</p>}>
+            <AssessmentReportsPanel personId={detail.id} />
+          </Suspense>
+        </ModuleErrorBoundary>
       ) : null}
+
+      {permissions.has("talent_tests.read") || scopedPermissions.has("talent_tests.read") ? (
+        <ModuleErrorBoundary key={`reactionx:${accountId}:${personId}`} moduleName="实体灯报告">
+          <Suspense fallback={<p role="status">正在加载实体灯报告面板…</p>}>
+            <ReactionxReportsPanel personId={detail.id} />
+          </Suspense>
+        </ModuleErrorBoundary>
+      ) : null}
+
+      {assisted && permissions.has("personnel_intake.review") ? <ModuleErrorBoundary key={`pending-roles:${accountId}:${personId}`} moduleName="待授权角色"><Suspense fallback={<p role="status">正在加载角色审批…</p>}><PendingRoleIntentPanel personId={detail.id} /></Suspense></ModuleErrorBoundary> : null}
+      {detail.activation_roles_available === true && auth?.status === "authenticated" && auth.user ? <ModuleErrorBoundary key={`activation-roles:${accountId}:${personId}`} moduleName="激活角色">
+        <Suspense fallback={<p role="status">正在加载激活角色面板…</p>}><ActivationRolesPanel personId={detail.id} available={detail.activation_roles_available} /></Suspense>
+      </ModuleErrorBoundary> : null}
 
       {canQueryAssistedEditor ? <>
         <AssistedProfileCorrectionPanel personId={detail.id} />
-        <CoachResponsibilityPanel personId={detail.id} />
       </> : null}
 
       {detail.person_types.includes("student") && permissions.has("people.read") ? <>
@@ -482,6 +512,8 @@ function AccountPersonDetailPage({
                 className="secondaryButton"
                 type="button"
                 onClick={() => {
+                  accountRequestVersion.current += 1
+                  setAccountPending(false)
                   setAccountDialogOpen(false)
                   setAccountError(null)
                   setAccountNeedsGuardian(false)

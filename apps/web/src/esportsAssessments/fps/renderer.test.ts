@@ -66,4 +66,30 @@ describe('FPS renderer resource boundary (not a WebGL acceptance test)', () => {
     expect(() => createFpsRenderer(document.createElement('canvas'))).toThrow(/WebGL2/)
     expect(backend.render).not.toHaveBeenCalled()
   })
+
+  it('colors the tracking target red or green from measured on-target state', () => {
+    const renderer = createFpsRenderer(document.createElement('canvas'))
+    const tracking = { ...snapshot, targets: [{ ...snapshot.targets[0], type: 'neutral' as const }], feedback: { kind: 'spheretrack90' as const, covered: false } }
+    renderer.render(tracking)
+    const scene = backend.render.mock.calls.at(-1)?.[0] as Scene
+    const target = scene.getObjectByName('enemy')!
+    const fill = target.children[0] as Three.Mesh<Three.CircleGeometry, Three.MeshBasicMaterial>
+    expect(fill.material.color.getHex()).toBe(0xff675e)
+    renderer.render({ ...tracking, feedback: { kind: 'spheretrack90', covered: true } })
+    expect(fill.material.color.getHex()).toBe(0x7cf5c7)
+    renderer.dispose()
+  })
+
+  it('renders v4 angular targets as lit spheres with tangent-correct radius, leaving old disks frozen', () => {
+    const renderer = createFpsRenderer(document.createElement('canvas'))
+    renderer.render({ ...snapshot, targets: [{ ...snapshot.targets[0], type: 'neutral', shape: 'sphere' }] })
+    const scene = backend.render.mock.calls.at(-1)?.[0] as Scene
+    const sphere = scene.getObjectByName('enemy') as Three.Group
+    expect((sphere.children[0] as Three.Mesh).geometry.type).toBe('SphereGeometry')
+    expect((sphere.children[0] as Three.Mesh<Three.SphereGeometry, Three.MeshPhongMaterial>).material.type).toBe('MeshPhongMaterial')
+    expect(sphere.scale.x).toBeCloseTo(10 * Math.sin(2 * Math.PI / 180), 10)
+    renderer.render({ ...snapshot, targets: [{ ...snapshot.targets[0], id: 'old' }] })
+    expect((scene.getObjectByName('old')!.children[0] as Three.Mesh).geometry.type).toBe('CircleGeometry')
+    renderer.dispose()
+  })
 })

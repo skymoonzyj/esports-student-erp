@@ -39,3 +39,26 @@
 .claimCompletionRead dd {
   margin: 4px 0 0;
 }
+
+.claimCompletionFields,
+.claimGuardianFields { min-width: 0; margin: 0; padding: 20px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); }
+.claimCompletionFields legend,
+.claimGuardianFields legend { padding-inline: 6px; color: var(--color-text-strong); font-size: 13px; }
+.claimGuardianFields { margin-top: 12px; }
+.claimCompletionFields .formField,
+.claimGuardianFields .formField { min-width: 0; }
+.claimCompletionFields :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]),
+.claimGuardianFields :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]) { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 8px); color: var(--color-text); background: var(--color-surface); font: inherit; }
+.claimCompletionFields :is(input, select, textarea):focus-visible,
+.claimGuardianFields :is(input, select, textarea):focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }
+.claimCompletionRead { padding: 16px; border-radius: var(--ui-radius-sm, 8px); background: var(--color-canvas); }
+.claimCompletionRead dl { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+.claimCompletionRead dt { color: var(--color-text-muted); font-size: 12px; }
+.claimCompletionRead dd { color: var(--color-text-strong); font-size: 13px; line-height: 1.65; }
+html[data-ui-theme="command"] .claimCompletionFields,
+html[data-ui-theme="command"] .claimGuardianFields { padding: 16px; }
+@media (max-width: 600px) {
+  .claimCompletionFields,
+  .claimGuardianFields { padding: 16px; }
+  .claimCompletionRead dl { grid-template-columns: minmax(0, 1fr); }
+}

@@ -1,4 +1,5 @@
 import { apiFetch, apiFetchResponse } from "../api/client"
+import type { AssetHardware } from "../assets/api"
 
 export type ProcurementSettlementStatus = "settled" | "unsettled"
 export type ProcurementReimbursementStatus = "reimbursed" | "unreimbursed"
@@ -101,6 +102,7 @@ export type PurchaseCreateInput = PurchaseInput & {
   add_to_assets: boolean
   asset_category: string | null
   asset_warranty_expires_on: string | null
+  asset_hardware?: AssetHardware | null
 }
 
 export type PurchaseExportInput = PurchaseFilters & {

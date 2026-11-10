@@ -7,9 +7,9 @@
   width: 100%;
   min-width: 0;
   margin-bottom: 24px;
-  padding: 20px;
+  padding: 24px;
   border: 1px solid var(--color-border-soft);
-  border-radius: 8px;
+  border-radius: var(--ui-radius-lg, 14px);
   background: var(--color-surface);
   color: var(--color-text);
   overflow-wrap: anywhere;
@@ -69,6 +69,9 @@
 
 .selfProfileFacts > div {
   min-width: 0;
+  padding: 12px;
+  border-radius: var(--ui-radius-sm, 8px);
+  background: var(--color-canvas);
 }
 
 .selfProfileFacts dt {
@@ -116,10 +119,10 @@
 .selfProfileNicknameForm input {
   width: 100%;
   min-width: 0;
-  min-height: 42px;
+  min-height: 44px;
   padding: 0 12px;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--ui-radius-sm, 8px);
   background: var(--color-surface);
   color: var(--color-text-strong);
   font: inherit;
@@ -137,11 +140,25 @@
 }
 
 .selfProfileSaveButton {
-  min-height: 42px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
+}
+
+html[data-ui-theme="command"] .selfProfilePanel { padding: 20px; border-radius: var(--ui-radius-md, 8px); }
+html[data-ui-theme="command"] .selfProfileFacts { gap: 0; border: 1px solid var(--color-border-soft); }
+html[data-ui-theme="command"] .selfProfileFacts > div { border-radius: 0; border-bottom: 1px solid var(--color-border-soft); background: var(--color-surface); }
+html[data-ui-theme="command"] .selfProfileFacts > div:nth-last-child(-n+3) { border-bottom: 0; }
+html[data-ui-theme="command"] .selfProfileFacts > div:not(:nth-child(3n)) { border-right: 1px solid var(--color-border-soft); }
+@media (max-width: 640px) {
+  html[data-ui-theme="command"] .selfProfilePanel { padding: 16px; }
+  html[data-ui-theme="command"] .selfProfileFacts > div { border-right: 0; border-bottom: 1px solid var(--color-border-soft); }
+  html[data-ui-theme="command"] .selfProfileFacts > div:not(:nth-child(3n)) { border-right: 0; }
+  html[data-ui-theme="command"] .selfProfileFacts > div:nth-child(odd) { border-right: 1px solid var(--color-border-soft); }
+  html[data-ui-theme="command"] .selfProfileFacts > div:nth-last-child(-n+3) { border-bottom: 1px solid var(--color-border-soft); }
+  html[data-ui-theme="command"] .selfProfileFacts > div:last-child { border-bottom: 0; }
 }
 
 .selfProfileSaveButton:disabled {

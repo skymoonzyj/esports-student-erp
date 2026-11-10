@@ -75,12 +75,62 @@ export type OperationsOverview = {
 
 export const operationsKeys = {
   overview: (windowMinutes: number) => ["operations", "overview", windowMinutes] as const,
+  requestErrorsRoot: () => ["operations", "request-errors"] as const,
+  requestErrors: (filters: OperationsRequestErrorFilters) => [
+    ...operationsKeys.requestErrorsRoot(),
+    filters.days,
+    filters.page,
+    filters.accountId,
+    filters.sourceIp,
+    filters.statusCode,
+  ] as const,
 }
 
 export function getOperationsOverview(windowMinutes: number): Promise<OperationsOverview> {
   return apiFetch<OperationsOverview>(
     `/operations/overview?window_minutes=${windowMinutes}`,
   )
+}
+
+export type OperationsRequestError = {
+  id: string
+  occurred_at: string
+  account_id: string | null
+  account_name: string | null
+  source_ip: string | null
+  request_id: string | null
+  method: string
+  route: string
+  status_code: number
+  reason: string
+}
+
+export type OperationsRequestErrors = {
+  items: OperationsRequestError[]
+  total: number
+  page: number
+  page_size: number
+  retention_days: 30
+}
+
+export type OperationsRequestErrorFilters = {
+  days: 1 | 7 | 30
+  page: number
+  accountId: string
+  sourceIp: string
+  statusCode: number | null
+}
+
+export function getOperationsRequestErrors(filters: OperationsRequestErrorFilters): Promise<OperationsRequestErrors> {
+  const params = new URLSearchParams({
+    days: String(filters.days),
+    page: String(filters.page),
+    page_size: "20",
+  })
+  if (filters.accountId) params.set("account_id", filters.accountId)
+  if (filters.sourceIp) params.set("source_ip", filters.sourceIp)
+  if (filters.statusCode !== null) params.set("status_code", String(filters.statusCode))
+  return apiFetch<OperationsRequestErrors>(`/operations/request-errors?${params}`)
 }
 
 export type OperationsHistoryPoint = {

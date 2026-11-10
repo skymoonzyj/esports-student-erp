@@ -1,0 +1,24 @@
+{
+  "suite_id": "pc-moba",
+  "catalog_version": "pc-moba-v4",
+  "test_ids": ["last-hit"],
+  "tasks": {
+    "last-hit": {
+      "suite_id": "pc-moba",
+      "test_id": "last-hit",
+      "catalog_version": "pc-moba-v4",
+      "engine_version": "pc-moba-v4",
+      "scoring_version": "pc-moba-v4",
+      "report_version": "pc-moba-v4",
+      "duration_ms": 300000,
+      "difficulty": 3,
+      "params": {
+        "kind": "lane_last_hit", "attack_mode": "melee",
+        "logical_width": 1000, "logical_height": 562.5, "player_radius": 12,
+        "player_speed": 250, "attack_range": 55,
+        "wave_interval_ms": 30000, "wave_count": 10, "melee_per_wave": 3, "ranged_per_wave": 2,
+        "attack_windup_ms": 300, "attack_interval_ms": 1100, "attack_damage": 70, "projectile_speed": 0
+      }
+    }
+  }
+}

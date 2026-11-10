@@ -26,3 +26,83 @@
 .teamDialogActions { position: sticky; bottom: -1.2rem; display: flex; justify-content: flex-end; gap: .5rem; padding: .8rem 0; background: #fff; }
 .teamError { padding: .65rem; border-radius: .4rem; color: #962d28; background: #fff0ee; }
 @media (max-width: 600px) { .teamFilters { display: grid; grid-template-columns: 1fr; } .teamFilters label { min-width: 0; } .teamDialogBackdrop { align-items: end; padding: 0; } .teamDialog { width: 100%; max-height: 90dvh; border-radius: .9rem .9rem 0 0; padding-bottom: max(1rem, env(safe-area-inset-bottom)); } .teamCandidateList { max-height: 38dvh; overflow-y: auto; } }
+
+/* A uses separated, airy cards; B uses a connected desktop workspace. */
+.teamManagementPage,
+.teamSelfPanel { gap: 20px; min-width: 0; width: min(100%, 1240px); margin-inline: auto; color: var(--color-text); }
+.teamPageHeader { min-width: 0; gap: 20px; }
+.teamPageHeader > div { min-width: 0; }
+.teamPageHeader h1 { font-size: clamp(24px, 2.5vw, 30px); font-weight: 680; letter-spacing: -.025em; }
+.teamFilters { gap: 14px; padding: 18px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); }
+.teamFilters label,
+.teamDialog label { min-width: 0; gap: 7px; color: var(--color-text-strong); font-size: 12px; font-weight: 650; }
+.teamFilters label { flex: 1 1 180px; }
+.teamFilters input,
+.teamFilters select,
+.teamDialog input,
+.teamDialog select,
+.teamDialog textarea { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border-color: var(--color-border); border-radius: var(--ui-radius-sm, 8px); background: var(--color-surface); color: var(--color-text); }
+.teamDialog textarea { resize: vertical; min-height: 96px; }
+.teamCardGrid { gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); }
+.teamCard,
+.teamSelfCurrent,
+.teamHistory { align-content: start; gap: 12px; min-width: 0; padding: 22px; border-color: var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); overflow-wrap: anywhere; }
+.teamCard h2,
+.teamHistory h3 { color: var(--color-text-strong); font-size: 18px; }
+.teamCardMeta,
+.teamMemberMeta { color: var(--color-text-muted); font-size: 12px; line-height: 1.7; }
+.teamCardMeta { margin: 0; }
+.teamActionRow,
+.teamPager { gap: 8px; }
+.teamManagementPage .teamActionRow select { min-width: 44px; min-height: 44px; max-width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 8px); background: var(--color-surface); color: var(--color-text); font: inherit; vertical-align: middle; }
+.teamManagementPage button,
+.teamSelfPanel button,
+.teamDialog button { font-size: 12px; font-weight: 650; min-height: 44px; padding: 10px 14px; border-color: var(--color-border); border-radius: var(--ui-radius-sm, 8px); background: var(--color-surface); color: var(--color-text-strong); }
+.teamManagementPage button:hover:not(:disabled),
+.teamSelfPanel button:hover:not(:disabled),
+.teamDialog button:hover:not(:disabled) { border-color: var(--color-accent-300); background: var(--color-accent-soft); color: var(--color-accent-800); }
+.teamManagementPage :is(button, input, select):focus-visible,
+.teamSelfPanel button:focus-visible,
+.teamDialog :is(button, input, select, textarea):focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }
+.teamManagementPage .teamPrimaryButton,
+.teamSelfPanel .teamPrimaryButton,
+.teamDialog .teamPrimaryButton { background: var(--color-accent-700); color: white; border-color: var(--color-accent-700); box-shadow: var(--ui-shadow-button, none); }
+.teamManagementPage .teamPrimaryButton:hover:not(:disabled),
+.teamSelfPanel .teamPrimaryButton:hover:not(:disabled),
+.teamDialog .teamPrimaryButton:hover:not(:disabled) { background: var(--color-accent-800); color: white; }
+.teamMemberList li,
+.teamHistory li,
+.teamAssignmentList li { gap: 10px; min-width: 0; padding: 14px; border-color: var(--color-border-soft); border-radius: var(--ui-radius-sm, 8px); overflow-wrap: anywhere; }
+.teamDialogBackdrop { padding: 24px; background: rgb(15 29 43 / 46%); }
+.teamDialog { gap: 20px; padding: 24px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-lg, 16px); background: var(--color-surface); box-shadow: 0 24px 70px rgb(15 29 43 / 24%); }
+.teamDialog h2 { color: var(--color-text-strong); font-size: 20px; }
+.teamDialogHeader { gap: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--color-border-soft); }
+.teamCandidateList { gap: 6px; }
+.teamCandidateList button { overflow-wrap: anywhere; }
+.teamCandidateList button[aria-pressed=true] { border-color: var(--color-accent-500); background: var(--color-accent-soft); color: var(--color-accent-800); }
+.teamDialogActions { bottom: -24px; flex-wrap: wrap; gap: 8px; margin-top: 4px; padding: 14px 0; border-top: 1px solid var(--color-border-soft); background: var(--color-surface); }
+.teamError { padding: 12px 14px; border: 1px solid var(--color-danger-700); border-radius: var(--ui-radius-sm, 8px); color: var(--color-danger-700); background: var(--color-danger-soft); }
+html[data-ui-theme="command"] .teamManagementPage,
+html[data-ui-theme="command"] .teamSelfPanel { gap: 14px; }
+html[data-ui-theme="command"] .teamFilters { padding: 14px 16px; gap: 10px; }
+html[data-ui-theme="command"] .teamCardGrid { gap: 0; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 8px); overflow: clip; background: var(--color-surface); }
+html[data-ui-theme="command"] .teamCard { padding: 18px; border: 0; border-right: 1px solid var(--color-border-soft); border-bottom: 1px solid var(--color-border-soft); border-radius: 0; }
+html[data-ui-theme="command"] .teamSelfCurrent,
+html[data-ui-theme="command"] .teamHistory { padding: 18px; }
+html[data-ui-theme="command"] .teamCard h2 { font-size: 16px; }
+@media (max-width: 600px) {
+  .teamPageHeader { align-items: stretch; flex-direction: column; gap: 14px; }
+  .teamPageHeader > button { width: 100%; }
+  .teamFilters { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+  .teamCard,
+  .teamSelfCurrent,
+  .teamHistory { padding: 18px; }
+  .teamActionRow > button { flex: 1; }
+  .teamDialogBackdrop { align-items: end; padding: 0; }
+  .teamDialog { width: 100%; max-height: 92dvh; border-bottom: 0; border-radius: var(--ui-radius-lg, 16px) var(--ui-radius-lg, 16px) 0 0; padding: 20px 16px max(16px, env(safe-area-inset-bottom)); gap: 18px; }
+  .teamDialogActions { bottom: calc(-1 * max(16px, env(safe-area-inset-bottom))); padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .teamDialogActions > button { flex: 1; }
+  .teamCandidateList { overscroll-behavior: contain; }
+  html[data-ui-theme="command"] .teamCardGrid { gap: 10px; border: 0; border-radius: 0; overflow: visible; background: transparent; }
+  html[data-ui-theme="command"] .teamCard { border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 8px); }
+}

@@ -35,6 +35,7 @@ import {
   updateHousingPlannedDeparture,
   verifyHousingRoom,
   verifyHousingRooms,
+  updateHousingRoomsServiceStatus,
   voidHousingStayHistory,
 } from "./api"
 import { housingKeys } from "./housingKeys"
@@ -49,6 +50,23 @@ function successfulJson(value: unknown): Response {
 }
 
 describe("housing API", () => {
+  it("serializes distinct frequency choices once in stable order without replacing legacy false", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(successfulJson({}))
+    vi.stubGlobal("fetch", fetchMock)
+    await listHousingOverview({ buildingId: "a", cleaningFrequencies: ["on_demand", "weekly", "daily", "weekly"], dailyCleaningEnabled: false })
+    const query = new URL(String(fetchMock.mock.calls[0][0]), "http://localhost").searchParams
+    expect(query.getAll("cleaning_frequency")).toEqual(["daily", "weekly", "on_demand"])
+    expect(query.get("building_id")).toBe("a")
+    expect(query.get("daily_cleaning_enabled")).toBe("false")
+  })
+  it("serializes independent quick filters with full and preserves legacy broad unassignable", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => successfulJson({}))
+    vi.stubGlobal("fetch", fetchMock)
+    await listHousingOverview({ buildingId: "a", assignability: "full", quickFilter: "problem" })
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/v1/housing/overview?building_id=a&assignability=full&quick_filter=problem")
+    await listHousingOverview({ assignability: "unassignable" })
+    expect(String(fetchMock.mock.calls[1][0])).toBe("/api/v1/housing/overview?assignability=unassignable")
+  })
   it("sends repeated plural cleaning_statuses understood by the overview endpoint", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(successfulJson({}))
     vi.stubGlobal("fetch", fetchMock)
@@ -279,6 +297,13 @@ describe("housing API", () => {
     expect(housingKeys.transferOptions("account-1", "revision-1", "stay-1")).toEqual([
       "housing", "account-1", "scope", "revision-1", "transfer-options", "stay-1",
     ])
+  })
+
+  it.each(['available', 'maintenance', 'disabled'] as const)("posts an atomic %s batch with explicit room versions", async (status) => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => successfulJson([]))
+    vi.stubGlobal('fetch', fetchMock)
+    await updateHousingRoomsServiceStatus([{ room_id: 'room-1', version: 7 }, { room_id: 'room-2', version: 4 }], status)
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/housing/rooms/batch-service-status', expect.objectContaining({ method: 'POST', body: JSON.stringify({ rooms: [{ room_id: 'room-1', version: 7 }, { room_id: 'room-2', version: 4 }], service_status: status }) }))
   })
 
   it("uses the housing mutation contract for every catalog write", async () => {

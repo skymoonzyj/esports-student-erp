@@ -113,6 +113,27 @@ class OperationsHistoryPage(BaseModel):
     retention_days: int
 
 
+class OperationsRequestErrorResponse(BaseModel):
+    id: UUID
+    occurred_at: datetime
+    account_id: UUID | None
+    account_name: str | None
+    source_ip: str | None
+    request_id: str | None
+    method: str
+    route: str
+    status_code: int
+    reason: str
+
+
+class OperationsRequestErrorPage(BaseModel):
+    items: list[OperationsRequestErrorResponse]
+    total: int
+    page: int
+    page_size: int
+    retention_days: Literal[30] = 30
+
+
 class OperationsAlertResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

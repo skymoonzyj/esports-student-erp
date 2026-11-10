@@ -1,0 +1,910 @@
+{
+  "$defs": {
+    "CommandEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": 1,
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "actor_account_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Actor Account Id",
+          "type": "string"
+        },
+        "subject_person_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subject Person Id"
+        },
+        "connector_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "title": "Connector Id",
+          "type": "string"
+        },
+        "sequence": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "expires_at": {
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "lease_remaining_ms": {
+          "maximum": 15000,
+          "minimum": 0,
+          "title": "Lease Remaining Ms",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "scan",
+            "identify",
+            "connect",
+            "disconnect",
+            "prepare",
+            "start",
+            "stop",
+            "manual_activate"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "payload": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScanPayload"
+            },
+            {
+              "$ref": "#/$defs/IdentifyPayload"
+            },
+            {
+              "$ref": "#/$defs/DeviceKeysPayload"
+            },
+            {
+              "$ref": "#/$defs/PreparePayload"
+            },
+            {
+              "$ref": "#/$defs/StartPayload"
+            },
+            {
+              "$ref": "#/$defs/StopPayload"
+            },
+            {
+              "$ref": "#/$defs/ManualActivatePayload"
+            }
+          ],
+          "title": "Payload"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "operation_id",
+        "run_id",
+        "actor_account_id",
+        "subject_person_id",
+        "connector_id",
+        "sequence",
+        "expires_at",
+        "lease_remaining_ms",
+        "kind",
+        "payload"
+      ],
+      "title": "CommandEnvelope",
+      "type": "object"
+    },
+    "DeviceDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "device_key": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "title": "Device Key",
+          "type": "string"
+        },
+        "display_number": {
+          "maximum": 64,
+          "minimum": 1,
+          "title": "Display Number",
+          "type": "integer"
+        },
+        "protocol_version": {
+          "enum": [
+            3,
+            4
+          ],
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "order": {
+          "maximum": 63,
+          "minimum": 0,
+          "title": "Order",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "device_key",
+        "display_number",
+        "protocol_version",
+        "order"
+      ],
+      "title": "DeviceDefinition",
+      "type": "object"
+    },
+    "DeviceKeysPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "device_keys": {
+          "items": {
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Device Keys",
+          "type": "array"
+        }
+      },
+      "required": [
+        "device_keys"
+      ],
+      "title": "DeviceKeysPayload",
+      "type": "object"
+    },
+    "IdentifyPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "device_key": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "title": "Device Key",
+          "type": "string"
+        },
+        "color": {
+          "maximum": 8,
+          "minimum": 0,
+          "title": "Color",
+          "type": "integer"
+        },
+        "duration_ms": {
+          "maximum": 3000,
+          "minimum": 1,
+          "title": "Duration Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "device_key",
+        "color",
+        "duration_ms"
+      ],
+      "title": "IdentifyPayload",
+      "type": "object"
+    },
+    "LayoutPosition": {
+      "additionalProperties": false,
+      "properties": {
+        "device_key": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "title": "Device Key",
+          "type": "string"
+        },
+        "x_cm": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "title": "X Cm",
+          "type": "integer"
+        },
+        "y_cm": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "title": "Y Cm",
+          "type": "integer"
+        },
+        "z_cm": {
+          "maximum": 100000,
+          "minimum": -100000,
+          "title": "Z Cm",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "device_key",
+        "x_cm",
+        "y_cm",
+        "z_cm"
+      ],
+      "title": "LayoutPosition",
+      "type": "object"
+    },
+    "ManualActivatePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "device_key": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "title": "Device Key",
+          "type": "string"
+        },
+        "color": {
+          "maximum": 8,
+          "minimum": 0,
+          "title": "Color",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "device_key",
+        "color"
+      ],
+      "title": "ManualActivatePayload",
+      "type": "object"
+    },
+    "PreparePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "manifest": {
+          "$ref": "#/$defs/RunManifest"
+        }
+      },
+      "required": [
+        "manifest"
+      ],
+      "title": "PreparePayload",
+      "type": "object"
+    },
+    "ResultEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": 1,
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "engine_version": {
+          "const": "reactionx-engine-v1",
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "manifest_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Manifest Digest",
+          "type": "string"
+        },
+        "events": {
+          "items": {
+            "$ref": "#/$defs/RunEvent"
+          },
+          "maxItems": 10000,
+          "title": "Events",
+          "type": "array"
+        },
+        "end": {
+          "$ref": "#/$defs/RunEnd"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "engine_version",
+        "run_id",
+        "manifest_digest",
+        "events",
+        "end"
+      ],
+      "title": "ResultEnvelope",
+      "type": "object"
+    },
+    "ResultReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "result_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "title": "Result Id",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "saved_at": {
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+          "title": "Saved At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "result_id",
+        "digest",
+        "saved_at"
+      ],
+      "title": "ResultReceipt",
+      "type": "object"
+    },
+    "RunConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "lamp_count": {
+          "maximum": 64,
+          "minimum": 1,
+          "title": "Lamp Count",
+          "type": "integer"
+        },
+        "sensor": {
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Sensor",
+          "type": "integer"
+        },
+        "flash": {
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Flash",
+          "type": "integer"
+        },
+        "on_sound": {
+          "title": "On Sound",
+          "type": "boolean"
+        },
+        "off_sound": {
+          "title": "Off Sound",
+          "type": "boolean"
+        },
+        "color": {
+          "maximum": 8,
+          "minimum": 0,
+          "title": "Color",
+          "type": "integer"
+        },
+        "stimulus_interval_ms": {
+          "maximum": 60000,
+          "minimum": 0,
+          "title": "Stimulus Interval Ms",
+          "type": "integer"
+        },
+        "timeout_ms": {
+          "maximum": 655350,
+          "minimum": 10,
+          "multipleOf": 10,
+          "title": "Timeout Ms",
+          "type": "integer"
+        },
+        "restart_interval_ms": {
+          "anyOf": [
+            {
+              "maximum": 60000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Restart Interval Ms"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "maximum": 900000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Duration Ms"
+        },
+        "task_count": {
+          "anyOf": [
+            {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Task Count"
+        },
+        "seed": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Seed",
+          "type": "integer"
+        },
+        "schedule_algorithm": {
+          "const": "balanced_cycle_v1",
+          "title": "Schedule Algorithm",
+          "type": "string"
+        },
+        "base_device_key": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Base Device Key"
+        },
+        "target_color": {
+          "anyOf": [
+            {
+              "maximum": 8,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Color"
+        },
+        "distractor_color": {
+          "anyOf": [
+            {
+              "maximum": 8,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Distractor Color"
+        }
+      },
+      "required": [
+        "lamp_count",
+        "sensor",
+        "flash",
+        "on_sound",
+        "off_sound",
+        "color",
+        "stimulus_interval_ms",
+        "timeout_ms",
+        "restart_interval_ms",
+        "duration_ms",
+        "task_count",
+        "seed",
+        "schedule_algorithm",
+        "base_device_key",
+        "target_color",
+        "distractor_color"
+      ],
+      "title": "RunConfig",
+      "type": "object"
+    },
+    "RunEnd": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "task_completed",
+            "time_completed",
+            "all_lit",
+            "user_stopped",
+            "lease_expired",
+            "disconnected",
+            "process_interrupted",
+            "device_error",
+            "storage_error"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "active_elapsed_ms": {
+          "maximum": 900000,
+          "minimum": 0,
+          "title": "Active Elapsed Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "active_elapsed_ms"
+      ],
+      "title": "RunEnd",
+      "type": "object"
+    },
+    "RunEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "seq": {
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "activation_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Activation Id"
+        },
+        "device_key": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_-]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Device Key"
+        },
+        "kind": {
+          "enum": [
+            "activated",
+            "hit",
+            "timeout",
+            "ignored",
+            "group_started",
+            "group_completed",
+            "cycle_started",
+            "cycle_completed",
+            "invalid"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "host_elapsed_ms": {
+          "maximum": 900000,
+          "minimum": 0,
+          "title": "Host Elapsed Ms",
+          "type": "integer"
+        },
+        "device_ticks_10ms": {
+          "anyOf": [
+            {
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Device Ticks 10Ms"
+        },
+        "round": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Round"
+        },
+        "group": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Group"
+        },
+        "cycle": {
+          "anyOf": [
+            {
+              "maximum": 10000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cycle"
+        },
+        "stimulus_role": {
+          "anyOf": [
+            {
+              "enum": [
+                "target",
+                "distractor",
+                "base"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stimulus Role"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "maximum": 8,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Color"
+        },
+        "termination_reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "host_timeout",
+                "hardware_timeout"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Termination Reason"
+        },
+        "quality_code": {
+          "anyOf": [
+            {
+              "enum": [
+                "activation_ambiguous",
+                "activation_write_failed",
+                "unknown_activation",
+                "duplicate_notification",
+                "device_time_invalid",
+                "event_limit_exceeded",
+                "stale_connection",
+                "stale_run",
+                "scheduler_late"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Quality Code"
+        }
+      },
+      "required": [
+        "seq",
+        "activation_id",
+        "device_key",
+        "kind",
+        "host_elapsed_ms",
+        "device_ticks_10ms",
+        "round",
+        "group",
+        "cycle",
+        "stimulus_role",
+        "color",
+        "termination_reason",
+        "quality_code"
+      ],
+      "title": "RunEvent",
+      "type": "object"
+    },
+    "RunLayout": {
+      "additionalProperties": false,
+      "properties": {
+        "posture": {
+          "enum": [
+            "standing",
+            "seated",
+            "custom",
+            "unregistered"
+          ],
+          "title": "Posture",
+          "type": "string"
+        },
+        "positions": {
+          "items": {
+            "$ref": "#/$defs/LayoutPosition"
+          },
+          "maxItems": 64,
+          "title": "Positions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "posture",
+        "positions"
+      ],
+      "title": "RunLayout",
+      "type": "object"
+    },
+    "RunManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": 1,
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "run_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "actor_account_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Actor Account Id",
+          "type": "string"
+        },
+        "subject_person_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Subject Person Id",
+          "type": "string"
+        },
+        "connector_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+          "title": "Connector Id",
+          "type": "string"
+        },
+        "rule_version": {
+          "const": "reactionx-v1",
+          "title": "Rule Version",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "manual",
+            "standard",
+            "sequence",
+            "simultaneous",
+            "base",
+            "auditory",
+            "true_false",
+            "counter",
+            "whack"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/$defs/RunConfig"
+        },
+        "devices": {
+          "items": {
+            "$ref": "#/$defs/DeviceDefinition"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Devices",
+          "type": "array"
+        },
+        "layout": {
+          "$ref": "#/$defs/RunLayout"
+        },
+        "manifest_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Manifest Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "run_id",
+        "actor_account_id",
+        "subject_person_id",
+        "connector_id",
+        "rule_version",
+        "mode",
+        "config",
+        "devices",
+        "layout",
+        "manifest_digest"
+      ],
+      "title": "RunManifest",
+      "type": "object"
+    },
+    "ScanPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_ms": {
+          "maximum": 30000,
+          "minimum": 1,
+          "title": "Duration Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "duration_ms"
+      ],
+      "title": "ScanPayload",
+      "type": "object"
+    },
+    "StartPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "manifest_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Manifest Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "manifest_digest"
+      ],
+      "title": "StartPayload",
+      "type": "object"
+    },
+    "StopPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "enum": [
+            "user_stopped",
+            "lease_expired",
+            "disconnected"
+          ],
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "StopPayload",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReactionX v1 frozen wire contracts",
+  "x-reactionx-scheduler-lateness-ms": 250
+}

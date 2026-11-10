@@ -1,11 +1,10 @@
 .registrationPage {
   min-height: 100dvh;
   display: grid;
-  place-items: center;
-  padding: clamp(20px, 5vw, 64px);
-  background:
-    radial-gradient(circle at top left, rgb(99 91 255 / 10%), transparent 36%),
-    var(--color-canvas);
+  grid-template-columns: minmax(280px, .72fr) minmax(0, 1.28fr);
+  align-items: start;
+  background: var(--color-canvas);
+  overflow-wrap: anywhere;
 }
 
 .registrationCard {
@@ -13,7 +12,7 @@
   min-width: 0;
   padding: clamp(24px, 5vw, 48px);
   border: 1px solid var(--color-border-soft);
-  border-radius: 24px;
+  border-radius: var(--ui-radius-lg, 16px);
   background: var(--color-surface);
   box-shadow: var(--shadow-card);
 }
@@ -28,11 +27,11 @@
   display: grid;
   place-items: center;
   margin-bottom: 28px;
-  border-radius: 13px;
+  border-radius: var(--ui-radius-md, 12px);
   color: white;
   background: var(--color-accent-600);
   font-weight: 800;
-  box-shadow: 0 14px 30px rgb(74 66 218 / 24%);
+  box-shadow: var(--ui-shadow-button, none);
 }
 
 .registrationEyebrow {
@@ -51,7 +50,7 @@
 }
 
 .registrationCard h1 {
-  font-size: clamp(30px, 5vw, 42px);
+  font-size: clamp(28px, 3vw, 34px);
 }
 
 .registrationLead {
@@ -111,14 +110,14 @@
   gap: 12px;
   padding: 16px;
   border: 1px solid var(--color-border);
-  border-radius: 15px;
+  border-radius: var(--ui-radius-md, 12px);
   cursor: pointer;
 }
 
 .registrationPurpose:has(input:checked) {
   border-color: var(--color-accent-500);
   background: var(--color-accent-soft);
-  box-shadow: 0 0 0 3px rgb(99 91 255 / 10%);
+  box-shadow: 0 0 0 2px var(--color-accent-soft);
 }
 
 .registrationPurpose input {
@@ -170,10 +169,11 @@
   width: 100%;
   min-width: 0;
   border: 1px solid var(--color-border);
-  border-radius: 11px;
+  border-radius: var(--ui-radius-sm, 8px);
   color: var(--color-text-strong);
-  background: white;
+  background: var(--color-surface);
 }
+.registrationFieldGroup .passwordInput input { padding-right: 58px; }
 
 .registrationFieldGroup input,
 .registrationFieldGroup select {
@@ -190,7 +190,7 @@
 .registrationFieldGroup select:focus,
 .registrationFieldGroup textarea:focus {
   border-color: var(--color-accent-500);
-  outline: 3px solid rgb(99 91 255 / 18%);
+  outline: 3px solid var(--ui-focus-ring, var(--color-accent-soft));
   outline-offset: 1px;
 }
 
@@ -204,7 +204,8 @@
 }
 
 .registrationTextButton {
-  padding: 0;
+  min-height: 44px;
+  padding: 0 2px;
   border: 0;
   color: var(--color-accent-700);
   background: transparent;
@@ -220,7 +221,7 @@
 .registrationSecondaryButton,
 .accountIdentifierActions button,
 .accountIdentifierFormActions > button:not(.primaryButton) {
-  min-height: 42px;
+  min-height: 44px;
   padding: 0 14px;
   border: 1px solid var(--color-border);
   border-radius: 10px;
@@ -264,6 +265,7 @@
   color: var(--color-text);
   font-size: 13px;
   line-height: 1.6;
+  min-height: 44px;
 }
 
 .registrationConsent input {
@@ -302,6 +304,37 @@
   font-size: 13px;
   text-align: center;
 }
+.registrationFooter a { display: inline-flex; align-items: center; min-height: 44px; }
+
+.registrationPage > .registrationCard { width: min(620px, calc(100% - 64px)); margin: 48px auto; box-shadow: none; }
+.registrationPage > .registrationCardWide { width: min(820px, calc(100% - 64px)); }
+.publicEntryAside { position: sticky; top: 0; display: flex; flex-direction: column; min-height: 100dvh; padding: clamp(32px, 4vw, 64px); border-right: 1px solid var(--color-border-soft); color: var(--color-text-strong); background: var(--color-accent-soft); }
+.publicEntryBrand { display: flex; align-items: center; gap: 12px; }
+.publicEntryBrand > span { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; border-radius: var(--ui-radius-md, 12px); color: white; background: var(--color-accent-600); font-size: 22px; font-weight: 750; }
+.publicEntryBrand strong { font-size: 19px; letter-spacing: .04em; }
+.publicEntryBrand small { display: block; margin-top: 4px; color: var(--color-text-muted); font-size: 10px; font-weight: 450; letter-spacing: .1em; }
+.publicEntryStory { margin-block: clamp(54px, 9vh, 100px) 42px; }
+.publicEntryStory > p { margin: 0 0 18px; color: var(--color-accent-700); font-size: 12px; }
+.publicEntryStory h2 { margin: 0 0 22px; font-size: clamp(30px, 3.2vw, 48px); font-weight: 650; line-height: 1.45; letter-spacing: -.035em; }
+.publicEntryStory > span { color: var(--color-text-muted); font-size: 13px; line-height: 1.9; }
+.publicEntryJourney { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--color-border); }
+.publicEntryJourney li { display: flex; align-items: center; gap: 18px; padding-block: 18px; border-bottom: 1px solid var(--color-border); }
+.publicEntryJourney li > span { color: var(--color-accent-700); font-size: 11px; font-variant-numeric: tabular-nums; }
+.publicEntryJourney strong { display: block; font-size: 13px; font-weight: 650; }
+.publicEntryJourney small { display: block; margin-top: 6px; color: var(--color-text-muted); font-size: 11px; }
+.publicEntryPrivacy { margin: auto 0 0; padding-top: 40px; color: var(--color-text-muted); font-size: 11px; }
+.registrationPage :is(button, a, input, select, textarea):focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-soft)); outline-offset: 3px; }
+html[data-ui-theme="command"] .registrationPage { grid-template-columns: minmax(280px, .62fr) minmax(0, 1.38fr); }
+html[data-ui-theme="command"] .publicEntryAside { color: #f2f6fd; background: var(--ui-sidebar-bg, #14253e); border-right: 0; }
+html[data-ui-theme="command"] .publicEntryStory > p,
+html[data-ui-theme="command"] .publicEntryJourney li > span { color: #9dc2ff; }
+html[data-ui-theme="command"] .publicEntryBrand small,
+html[data-ui-theme="command"] .publicEntryStory > span,
+html[data-ui-theme="command"] .publicEntryJourney small,
+html[data-ui-theme="command"] .publicEntryPrivacy { color: #b1bfd3; }
+html[data-ui-theme="command"] .publicEntryJourney,
+html[data-ui-theme="command"] .publicEntryJourney li { border-color: #35465f; }
+html[data-ui-theme="command"] .registrationPage > .registrationCard { border-top: 3px solid var(--color-accent-600); }
 
 .accountIdentifiersPanel {
   min-width: 0;
@@ -382,6 +415,13 @@
     padding: 0;
     background: var(--color-surface);
   }
+
+  .publicEntryAside { position: static; min-height: 0; padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) 22px max(20px, env(safe-area-inset-left)); border-right: 0; border-bottom: 1px solid var(--color-border-soft); }
+  .publicEntryStory, .publicEntryJourney, .publicEntryPrivacy { display: none; }
+  .registrationPage > .registrationCard,
+  .registrationPage > .registrationCardWide { width: 100%; min-height: calc(100dvh - 92px); margin: 0; padding: 28px max(20px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
+  .registrationPage > .registrationCard .registrationBrand { display: none; }
+  html[data-ui-theme="command"] .registrationPage > .registrationCard { border: 0; }
 
   .registrationCard {
     width: 100%;

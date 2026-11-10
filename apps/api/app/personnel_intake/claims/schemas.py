@@ -7,7 +7,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
-from app.identity.document_identity import ISO_COUNTRIES
+from app.identity.document_identity import (
+    ISO_COUNTRIES,
+    DocumentType,
+    normalize_document_identity,
+    normalize_hk_id,
+    normalize_hk_mo_permit,
+)
 from app.identity.normalization import normalize_cn_id, normalize_email
 from app.personnel_intake.schemas import AssistedGuardianInput, AssistedGuardianView
 
@@ -35,6 +41,25 @@ class ClaimCompletionFields(ClaimDTO):
     date_of_birth: date | None = None
     issuing_country: str | None = None
     guardians: list[AssistedGuardianInput] = Field(default_factory=list, max_length=10)
+
+    @field_validator("guardians")
+    @classmethod
+    def validate_permit_guardians(
+        cls, value: list[AssistedGuardianInput]
+    ) -> list[AssistedGuardianInput]:
+        # Fail request validation rather than later proof serialization.
+        # Leave all historical document branches and signed material unchanged.
+        for guardian in value:
+            if guardian.document_type == "hk_mo_permit":
+                normalize_document_identity(
+                    guardian.document_type,
+                    guardian.identity_number.get_secret_value(),
+                    issuing_country=guardian.document_issuing_country,
+                    sex=guardian.sex,
+                    date_of_birth=guardian.date_of_birth,
+                    allow_pending=False,
+                )
+        return value
 
     @field_validator("issuing_country")
     @classmethod
@@ -66,7 +91,7 @@ class ClaimStartInput(ClaimDTO):
     full_name: SecretStr
     identity_number: SecretStr
     email: SecretStr
-    document_type: Literal["cn_id", "passport"] = "cn_id"
+    document_type: DocumentType = "cn_id"
     issuing_country: str | None = None
     completion: ClaimCompletionFields | None = None
 
@@ -90,6 +115,21 @@ class ClaimStartInput(ClaimDTO):
             self.identity_number = SecretStr(normalize_cn_id(raw).number)
             if self.issuing_country not in (None, "CN"):
                 raise ValueError("身份证签发国家无效")
+        elif self.document_type == "hk_id":
+            self.identity_number = SecretStr(normalize_hk_id(raw))
+            if self.issuing_country not in (None, "HK") or (
+                self.completion and self.completion.issuing_country not in (None, "HK")
+            ):
+                raise ValueError("香港身份证签发地区无效")
+            self.issuing_country = None
+            if self.completion:
+                self.completion.issuing_country = None
+        elif self.document_type == "hk_mo_permit":
+            self.identity_number = SecretStr(normalize_hk_mo_permit(raw))
+            if self.issuing_country is not None or (
+                self.completion and self.completion.issuing_country is not None
+            ):
+                raise ValueError("回乡证签发资料无效")
         elif not raw.strip() or len(raw.strip()) > 80 or any(ord(char) < 32 for char in raw):
             raise ValueError("护照号码无效")
         extra_country = self.completion.issuing_country if self.completion else None
@@ -171,7 +211,7 @@ class ClaimDetail(ClaimListItem):
     private_match_reason: str | None
     same_target_pending_count: int = Field(ge=0)
     can_approve: bool
-    applicant_document_type: Literal["cn_id", "passport"] = "cn_id"
+    applicant_document_type: DocumentType = "cn_id"
     applicant_issuing_country: str | None = None
     applicant_completion: ClaimCompletionView | None = None
     profile_completion: ClaimCompletionView | None = None

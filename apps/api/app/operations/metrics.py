@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import ipaddress
+import logging
 import math
+import re
 import threading
 import time
 from collections import Counter, deque
@@ -9,7 +12,14 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from starlette.datastructures import MutableHeaders
+from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from app.core.client_ip import request_source_ip
+from app.core.privacy import contains_sensitive_request_id
+
+logger = logging.getLogger(__name__)
 
 _EXCLUDED_PATHS = frozenset(
     {
@@ -18,6 +28,7 @@ _EXCLUDED_PATHS = frozenset(
         "/api/v1/operations/history",
         "/api/v1/operations/alerts",
         "/api/v1/operations/backup-status",
+        "/api/v1/operations/request-errors",
     }
 )
 
@@ -39,6 +50,8 @@ CLIENT_ERROR_REASONS: dict[int, str] = {
     429: "请求过于频繁",
 }
 _MAX_CLIENT_ERROR_DETAILS = 5
+ERROR_RETENTION_DAYS = 30
+_SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 LATENCY_BOUNDS = (1, 5, 10, 25, 50, 100, 250, 500, 750, 1500, 3000, 5000, 10000, 30000)
 MinuteKey = tuple[datetime, str, str, int]
 
@@ -67,6 +80,41 @@ class MinuteAggregate:
 class MetricBatch:
     id: UUID
     rows: dict[MinuteKey, MinuteAggregate]
+    errors: tuple[RequestErrorEvent, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RequestErrorEvent:
+    id: UUID
+    occurred_at: datetime
+    account_id: UUID | None
+    source_ip: str | None
+    request_id: str | None
+    method: str
+    route: str
+    status_code: int
+    reason: str
+
+
+def error_reason(status_code: int) -> str:
+    if status_code < 500:
+        return CLIENT_ERROR_REASONS.get(status_code, "客户端请求错误")
+    return {
+        500: "服务器内部错误",
+        502: "上游服务响应错误",
+        503: "服务暂时不可用",
+        504: "上游服务响应超时",
+    }.get(status_code, "服务器处理错误")
+
+
+def _safe_source_ip(value: str | None) -> str | None:
+    if not value or "%" in value:
+        return None
+    try:
+        normalized = ipaddress.ip_address(value).compressed
+    except ValueError:
+        return None
+    return normalized if len(normalized) <= 45 else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +200,7 @@ class RequestMetricsStore:
         retention_seconds: int = 24 * 60 * 60,
         max_samples: int = 100_000,
         max_pending_keys: int = 10_000,
+        max_pending_errors: int = 10_000,
         clock: Any = time.time,
     ) -> None:
         self.retention_seconds = retention_seconds
@@ -162,6 +211,10 @@ class RequestMetricsStore:
         self._overflow: dict[int, tuple[MinuteKey, MinuteAggregate]] = {}
         self._max_pending_keys = max_pending_keys
         self._inflight: MetricBatch | None = None
+        self._pending_errors: deque[RequestErrorEvent] = deque()
+        self._max_pending_errors = max_pending_errors
+        self._dropped_error_details = 0
+        self._last_error_drop_at: float | None = None
         self._clock = clock
         self.started_at_epoch = float(clock())
 
@@ -173,6 +226,10 @@ class RequestMetricsStore:
         status_code: int,
         duration_ms: float,
         occurred_at: float | None = None,
+        account_id: UUID | None = None,
+        source_ip: str | None = None,
+        request_id: str | None = None,
+        include_aggregate: bool = True,
     ) -> None:
         timestamp = float(self._clock() if occurred_at is None else occurred_at)
         sample = RequestSample(
@@ -183,36 +240,68 @@ class RequestMetricsStore:
             duration_ms=max(0.0, duration_ms),
         )
         cutoff = timestamp - self.retention_seconds
+        safe_method = sample.method if sample.method in {
+            "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "CONNECT", "TRACE"
+        } else "OTHER"
         with self._lock:
-            self._samples.append(sample)
-            while self._samples and self._samples[0].occurred_at < cutoff:
-                self._samples.popleft()
-            minute = datetime.fromtimestamp(timestamp, tz=UTC).replace(second=0, microsecond=0)
-            safe_method = sample.method if sample.method in {
-                "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "CONNECT", "TRACE"
-            } else "OTHER"
-            key = (minute, safe_method, route[:300], status_code)
-            if len(self._pending) >= self._max_pending_keys and key not in self._pending:
-                # Bound memory without dropping counters during a prolonged outage.
-                # Overflow loses route/minute precision; totals stay grouped by status,
-                # attributed to the most recent minute until the next successful flush.
-                overflow_status = status_code if 100 <= status_code <= 599 else 500
-                key = (minute, "OTHER", "/{aggregated}", overflow_status)
-                previous = self._overflow.get(overflow_status)
-                aggregate = previous[1] if previous else MinuteAggregate()
-                aggregate.add(sample.duration_ms)
-                self._overflow[overflow_status] = (key, aggregate)
-            else:
-                self._pending.setdefault(key, MinuteAggregate()).add(sample.duration_ms)
+            if include_aggregate:
+                self._samples.append(sample)
+                while self._samples and self._samples[0].occurred_at < cutoff:
+                    self._samples.popleft()
+                minute = datetime.fromtimestamp(timestamp, tz=UTC).replace(second=0, microsecond=0)
+                key = (minute, safe_method, route[:300], status_code)
+                if len(self._pending) >= self._max_pending_keys and key not in self._pending:
+                    # Bound memory without dropping counters during a prolonged outage.
+                    # Overflow loses route/minute precision; totals stay grouped by status,
+                    # attributed to the most recent minute until the next successful flush.
+                    overflow_status = status_code if 100 <= status_code <= 599 else 500
+                    key = (minute, "OTHER", "/{aggregated}", overflow_status)
+                    previous = self._overflow.get(overflow_status)
+                    aggregate = previous[1] if previous else MinuteAggregate()
+                    aggregate.add(sample.duration_ms)
+                    self._overflow[overflow_status] = (key, aggregate)
+                else:
+                    self._pending.setdefault(key, MinuteAggregate()).add(sample.duration_ms)
+            if 400 <= status_code <= 599:
+                inflight_count = len(self._inflight.errors) if self._inflight else 0
+                if len(self._pending_errors) + inflight_count >= self._max_pending_errors:
+                    self._dropped_error_details += 1
+                    self._last_error_drop_at = timestamp
+                else:
+                    self._pending_errors.append(RequestErrorEvent(
+                        id=uuid4(), occurred_at=datetime.fromtimestamp(timestamp, tz=UTC),
+                        account_id=account_id, source_ip=_safe_source_ip(source_ip),
+                        request_id=request_id if request_id and _SAFE_REQUEST_ID.fullmatch(request_id)
+                        and not contains_sensitive_request_id(request_id) else None,
+                        method=safe_method, route=route[:300], status_code=status_code,
+                        reason=error_reason(status_code),
+                    ))
+
+    @property
+    def dropped_error_details(self) -> int:
+        with self._lock:
+            return self._dropped_error_details
+
+    def error_pressure_recent(self, *, now: float, window_seconds: int = 300) -> bool:
+        with self._lock:
+            pending_count = len(self._pending_errors)
+            inflight_count = len(self._inflight.errors) if self._inflight else 0
+            at_capacity = pending_count + inflight_count >= self._max_pending_errors
+            return self._last_error_drop_at is not None and (
+                at_capacity or now - self._last_error_drop_at < window_seconds
+            )
 
     def pending_batch(self) -> MetricBatch | None:
         """Caller holds flush_lock until commit and acknowledgement."""
         with self._lock:
-            if self._inflight is None and self._pending:
+            if self._inflight is None and (self._pending or self._pending_errors):
                 self._pending.update(dict(self._overflow.values()))
                 self._overflow = {}
-                self._inflight = MetricBatch(id=uuid4(), rows=self._pending)
+                self._inflight = MetricBatch(
+                    id=uuid4(), rows=self._pending, errors=tuple(self._pending_errors)
+                )
                 self._pending = {}
+                self._pending_errors.clear()
             return self._inflight
 
     def acknowledge_batch(self, batch_id: UUID) -> None:
@@ -342,10 +431,15 @@ class RequestMetricsMiddleware:
         self.store = store
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope.get("path") in _EXCLUDED_PATHS:
+        if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
+        excluded = scope.get("path") in _EXCLUDED_PATHS
+        if scope.get("path") == "/api/v1/operations/request-errors":
+            # The outer server-error handler can respond after this middleware
+            # unwinds; its standard privacy path must still apply.
+            scope.setdefault("state", {})["private_portal_response"] = True
         started = time.perf_counter()
         status_code = 500
 
@@ -353,14 +447,32 @@ class RequestMetricsMiddleware:
             nonlocal status_code
             if message["type"] == "http.response.start":
                 status_code = int(message["status"])
+                if scope.get("path") == "/api/v1/operations/request-errors":
+                    headers = MutableHeaders(scope=message)
+                    headers["Cache-Control"] = "no-store, private"
+                    headers["Pragma"] = "no-cache"
             await send(message)
 
         try:
             await self.app(scope, receive, capture_status)
         finally:
-            self.store.record(
-                method=str(scope.get("method", "GET")),
-                route=normalized_route(scope),
-                status_code=status_code,
-                duration_ms=(time.perf_counter() - started) * 1000,
-            )
+            try:
+                source = request_source_ip(
+                    Request(scope),
+                    trusted_proxy_cidrs=scope["app"].state.settings.trusted_proxy_cidrs,
+                )
+                source_ip = _safe_source_ip(source)
+                state = scope.get("state") or {}
+                account_id = state.get("operations_authenticated_account_id")
+                self.store.record(
+                    method=str(scope.get("method", "GET")),
+                    route=normalized_route(scope),
+                    status_code=status_code,
+                    duration_ms=(time.perf_counter() - started) * 1000,
+                    account_id=account_id if isinstance(account_id, UUID) else None,
+                    source_ip=source_ip,
+                    request_id=state.get("request_id"),
+                    include_aggregate=not excluded,
+                )
+            except Exception:  # noqa: BLE001 -- metrics must never affect business responses
+                logger.warning("operations_request_metrics_record_failed")

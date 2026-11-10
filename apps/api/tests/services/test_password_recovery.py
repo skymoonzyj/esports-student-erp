@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import func, select
@@ -12,7 +13,7 @@ from app.audit.service import AuditService
 from app.auth.identifiers import login_identifier_digest, normalize_login_identifier
 from app.auth.models import AccountLoginIdentifier, AuthSession, UserAccount
 from app.auth.schemas import AccountCreate
-from app.auth.service import AccountService, AuthService
+from app.auth.service import AccountService, AuthContext, AuthService
 from app.identity.models import Person
 from app.identity.schemas import PersonBaseInput
 from app.identity.service import IdentityService
@@ -40,6 +41,150 @@ VERIFICATION_KEY = bytes(range(1, 33))
 SESSION_KEY = bytes(range(2, 34))
 OLD_PASSWORD = "Old2026PassAa"
 NEW_PASSWORD = "New2026PassAa"
+
+
+class _FrozenAccountDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return NOW if tz is not None else NOW.replace(tzinfo=None)
+
+
+@pytest.mark.parametrize(
+    "failure", ["missing", "expired", "exhausted", "wrong_purpose", "wrong_code", "consumed"]
+)
+def test_rejected_password_reset_does_not_hash(
+    db: Session, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    account, phone, _ = _account(db, sequence=661)
+    sender = CapturingVerificationSender(messages=[])
+    auth = _auth(db)
+    verification = _verification(db, sender)
+    issued = auth.issue_password_reset(
+        identifier=phone, request_source="127.0.0.61", verification=verification
+    )
+    challenge = db.get(RegistrationVerificationChallenge, issued.challenge_id)
+    assert challenge is not None
+    code = sender.code_for(issued.challenge_id)
+    challenge_id = issued.challenge_id
+    if failure == "missing":
+        challenge_id = uuid4()
+    elif failure == "expired":
+        challenge.expires_at = NOW
+    elif failure == "exhausted":
+        challenge.attempts = 5
+    elif failure == "wrong_purpose":
+        challenge.purpose = "add_login_identifier"
+    elif failure == "consumed":
+        challenge.consumed_at = NOW
+    else:
+        code = "999999" if code != "999999" else "000000"
+    db.commit()
+    before_hash = account.password_hash
+    hash_calls: list[str] = []
+
+    def observe_hash(password: str) -> str:
+        hash_calls.append(password)
+        return before_hash
+
+    monkeypatch.setattr(auth.passwords, "hash", observe_hash)
+    with pytest.raises(VerificationInvalidOrExpired):
+        auth.complete_password_reset(
+            challenge_id=challenge_id, code=code, new_password=NEW_PASSWORD,
+            request_id="rejected-reset-no-hash", verification=verification,
+        )
+    assert hash_calls == []
+    db.expire_all()
+    stored = db.get(RegistrationVerificationChallenge, issued.challenge_id)
+    assert stored is not None
+    if failure == "wrong_code":
+        assert stored.attempts == 1
+    assert db.get(UserAccount, account.id).password_hash == before_hash
+
+
+@pytest.mark.parametrize("decoy", [False, True])
+def test_authorized_password_reset_hashes_only_real_account_once(
+    db: Session, monkeypatch: pytest.MonkeyPatch, decoy: bool
+) -> None:
+    account, phone, _ = _account(db, sequence=663)
+    sender = CapturingVerificationSender(messages=[])
+    auth = _auth(db)
+    verification = _verification(db, sender)
+    issued = auth.issue_password_reset(
+        identifier="13999999997" if decoy else phone,
+        request_source="127.0.0.63", verification=verification,
+    )
+    hash_calls: list[str] = []
+    real_hash = auth.passwords.hash
+
+    def observe_hash(password: str) -> str:
+        hash_calls.append(password)
+        return real_hash(password)
+
+    monkeypatch.setattr(auth.passwords, "hash", observe_hash)
+    auth.complete_password_reset(
+        challenge_id=issued.challenge_id, code=sender.code_for(issued.challenge_id),
+        new_password=NEW_PASSWORD, request_id="authorized-reset-hash", verification=verification,
+    )
+    assert hash_calls == ([] if decoy else [NEW_PASSWORD])
+    db.expire_all()
+    assert PasswordService().verify(
+        OLD_PASSWORD if decoy else NEW_PASSWORD, db.get(UserAccount, account.id).password_hash
+    )
+
+
+@pytest.mark.parametrize("change_kind", ["ordinary", "admin", "recovery"])
+def test_password_change_invalidates_older_recovery_codes(
+    db: Session, monkeypatch: pytest.MonkeyPatch, change_kind: str
+) -> None:
+    monkeypatch.setattr(auth_service_module, "datetime", _FrozenAccountDateTime)
+    account, phone, email = _account(db, sequence=665)
+    normalized = normalize_login_identifier(email)
+    db.add(AccountLoginIdentifier(
+        account_id=account.id, kind="email",
+        identifier_digest=login_identifier_digest(LookupDigest(FIELD_KEY), normalized),
+        verified_at=NOW, verification_source="test_verified", is_primary=False,
+    ))
+    session = AuthSession(
+        user_id=account.id, token_digest="lifecycle-session", csrf_digest="lifecycle-csrf",
+        expires_at=NOW + timedelta(hours=1),
+    )
+    db.add(session)
+    db.commit()
+    sender = CapturingVerificationSender(messages=[])
+    auth = _auth(db)
+    verification = _verification(db, sender)
+    issued = auth.issue_password_reset(
+        identifier=phone, request_source="127.0.0.65", verification=verification
+    )
+    if change_kind == "ordinary":
+        auth.change_password(
+            AuthContext(account=account, person=db.get(Person, account.person_id), session=session),
+            current_password=OLD_PASSWORD, new_password=NEW_PASSWORD,
+        )
+    elif change_kind == "admin":
+        AccountService(
+            db, passwords=PasswordService(),
+            identity_service=IdentityService(
+                db, cipher=EnvelopeCipher(FIELD_KEY), lookup=LookupDigest(FIELD_KEY)
+            ),
+        ).reset_password(account.id)
+    else:
+        latest = auth.issue_password_reset(
+            identifier=email, request_source="127.0.0.66", verification=verification
+        )
+        auth.complete_password_reset(
+            challenge_id=latest.challenge_id, code=sender.code_for(latest.challenge_id),
+            new_password=NEW_PASSWORD, request_id="latest-recovery", verification=verification,
+        )
+    db.expire_all()
+    expected_hash = db.get(UserAccount, account.id).password_hash
+    with pytest.raises(VerificationInvalidOrExpired):
+        auth.complete_password_reset(
+            challenge_id=issued.challenge_id, code=sender.code_for(issued.challenge_id),
+            new_password="StaleReset2026Aa", request_id="stale-recovery", verification=verification,
+        )
+    db.expire_all()
+    assert db.get(UserAccount, account.id).password_hash == expected_hash
 
 
 def _mapped_snapshot(row: object) -> dict[str, object]:
@@ -841,7 +986,18 @@ def test_password_reset_audit_failure_rolls_back_password_and_challenge(
         attempts=0,
         last_sent_at=NOW - timedelta(minutes=2),
     )
-    db.add_all([registration_session, registration_challenge])
+    older_reset_challenge = RegistrationVerificationChallenge(
+        account_id=account.id,
+        purpose="password_reset",
+        identifier_kind="phone",
+        identifier_digest=identifier_digest,
+        code_digest="f" * 64,
+        request_source_digest="a" * 64,
+        expires_at=NOW + timedelta(minutes=10),
+        attempts=0,
+        last_sent_at=NOW - timedelta(minutes=2),
+    )
+    db.add_all([registration_session, registration_challenge, older_reset_challenge])
     db.commit()
     verification = _verification(db, sender)
     challenge = _auth(db).issue_password_reset(
@@ -890,6 +1046,10 @@ def test_password_reset_audit_failure_rolls_back_password_and_challenge(
     )
     assert stored_registration_session is not None
     assert stored_registration_session.revoked_at is None
+    stored_older_reset = db.get(RegistrationVerificationChallenge, older_reset_challenge.id)
+    assert stored_older_reset is not None
+    assert stored_older_reset.consumed_at is None
+    assert stored_older_reset.expires_at == NOW + timedelta(minutes=10)
 
 
 def test_password_reset_secret_cleanup_failure_rolls_back_every_credential(

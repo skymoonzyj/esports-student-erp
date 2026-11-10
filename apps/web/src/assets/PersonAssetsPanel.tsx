@@ -6,6 +6,8 @@ import { assetKeys } from "./keys"
 import { statusLabels } from "./status"
 import { AssetPhotoLink } from "./AssetPhotoLink"
 import { AssetWarrantyDetails } from "./AssetWarrantyDetails"
+import { AssetHardwareDetails } from "./AssetHardwareDetails"
+import { OwnershipDetails } from "./OwnershipFields"
 import "./assets.css"
 
 export function PersonAssetsPanel({ personId }: { personId: string }) {
@@ -31,6 +33,8 @@ export function PersonAssetsPanel({ personId }: { personId: string }) {
                 <span>{asset.asset_code} · {asset.category ?? "未分类"}</span>
                 <span>采购 {asset.purchase_date ?? "未填写"} · 保修至 {asset.warranty_expires_on ?? "未填写"}</span>
                 <AssetWarrantyDetails asset={asset} />
+                <AssetHardwareDetails asset={asset} />
+                <OwnershipDetails asset={asset} />
               </div>
               <div className="personAssetActions">
                 <span className={`assetStatus ${asset.status}`}>{statusLabels[asset.status]}</span>

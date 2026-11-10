@@ -1,8 +1,19 @@
 import { afterEach, expect, it, vi } from "vitest"
 
-import { listAccounts } from "./api"
+import { changeAccountJobRole, listAccounts } from "./api"
 
 afterEach(() => vi.unstubAllGlobals())
+
+it("posts the complete atomic job change including explicit false retention", async () => {
+  let request: { url: string; method: string | undefined; input: unknown } | undefined
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (url, init) => {
+    request = { url: String(url), method: init?.method, input: JSON.parse(String(init?.body)) }
+    return new Response(JSON.stringify({ account_id: "target", added_role_ids: ["new"], removed_role_ids: ["old"], retained_role_ids: ["student"], roles: [{ id: "new", key: "coach", name: "教练" }] }), { headers: { "Content-Type": "application/json" } })
+  }))
+  const result = await changeAccountJobRole("target", { from_role_id: "old", to_role_id: "new", keep_concurrent_roles: false, expected_role_ids: ["old", "student"] })
+  expect(request).toEqual({ url: "/api/v1/accounts/target/job-role-change", method: "POST", input: { from_role_id: "old", to_role_id: "new", keep_concurrent_roles: false, expected_role_ids: ["old", "student"] } })
+  expect(result.removed_role_ids).toEqual(["old"])
+})
 
 it("keeps the server-projected primary identifier contract", async () => {
   const account = {

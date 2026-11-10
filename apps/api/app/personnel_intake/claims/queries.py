@@ -55,8 +55,8 @@ def mask_email(value: str) -> str:
 
 
 def mask_identity(value: str, *, document_type: DocumentType = "cn_id") -> str:
-    if document_type == "passport":
-        return mask_document_identity("passport", value)
+    if document_type != "cn_id":
+        return mask_document_identity(document_type, value)
     return value[:3] + "*" * max(1, len(value) - 7) + value[-4:]
 
 

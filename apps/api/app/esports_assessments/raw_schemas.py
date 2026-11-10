@@ -38,6 +38,40 @@ class TrackingRaw(StrictModel):
         return self
 
 
+class Spheretrack90Raw(StrictModel):
+    kind: Literal["spheretrack90"]
+    coverage_ms: Time
+    loss_count: Annotated[Count, Field(le=7200)]
+    reacquisition_ms: Annotated[tuple[Time, ...], Field(max_length=7200)]
+
+    @model_validator(mode="after")
+    def check_losses(self) -> Self:
+        if (
+            len(self.reacquisition_ms) > self.loss_count
+            or sum(self.reacquisition_ms) + self.coverage_ms > 60000
+        ):
+            raise ValueError("reacquisition exceeds losses or uncovered duration")
+        return self
+
+
+class MultiTargetShot(StrictModel):
+    at_ms: Annotated[NonNegative, Field(lt=60000)]
+    hit: StrictBool
+
+
+class MultiTargetRaw(StrictModel):
+    kind: Literal["multi_target"]
+    shots: Annotated[tuple[MultiTargetShot, ...], Field(max_length=1200)]
+
+    @model_validator(mode="after")
+    def check_intervals(self) -> Self:
+        if any(
+            second.at_ms - first.at_ms < 50 for first, second in zip(self.shots, self.shots[1:])
+        ):
+            raise ValueError("shots must increase by at least 50ms")
+        return self
+
+
 class RecognitionTrial(StrictModel):
     target_kind: Literal["enemy", "friend"]
     shot: StrictBool
@@ -117,6 +151,67 @@ class LastHitWave(StrictModel):
 class LastHitRaw(StrictModel):
     kind: Literal["last_hit"]
     waves: Annotated[tuple[LastHitWave, ...], Field(min_length=15, max_length=15)]
+
+
+class LaneDeath(StrictModel):
+    unit_id: Annotated[StrictInt, Field(ge=0, le=49)]
+    at_ms: Annotated[StrictInt, Field(ge=0, lt=300000)]
+    by_player: StrictBool
+
+
+class LaneLastHitRaw(StrictModel):
+    kind: Literal["lane_last_hit"]
+    deaths: Annotated[tuple[LaneDeath, ...], Field(max_length=50)]
+    attacks: Count
+    cancelled_attacks: Annotated[Count, Field(le=15000)]
+
+    @model_validator(mode="after")
+    def check_deaths(self) -> Self:
+        if (
+            len({d.unit_id for d in self.deaths}) != len(self.deaths)
+            or any(d.at_ms < d.unit_id // 5 * 30000 for d in self.deaths)
+            or any(
+                (a.at_ms, a.unit_id) >= (b.at_ms, b.unit_id)
+                for a, b in zip(self.deaths, self.deaths[1:])
+            )
+        ):
+            raise ValueError("小兵死亡事件重复、未生成或未按时间排序")
+        return self
+
+
+class LaneTowerDeath(StrictModel):
+    unit_id: Annotated[Count, Field(le=74)]
+    at_ms: Annotated[Count, Field(lt=300000)]
+    by_player: StrictBool
+
+
+class LaneTowerLastHitRaw(StrictModel):
+    kind: Literal["lane_last_hit_towers"]
+    deaths: Annotated[tuple[LaneTowerDeath, ...], Field(max_length=75)]
+    attacks: Count
+    cancelled_attacks: Annotated[Count, Field(le=15000)]
+    hero_death_times: Annotated[
+        tuple[Annotated[Count, Field(lt=300000)], ...], Field(max_length=60)
+    ]
+    hero_damage_taken: Annotated[Count, Field(le=90000)]
+
+    @model_validator(mode="after")
+    def check_lives_and_deaths(self) -> Self:
+        if (
+            len({d.unit_id for d in self.deaths}) != len(self.deaths)
+            or any(d.at_ms < d.unit_id // 5 * 20000 for d in self.deaths)
+            or any(
+                (a.at_ms, a.unit_id) >= (b.at_ms, b.unit_id)
+                for a, b in zip(self.deaths, self.deaths[1:])
+            )
+        ):
+            raise ValueError("小兵死亡事件重复、未生成或未按时间排序")
+        count = len(self.hero_death_times)
+        if any(
+            b - a < 5000 for a, b in zip(self.hero_death_times, self.hero_death_times[1:])
+        ) or not 1000 * count <= self.hero_damage_taken < 1000 * (count + 1):
+            raise ValueError("人物死亡次数、复活间隔或实际承伤不一致")
+        return self
 
 
 class RhythmRound(StrictModel):
@@ -212,11 +307,15 @@ class MapRaw(StrictModel):
 
 RawResult = Annotated[
     AimRaw
+    | MultiTargetRaw
+    | Spheretrack90Raw
     | TrackingRaw
     | RecognitionRaw
     | MoveFireRaw
     | MoveFireV3Raw
     | LastHitRaw
+    | LaneLastHitRaw
+    | LaneTowerLastHitRaw
     | RhythmRaw
     | DodgeRaw
     | DodgeChoiceRaw

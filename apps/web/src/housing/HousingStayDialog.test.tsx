@@ -95,6 +95,17 @@ function renderDialog(overrides: {
   return { onSubmit, onRevisionMismatch }
 }
 
+it.each([
+  ["team_manager", "战队经理"],
+  ["assistant_coach", "助教"],
+] as const)("labels %s resident options without changing eligibility", async (personType, label) => {
+  residentOptionsMock.mockResolvedValue({ access_revision: accessRevision, items: [{ ...resident, person_type: personType, housing_ready: false }] })
+  renderDialog()
+  await userEvent.type(screen.getByRole("textbox", { name: "搜索入住人员" }), "张")
+  expect(await screen.findByText(`${label} · 男`)).toBeVisible()
+  expect(screen.getByRole("radio", { name: "选择 张三" })).toBeDisabled()
+})
+
 it("labels nullable sex in resident options without changing eligibility", async () => {
   residentOptionsMock.mockResolvedValue({ access_revision: accessRevision, items: [{ ...resident, sex: null, housing_ready: false }] })
   renderDialog()

@@ -13,6 +13,7 @@ from starlette.datastructures import MutableHeaders
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.assessment_rankings.schemas import ItemRankingView
 from app.auth.dependencies import _secret_bytes, require_standard_account
 from app.auth.service import AuthContext
 from app.core.database import SessionLocal, get_db
@@ -23,6 +24,7 @@ from app.talent_tests.errors import (
     TalentNotFound,
     TalentTestError,
 )
+from app.talent_tests.item_ranking import TalentItemRankingService
 from app.talent_tests.queries import TalentQueries
 from app.talent_tests.ranking import report_ranking
 from app.talent_tests.ranking_schemas import RankingView
@@ -204,6 +206,13 @@ def report(report_id: UUID, actor: Actor, db: Db) -> ReportView:
 @router.get("/reports/{report_id}/ranking", response_model=RankingView)
 def ranking(report_id: UUID, actor: Actor, db: Db) -> RankingView:
     return report_ranking(db, actor, report_id, datetime.now(UTC))
+
+
+@router.get("/results/{result_id}/ranking", response_model=ItemRankingView)
+def item_ranking(result_id: UUID, actor: Actor, db: Db) -> ItemRankingView:
+    return TalentItemRankingService(db, TalentAccess(db, actor, datetime.now(UTC))).for_result(
+        result_id
+    )
 
 
 class PrivateTalentResponseMiddleware:

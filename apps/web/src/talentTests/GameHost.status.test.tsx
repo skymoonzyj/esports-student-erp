@@ -5,9 +5,11 @@ import { afterEach, expect, it, vi } from "vitest"
 
 import type { GameProps, RuleSnapshot } from "./contracts"
 import { GameHost } from "./GameHost"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 function render(element: ReactElement) {
-  return renderBase(element, { wrapper: MemoryRouter })
+  const client = new QueryClient()
+  return renderBase(element, { wrapper: ({ children }) => <MemoryRouter><QueryClientProvider client={client}>{children}</QueryClientProvider></MemoryRouter> })
 }
 
 vi.mock("./games/dynamicVision/DynamicVisionGame", () => ({

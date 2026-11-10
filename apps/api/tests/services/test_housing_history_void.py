@@ -293,6 +293,23 @@ def test_reason_rejects_target_exact_passport_without_echo(db):
     assert counts(db, stay.id) == (0, 0)
 
 
+@pytest.mark.parametrize("number", ["A1234563", "a123456(3)", "A 123456 （3）"])
+def test_reason_rejects_target_hkid_variants_without_echo(db, number):
+    from app.housing.errors import HousingServiceError
+
+    actor, _, stay = setup_history(db)
+    resident = db.get(Person, stay.person_id)
+    resident.document_type = "hk_id"
+    resident.identity_digest = LOOKUP.digest_domain("hk-identity", "A1234563")
+    resident.identity_ciphertext = CIPHER.encrypt("A1234563", field_name="identity_number")
+    db.commit()
+    with pytest.raises(HousingServiceError) as caught:
+        service(db).void(actor, stay.id, command(reason=f"错误导入 {number} 已核对"))
+    assert caught.value.code == "housing_void_reason_invalid"
+    assert number not in str(caught.value)
+    assert counts(db, stay.id) == (0, 0)
+
+
 def test_history_void_permission_changes_access_revision(db):
     from datetime import UTC, datetime
 

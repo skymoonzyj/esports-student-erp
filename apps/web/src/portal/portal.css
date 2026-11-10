@@ -4,8 +4,18 @@
 }
 
 .portalPageHeader {
-  margin-bottom: 28px;
+  margin-bottom: 26px;
 }
+
+.portalReminders { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); align-items: start; gap: 0 20px; }
+.portalReminders > section { min-width: 0; }
+
+.portalSummary { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 16px; margin-bottom: 28px; }
+.portalSummary article { min-width: 0; padding: 22px 24px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-lg, 12px); background: var(--color-surface); box-shadow: var(--shadow-card-soft); }
+.portalSummary p { margin: 0 0 16px; color: var(--color-text-muted); font-size: 12px; }
+.portalSummary strong { display: block; color: var(--color-text-strong); font-size: 32px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.portalSummary small { color: var(--color-text-subtle); font-size: 12px; font-weight: 400; }
+.portalSummary article > span { display: block; margin-top: 12px; color: var(--color-text-subtle); font-size: 11px; line-height: 1.5; }
 
 .portalPageHeader h1 {
   margin: 0;
@@ -29,13 +39,13 @@
 .portalTaskCard {
   position: relative;
   min-width: 0;
-  min-height: 250px;
+  min-height: 212px;
   display: flex;
   flex-direction: column;
   padding: 22px;
   overflow: hidden;
   border: 1px solid var(--color-border-soft);
-  border-radius: 8px;
+  border-radius: var(--ui-radius-lg, 12px);
   background: var(--color-surface);
   box-shadow: var(--shadow-card-soft);
 }
@@ -73,6 +83,8 @@
   --portal-task-soft: #f4edfa;
 }
 
+.portalTaskCard.housing { --portal-task-color: var(--color-accent-700); --portal-task-soft: var(--color-accent-soft); }
+
 .portalTaskIcon {
   width: 42px;
   height: 42px;
@@ -90,7 +102,7 @@
 
 .portalTaskBody {
   min-width: 0;
-  margin: 24px 0 20px;
+  margin: 18px 0 14px;
 }
 
 .portalTaskLabel {
@@ -217,7 +229,23 @@
 }
 
 .dashboardPage.embedded .foundationGrid {
-  margin-top: 0;
+  margin-top: 16px;
+}
+
+html[data-ui-theme="command"] .portalSummary { gap: 1px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 7px); overflow: hidden; background: var(--color-border-soft); margin-bottom: 22px; }
+html[data-ui-theme="command"] .portalSummary article { border: 0; border-radius: 0; box-shadow: none; padding: 18px 22px; }
+html[data-ui-theme="command"] .portalSummary p { margin-bottom: 12px; }
+html[data-ui-theme="command"] .portalTaskGrid { gap: 12px; }
+html[data-ui-theme="command"] .portalTaskCard { min-height: 180px; padding: 18px 20px; border-radius: var(--ui-radius-md, 7px); box-shadow: none; }
+html[data-ui-theme="command"] .portalTaskCard::before { inset: 0 0 auto; width: auto; height: 2px; }
+html[data-ui-theme="command"] .portalTaskIcon { width: 34px; height: 34px; border-radius: 5px; }
+html[data-ui-theme="command"] .portalTaskBody { margin: 12px 0 8px; }
+html[data-ui-theme="command"] .portalTaskBody h2 { font-size: 16px; }
+
+@media (max-width: 480px) {
+  .portalSummary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .portalSummary article, html[data-ui-theme="command"] .portalSummary article { padding: 16px 14px; }
+  .portalSummary strong { font-size: 28px; }
 }
 
 @media (max-width: 1023px) {

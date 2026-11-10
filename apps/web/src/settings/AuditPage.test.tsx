@@ -9,6 +9,129 @@ import { AuditPage } from "./AuditPage"
 
 afterEach(() => vi.unstubAllGlobals())
 
+it("labels read-only team staff assignment audit events in Chinese", async () => {
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async () => Response.json({
+    items: ["team_staff.assign", "team_staff.unassign"].map((action, i) => ({
+      id: `staff-${i}`, actor_user_id: "actor", action, resource_type: "team_staff_assignment",
+      resource_id: "assignment", purpose: null, outcome: "allowed", request_id: `staff-${i}`,
+      metadata: {}, created_at: "2026-11-06T02:35:00Z",
+    })), total: 2, page: 1, page_size: 20,
+  })))
+  render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><AuditPage /></QueryClientProvider></MemoryRouter>)
+  expect(await screen.findByText("分配队内只读岗位")).toBeVisible()
+  expect(screen.getByText("解除队内只读岗位")).toBeVisible()
+  expect(screen.getAllByText("对象：队内工作人员关系")).toHaveLength(2)
+})
+
+it("shows assistant coach role grants with a Chinese label", async () => {
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async () => Response.json({ items: [{ id: "assistant-grant", actor_user_id: "actor", action: "account.role.assign", resource_type: "account", resource_id: "target", purpose: null, outcome: "allowed", request_id: "synthetic", metadata: { role_key: "assistant_coach" }, created_at: "2026-11-06T02:35:00Z" }], total: 1, page: 1, page_size: 20 })))
+  render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><AuditPage /></QueryClientProvider></MemoryRouter>)
+  expect(await screen.findByText("角色：助教")).toBeVisible()
+})
+
+it("explains housing frequency, property review and room card dates without raw notes", async () => {
+  const metadata = { previous_cleaning_frequency: "unspecified", cleaning_frequency: "weekly",
+    previous_card_issued_on: null, card_issued_on: "2026-11-05", previous_card_expires_on: "2026-11-10", card_expires_on: "2026-12-10",
+    housing_change_decision: "approve", housing_export_kind: "problems", role_key: "property", request_body: { raw_notes: "hidden-private-note" } }
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+    items: ["housing.room_card.save", "housing.property_change.review", "housing.property.export"].map((action, i) => ({
+      id: `housing-new-${i}`, actor_user_id: "actor-1", action, resource_type: "housing_room_card", resource_id: "stay-1",
+      purpose: null, outcome: "allowed", request_id: `housing-new-${i}`, metadata: i === 0 ? metadata : {}, created_at: "2026-11-05T02:35:00Z",
+    })), total: 3, page: 1, page_size: 20,
+  }), { headers: { "Content-Type": "application/json" } })))
+  render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><AuditPage /></QueryClientProvider></MemoryRouter>)
+  expect(await screen.findByText("修改房卡日期")).toBeVisible()
+  expect(screen.getByText("审核物业房态变更")).toBeVisible()
+  expect(screen.getByText("导出住宿与问题房清单")).toBeVisible()
+  expect(screen.getByText("原保洁需求：未设置")).toBeVisible()
+  expect(screen.getByText("保洁需求：每周保洁")).toBeVisible()
+  expect(screen.getByText("房卡开卡日期：2026-11-05")).toBeVisible()
+  expect(screen.getByText("房卡到期日期：2026-12-10")).toBeVisible()
+  expect(screen.getByText("角色：物业")).toBeVisible()
+  expect(document.body.textContent).not.toContain("hidden-private-note")
+})
+
+it("labels ReactionX pairing actions without revealing submitted secrets", async () => {
+  const labels = [
+    ["pairing.create", "创建 ReactionX 配对"], ["pairing.claim", "领取 ReactionX 配对"],
+    ["pairing.confirm_browser", "网页确认 ReactionX 配对"], ["pairing.confirm_device", "设备确认 ReactionX 配对"],
+    ["pairing.activate", "激活 ReactionX 连接器"], ["connector.revoke", "撤销 ReactionX 连接器"],
+    ["pairing.cancel", "取消 ReactionX 配对"],
+    ["run.prepare", "准备 ReactionX 训练"], ["run.start", "启动 ReactionX 训练"],
+    ["run.stop", "请求停止 ReactionX 训练"], ["run.safety_stop", "安全停止 ReactionX 训练"],
+    ["run.stop_confirmed", "确认 ReactionX 灯具已停止"], ["run.manual_activate", "手动激活 ReactionX 灯具"],
+    ["device.scan", "扫描 ReactionX 灯具"], ["device.connect", "连接 ReactionX 灯具"],
+    ["device.disconnect", "断开 ReactionX 灯具"], ["device.identify", "识别 ReactionX 灯具"],
+    ["result.saved", "保存 ReactionX 结果"], ["upload.authorized", "授权 ReactionX 原包补传"],
+    ["recovery.requested", "申请 ReactionX 结果恢复"], ["recovery.confirmed", "二次确认 ReactionX 结果恢复"],
+  ]
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+    items: labels.map(([action], index) => ({ id: `reactionx-${index}`, actor_user_id: "actor-1", action: `reactionx.${action}`, resource_type: "reactionx_pairing", resource_id: "pairing-1", purpose: null, outcome: "allowed", request_id: "pairing-operation", metadata: { challenge: "private-pairing-challenge", credential: "private-pairing-secret" }, created_at: "2026-10-31T02:35:00Z" })), total: 6, page: 1, page_size: 20,
+  }), { headers: { "Content-Type": "application/json" } })))
+  render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><AuditPage /></QueryClientProvider></MemoryRouter>)
+  for (const [, label] of labels) expect(await screen.findByText(label)).toBeVisible()
+  expect(document.body.textContent).not.toContain("private-pairing")
+})
+
+it("explains atomic job changes and concurrent retention without exposing request bodies", async () => {
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+    items: [{ id: "job-change", actor_user_id: "actor-1", action: "account.job_role.change", resource_type: "account", resource_id: "target", purpose: null, outcome: "allowed", request_id: "job-operation", metadata: { old_role_keys: ["coach", "finance", "student"], new_role_keys: ["customer_service", "student"], keep_concurrent_roles: false, request_body: { private: "private-job-payload" } }, created_at: "2026-10-28T02:35:00Z" }], total: 1, page: 1, page_size: 20,
+  }), { headers: { "Content-Type": "application/json" } })))
+  render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><AuditPage /></QueryClientProvider></MemoryRouter>)
+  expect(await screen.findByText("变更账号岗位")).toBeVisible()
+  expect(screen.getByText("原账号角色：教练、财务、学员")).toBeVisible()
+  expect(screen.getByText("新账号角色：客服、学员")).toBeVisible()
+  expect(screen.getByText("保留其他兼任岗位：否")).toBeVisible()
+  expect(document.body.textContent).not.toContain("private-job-payload")
+})
+
+it("explains global appearance changes with safe Chinese before and after values", async () => {
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+    items: [{ id: "appearance-change", actor_user_id: "actor-1", action: "operations.appearance.update", resource_type: "global_appearance", resource_id: "global", purpose: null, outcome: "allowed", request_id: "appearance-operation", metadata: { old_theme: "clear", new_theme: "command", old_version: 1, new_version: 2, request_body: { private: "private-appearance-payload" } }, created_at: "2026-10-27T02:35:00Z" }], total: 1, page: 1, page_size: 20,
+  }), { headers: { "Content-Type": "application/json" } })))
+  render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><AuditPage /></QueryClientProvider></MemoryRouter>)
+  expect(await screen.findByText("修改全局系统外观")).toBeVisible()
+  expect(screen.getByText("对象：全局系统外观")).toBeVisible()
+  expect(screen.getByText("原主题：清爽专业")).toBeVisible()
+  expect(screen.getByText("新主题：深蓝效率")).toBeVisible()
+  expect(screen.getByText("原版本：1")).toBeVisible()
+  expect(screen.getByText("更新后版本：2")).toBeVisible()
+  expect(document.body.textContent).not.toContain("private-appearance-payload")
+})
+
+it("identifies profile assignment changes in Chinese without displaying raw fields", async () => {
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+    items: [{ id: "assignment-change", actor_user_id: "actor-1", action: "person.assignments.update", resource_type: "person", resource_id: "person-1", purpose: "归属调整", outcome: "allowed", request_id: "assignment-operation", metadata: { person_id: "person-1", new_version: 2, request_body: { private: "private-data" } }, created_at: "2026-10-25T02:35:00Z" }], total: 1, page: 1, page_size: 20,
+  }), { headers: { "Content-Type": "application/json" } })))
+  render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><AuditPage /></QueryClientProvider></MemoryRouter>)
+  expect(await screen.findByText("修改人员身份与项目教练归属")).toBeVisible()
+  expect(document.body.textContent).not.toContain("private-data")
+})
+
+it("shows allowlisted old and new rental facts and safe scalar labels", async () => {
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+    items: [{ id: "rental-change", actor_user_id: "actor-1", action: "asset.update", resource_type: "asset", resource_id: "asset-1", purpose: null, outcome: "allowed", request_id: "rental-change", metadata: {
+      previous_rental_facts: { ownership_type: "owned", acquisition_method: "purchase", acquisition_channel: "online", rental_started_on: null, rental_expires_on: null, rental_revision: 0, acquisition_note: "private-old-note" },
+      rental_facts: { ownership_type: "rented", acquisition_method: null, acquisition_channel: null, rental_started_on: "2026-10-25", rental_expires_on: "2027-01-31", rental_revision: 1, unknown: "private-unknown" },
+      acquisition_note_changed: true, acquisition_note: "private-note", rental_period: "month", previous_expires_on: "2026-12-31", rental_expires_on: "2027-01-31", rental_revision: 1,
+    }, created_at: "2026-10-25T02:35:00Z" }], total: 1, page: 1, page_size: 20,
+  }), { headers: { "Content-Type": "application/json" } })))
+  render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><AuditPage /></QueryClientProvider></MemoryRouter>)
+  expect(await screen.findByText("原资产归属：自有")).toBeVisible()
+  for (const label of ["原取得方式：采购", "原采购渠道：线上", "原租赁开始日期：未设置", "新资产归属：租用", "新租赁到期日期：2027-01-31", "原租期版本：0", "新租期版本：1", "获得方式说明已修改：是", "续期周期：一月", "原到期日期：2026-12-31"]) expect(screen.getByText(label)).toBeVisible()
+  expect(document.body.textContent).not.toContain("private-")
+})
+
+it('labels each atomic bulk service status audit action in Chinese', async () => {
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+    items: ['available', 'maintenance', 'disabled'].map((status, index) => ({ id: `bulk-${index}`, actor_user_id: 'actor-1', action: `housing.room.service_status_batch.${status}`, resource_type: 'housing_room', resource_id: null, purpose: null, outcome: 'allowed', request_id: `bulk-${index}`, metadata: {}, created_at: '2026-10-25T02:35:00Z' })), total: 3, page: 1, page_size: 20,
+  }), { headers: { 'Content-Type': 'application/json' } })))
+  render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><AuditPage /></QueryClientProvider></MemoryRouter>)
+  expect(await screen.findByText('批量设为可用')).toBeVisible()
+  expect(screen.getByText('批量设为维修')).toBeVisible()
+  expect(screen.getByText('批量设为停用')).toBeVisible()
+})
+
 it("shows typed daily-cleaning before and after values in Chinese", async () => {
   vi.stubGlobal("fetch", vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
     items: [{ id: "daily-change", actor_user_id: "actor-1", action: "housing.room.update", resource_type: "housing_room", resource_id: "room-1", purpose: null, outcome: "allowed", request_id: "daily-change", metadata: { previous_daily_cleaning_enabled: false, daily_cleaning_enabled: true, request_body: { secret: "private-value" } }, created_at: "2026-10-23T02:35:00Z" }], total: 1, page: 1, page_size: 20,

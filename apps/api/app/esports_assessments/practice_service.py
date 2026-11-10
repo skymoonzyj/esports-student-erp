@@ -44,7 +44,6 @@ from .schemas import (
 )
 from .scoring import practice_result
 
-_RUN_LEASE = timedelta(seconds=90)
 _SUBMIT_WINDOW = timedelta(minutes=30)
 
 
@@ -102,7 +101,20 @@ class PracticeAssessmentService:
                 return attempt_view(replay, now)
 
             AssessmentAccess(self.db, current, now).require_available(request.suite_id)
-            config = catalog.get_task(request.suite_id, request.test_id, request.difficulty)
+            config = (
+                catalog.get_task(request.suite_id, request.test_id, request.difficulty)
+                if request.attack_mode is None
+                else catalog.get_task(
+                    request.suite_id,
+                    request.test_id,
+                    request.difficulty,
+                    attack_mode=request.attack_mode,
+                )
+            )
+            if config.catalog_version in ("pc-moba-v4", "pc-moba-v5") and request.attack_mode is None:
+                raise AssessmentConflict(
+                    "请选择近战或远程人物", code="esports_attack_mode_required"
+                )
             validate_settings(config, request.settings, request.environment)
             occupancy = reconcile_account_occupancy(self.db, current.account.id, now)
             if occupancy is not None:
@@ -124,7 +136,7 @@ class PracticeAssessmentService:
                 state="running",
                 creation_key=request.operation_key,
                 creation_request_digest=digest,
-                run_until=now + _RUN_LEASE,
+                run_until=now + timedelta(milliseconds=config.duration_ms + 30000),
                 submit_until=now + _SUBMIT_WINDOW,
                 created_at=now,
                 updated_at=now,
@@ -174,6 +186,9 @@ class PracticeAssessmentService:
                     row.test_id,
                     row.difficulty,
                     catalog_version=persisted.catalog_version,
+                    attack_mode=persisted.params.attack_mode
+                    if persisted.params.kind in ("lane_last_hit", "lane_last_hit_towers")
+                    else None,
                 )
                 if persisted != config:
                     raise AssessmentConflict("项目配置已更新", code="esports_catalog_updated")

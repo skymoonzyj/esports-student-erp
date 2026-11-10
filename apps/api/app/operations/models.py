@@ -79,6 +79,27 @@ class OperationsRequestMinute(Base):
     latency_histogram: Mapped[list[int]] = mapped_column(JSONB, nullable=False)
 
 
+class OperationsRequestError(Base):
+    __tablename__ = "operations_request_errors"
+    __table_args__ = (
+        CheckConstraint("status_code BETWEEN 400 AND 599", name="ck_operations_request_errors_status"),
+        Index("ix_operations_request_errors_occurred", "occurred_at"),
+        Index("ix_operations_request_errors_account_time", "account_id", "occurred_at"),
+        Index("ix_operations_request_errors_source_time", "source_ip", "occurred_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Deliberately not a foreign key: attribution survives account deletion.
+    account_id: Mapped[UUID | None] = mapped_column(PostgreSQLUUID(as_uuid=True))
+    source_ip: Mapped[str | None] = mapped_column(String(45))
+    request_id: Mapped[str | None] = mapped_column(String(128))
+    method: Mapped[str] = mapped_column(String(16), nullable=False)
+    route: Mapped[str] = mapped_column(String(300), nullable=False)
+    status_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(String(80), nullable=False)
+
+
 class OperationsAlert(Base):
     __tablename__ = "operations_alerts"
     __table_args__ = (

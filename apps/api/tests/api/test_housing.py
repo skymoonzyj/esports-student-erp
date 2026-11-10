@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -17,7 +17,13 @@ from app.audit.service import AuditMetadataRejected
 from app.housing.dependencies import get_housing_cipher, get_housing_lookup
 from app.housing.errors import HousingInvalidRoomConfiguration
 from app.housing.inventory_service import HousingInventoryService
-from app.housing.models import HousingBuilding, HousingFloor, HousingRoom
+from app.housing.models import (
+    HousingBuilding,
+    HousingFloor,
+    HousingRoom,
+    HousingRoomIssue,
+    HousingStay,
+)
 from app.housing.schemas import FloorCreate, RoomVersionInput
 from app.housing.seed_inventory import FLOOR_SEEDS, INITIAL_BUILDINGS, INITIAL_ROOMS
 from app.rbac.models import UserPermissionOverride
@@ -97,6 +103,365 @@ def scoped_housing_accounts(db: Session, platform_users):
 
 def _assert_private(response) -> None:
     assert response.headers["cache-control"] == "no-store, private"
+
+
+@pytest.mark.parametrize("target", ["maintenance", "disabled", "available"])
+def test_batch_service_status_updates_in_request_order_and_preserves_room_care(
+    db_client, db, platform_users, target,
+) -> None:
+    rooms = [db.get(HousingRoom, seed.id) for seed in _FLOOR_ROOMS[:2]]
+    rooms[0].verification_status = "verified"
+    rooms[0].cleaning_status = "pending"
+    rooms[0].cleaning_pending_at = datetime.now(UTC)
+    rooms[0].notes = "保留房间备注"
+    rooms[0].daily_cleaning_enabled = True
+    if target == "available":
+        for room in rooms:
+            room.service_status = "maintenance"
+    db.commit()
+    requested = list(reversed(rooms))
+    response = db_client.post(
+        "/api/v1/housing/rooms/batch-service-status",
+        headers={"X-CSRF-Token": sign_in(db_client, platform_users, "admin"),
+                 "X-Request-ID": f"batch-status-{target}"},
+        json={"rooms": [{"room_id": str(room.id), "version": 1} for room in requested],
+              "service_status": target},
+    )
+    assert response.status_code == 200, response.text
+    _assert_private(response)
+    assert [item["id"] for item in response.json()] == [str(room.id) for room in requested]
+    assert all(item["service_status"] == target and item["version"] == 2 for item in response.json())
+    assert all(item["verification_status"] == "verified" for item in response.json())
+    db.expire_all()
+    preserved = db.get(HousingRoom, rooms[0].id)
+    assert (preserved.verification_status, preserved.cleaning_status, preserved.notes,
+            preserved.daily_cleaning_enabled) == ("verified", "pending", "保留房间备注", True)
+    assert db.get(HousingRoom, rooms[1].id).verification_status == "verified"
+    audit = db.scalar(select(AuditEvent).where(AuditEvent.request_id == f"batch-status-{target}"))
+    assert audit is not None and audit.outcome == "allowed"
+    assert audit.action == f"housing.room.service_status_batch.{target}"
+    assert audit.event_metadata["result_count"] == 2
+
+
+@pytest.mark.parametrize("target", ["available", "maintenance", "disabled"])
+@pytest.mark.parametrize("structural_edit", [False, True])
+@pytest.mark.parametrize("cleaning_pending", [False, True])
+def test_explicit_room_status_completes_verification_atomically(
+    db_client, db, platform_users, target, structural_edit, cleaning_pending,
+) -> None:
+    room = db.get(HousingRoom, _SINGLE_ROOM.id)
+    assert room.verification_status == "pending_verification"
+    if cleaning_pending:
+        room.cleaning_status = "pending"
+        room.cleaning_pending_at = datetime.now(UTC)
+    room.notes = "保留备注"
+    room.daily_cleaning_enabled = True
+    db.commit()
+    payload = {"version": 1, "service_status": target}
+    if structural_edit:
+        payload.update(room_type="double", capacity=2)
+    response = db_client.patch(
+        f"/api/v1/housing/rooms/{room.id}",
+        headers={"X-CSRF-Token": sign_in(db_client, platform_users, "admin")},
+        json=payload,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["verification_status"] == "verified"
+    assert response.json()["version"] == 2
+    db.expire_all()
+    saved = db.get(HousingRoom, room.id)
+    assert (saved.service_status, saved.verification_status, saved.version) == (target, "verified", 2)
+    assert saved.cleaning_status == ("pending" if cleaning_pending else "ready")
+    assert saved.notes == "保留备注"
+    assert saved.daily_cleaning_enabled is True
+    assert saved.updated_by_user_id == platform_users["accounts"]["admin"].id
+    card = db_client.get(f"/api/v1/housing/rooms/{room.id}")
+    assert card.status_code == 200
+    assert card.json()["is_assignable"] is (target == "available" and not cleaning_pending)
+    assert card.json()["allowed_actions"]["verify"] is False
+
+
+@pytest.mark.parametrize("field,value", [
+    ("notes", "仅改备注"), ("daily_cleaning_enabled", True), ("service_status", None),
+])
+def test_non_status_room_edit_does_not_complete_verification(
+    db_client, db, platform_users, field, value,
+) -> None:
+    response = db_client.patch(
+        f"/api/v1/housing/rooms/{_SINGLE_ROOM.id}",
+        headers={"X-CSRF-Token": sign_in(db_client, platform_users, "admin")},
+        json={"version": 1, field: value},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["verification_status"] == "pending_verification"
+    db.expire_all()
+    assert db.get(HousingRoom, _SINGLE_ROOM.id).verification_status == "pending_verification"
+
+
+def test_status_and_auto_verification_roll_back_together_when_audit_fails(
+    db_client, db, platform_users, monkeypatch,
+) -> None:
+    def reject_audit(*args, **kwargs):
+        raise AuditMetadataRejected("audit unavailable")
+
+    monkeypatch.setattr(housing_router, "_audit", reject_audit)
+    response = db_client.patch(
+        f"/api/v1/housing/rooms/{_SINGLE_ROOM.id}",
+        headers={"X-CSRF-Token": sign_in(db_client, platform_users, "admin")},
+        json={"version": 1, "service_status": "maintenance"},
+    )
+    assert response.status_code == 500, response.text
+    assert response.json()["code"] == "housing_audit_failed"
+    db.expire_all()
+    room = db.get(HousingRoom, _SINGLE_ROOM.id)
+    assert (room.service_status, room.verification_status, room.version) == (
+        "available", "pending_verification", 1,
+    )
+
+
+@pytest.mark.parametrize("source", ["problem_without_issue", "open_issue_without_problem"])
+def test_single_status_cannot_auto_verify_around_problem_workflow(
+    db_client, db, platform_users, source,
+) -> None:
+    room = db.get(HousingRoom, _SINGLE_ROOM.id)
+    if source == "problem_without_issue":
+        room.service_status = "problem"
+    else:
+        db.add(HousingRoomIssue(
+            room_id=room.id, description="仅供回归的房间问题",
+            previous_service_status="available", reported_at=datetime.now(UTC),
+            reported_by_user_id=platform_users["accounts"]["admin"].id, status="open",
+        ))
+    original_status = room.service_status
+    db.commit()
+    response = db_client.patch(
+        f"/api/v1/housing/rooms/{room.id}",
+        headers={"X-CSRF-Token": sign_in(db_client, platform_users, "admin")},
+        json={"version": 1, "service_status": "available"},
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "housing_issue_workflow_required"
+    db.expire_all()
+    assert (room.service_status, room.verification_status, room.version) == (
+        original_status, "pending_verification", 1,
+    )
+
+
+@pytest.mark.parametrize("target", ["maintenance", "disabled"])
+def test_batch_service_status_collects_all_business_conflicts_without_mutating(
+    db_client, db, platform_users, target,
+) -> None:
+    rooms = [db.get(HousingRoom, seed.id) for seed in _FLOOR_ROOMS[:6]]
+    original_verification = [room.verification_status for room in rooms]
+    now = datetime.now(UTC)
+    actor = platform_users["accounts"]["admin"]
+    person_ids = [platform_users["people"][key].id
+                  for key in ("self_student", "minor_student", "guardian")]
+    for room, status, person_id in zip(rooms[2:5], ("checked_in", "checkout_pending", "planned"), person_ids):
+        db.add(HousingStay(
+            person_id=person_id, room_id=room.id, stay_purpose="permanent",
+            duration_mode="fixed_term", planned_check_in_at=now - timedelta(days=1),
+            planned_check_out_at=now + timedelta(days=2),
+            actual_check_in_at=None if status == "planned" else now - timedelta(days=1),
+            status=status, room_name_snapshot=room.room_number, floor_name_snapshot="测试楼层",
+            building_name_snapshot="测试楼栋", created_by_user_id=actor.id,
+            checked_in_by_user_id=None if status == "planned" else actor.id, version=1,
+        ))
+    rooms[5].service_status = "problem"
+    db.add(HousingRoomIssue(
+        room_id=rooms[5].id, description="敏感问题内容不可出现在响应或审计",
+        previous_service_status="available", reported_at=now,
+        reported_by_user_id=actor.id, status="open",
+    ))
+    db.commit()
+    response = db_client.post(
+        "/api/v1/housing/rooms/batch-service-status",
+        headers={"X-CSRF-Token": sign_in(db_client, platform_users, "admin"),
+                 "X-Request-ID": "batch-status-conflict"},
+        json={"rooms": [{"room_id": str(room.id), "version": 99 if index == 1 else 1}
+                        for index, room in enumerate(rooms)], "service_status": target},
+    )
+    assert response.status_code == 409, response.text
+    body = response.json()
+    assert body["code"] == "housing_batch_conflict"
+    assert body["detail"] == "批量修改未执行，请处理以下房间后重试"
+    assert {item["field"] for item in body["errors"]} == {f"rooms.{room.id}" for room in rooms[1:]}
+    assert all(item["message"].startswith(f"{room.room_number}：")
+               for item, room in zip(body["errors"], rooms[1:]))
+    assert "敏感问题内容" not in response.text
+    db.expire_all()
+    assert [(db.get(HousingRoom, room.id).service_status, db.get(HousingRoom, room.id).version)
+            for room in rooms] == [("available", 1)] * 5 + [("problem", 1)]
+    assert [db.get(HousingRoom, room.id).verification_status for room in rooms] == original_verification
+    audit = db.scalar(select(AuditEvent).where(AuditEvent.request_id == "batch-status-conflict"))
+    assert audit is not None and audit.outcome == "failed"
+    assert audit.event_metadata["error_code"] == "housing_batch_conflict"
+
+
+@pytest.mark.parametrize("case", ["empty", "duplicate", "limit", "version", "bool", "status", "uuid"])
+def test_batch_service_status_rejects_malformed_input(db_client, platform_users, case) -> None:
+    room = {"room_id": str(_SINGLE_ROOM.id), "version": 1}
+    payload = {"rooms": [room], "service_status": "available"}
+    if case == "empty":
+        payload["rooms"] = []
+    elif case == "duplicate":
+        payload["rooms"] = [room, room]
+    elif case == "limit":
+        payload["rooms"] = [{"room_id": str(uuid4()), "version": 1} for _ in range(501)]
+    elif case == "version":
+        room["version"] = 0
+    elif case == "bool":
+        room["version"] = True
+    elif case == "status":
+        payload["service_status"] = "problem"
+    else:
+        room["room_id"] = "bad-uuid"
+    response = db_client.post(
+        "/api/v1/housing/rooms/batch-service-status", json=payload,
+        headers={"X-CSRF-Token": sign_in(db_client, platform_users, "admin")},
+    )
+    assert response.status_code == 422, response.text
+    _assert_private(response)
+
+
+@pytest.mark.parametrize("account,hidden,status", [
+    ("customer_service", False, 403), ("guardian", False, 200),
+    ("guardian", True, 404), ("self_student", False, 404),
+])
+def test_batch_service_status_respects_object_scope_and_private_not_found(
+    db_client, db, platform_users, scoped_housing_accounts, account, hidden, status,
+) -> None:
+    selected = [_SINGLE_ROOM, _OTHER_ROOM] if hidden else [_SINGLE_ROOM]
+    response = db_client.post(
+        "/api/v1/housing/rooms/batch-service-status",
+        headers={"X-CSRF-Token": sign_in(db_client, platform_users, account)},
+        json={"rooms": [{"room_id": str(room.id), "version": 1} for room in selected],
+              "service_status": "disabled"},
+    )
+    assert response.status_code == status, response.text
+    _assert_private(response)
+    if status != 200:
+        assert "errors" not in response.json() or not response.json()["errors"]
+        assert _SINGLE_ROOM.room_number not in response.text
+        db.expire_all()
+        assert db.get(HousingRoom, _SINGLE_ROOM.id).version == 1
+
+
+def test_batch_service_status_missing_room_is_generic_and_atomic(db_client, db, platform_users) -> None:
+    response = db_client.post(
+        "/api/v1/housing/rooms/batch-service-status",
+        headers={"X-CSRF-Token": sign_in(db_client, platform_users, "admin")},
+        json={"rooms": [{"room_id": str(_SINGLE_ROOM.id), "version": 999},
+                        {"room_id": str(uuid4()), "version": 1}], "service_status": "disabled"},
+    )
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "housing_resource_not_found"
+    assert not response.json().get("errors")
+    assert _SINGLE_ROOM.room_number not in response.text
+    db.expire_all()
+    assert db.get(HousingRoom, _SINGLE_ROOM.id).version == 1
+
+
+def test_batch_service_status_rolls_back_if_required_audit_fails(
+    db_client, db, platform_users, monkeypatch,
+) -> None:
+    def reject_audit(*args, **kwargs):
+        raise AuditMetadataRejected("audit unavailable")
+
+    monkeypatch.setattr(housing_router, "_audit", reject_audit)
+    response = db_client.post(
+        "/api/v1/housing/rooms/batch-service-status",
+        headers={"X-CSRF-Token": sign_in(db_client, platform_users, "admin")},
+        json={"rooms": [{"room_id": str(_SINGLE_ROOM.id), "version": 1},
+                        {"room_id": str(_DOUBLE_ROOM.id), "version": 1}],
+              "service_status": "disabled"},
+    )
+    assert response.status_code == 500, response.text
+    assert response.json()["code"] == "housing_audit_failed"
+    db.expire_all()
+    for room_id in (_SINGLE_ROOM.id, _DOUBLE_ROOM.id):
+        room = db.get(HousingRoom, room_id)
+        assert (room.service_status, room.version) == ("available", 1)
+        assert room.verification_status == "pending_verification"
+
+
+@pytest.mark.parametrize("source", ["problem_without_issue", "open_issue_without_problem"])
+def test_batch_service_status_requires_issue_workflow_for_inconsistent_problem_facts(
+    db_client, db, platform_users, source,
+) -> None:
+    room = db.get(HousingRoom, _SINGLE_ROOM.id)
+    if source == "problem_without_issue":
+        room.service_status = "problem"
+    else:
+        db.add(HousingRoomIssue(
+            room_id=room.id, description="不可泄露的问题内容",
+            previous_service_status="available", reported_at=datetime.now(UTC),
+            reported_by_user_id=platform_users["accounts"]["admin"].id, status="open",
+        ))
+    original_status = room.service_status
+    db.commit()
+    response = db_client.post(
+        "/api/v1/housing/rooms/batch-service-status",
+        headers={"X-CSRF-Token": sign_in(db_client, platform_users, "admin")},
+        json={"rooms": [{"room_id": str(_DOUBLE_ROOM.id), "version": 1},
+                        {"room_id": str(room.id), "version": 1}], "service_status": "available"},
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "housing_batch_conflict"
+    assert response.json()["errors"] == [{
+        "field": f"rooms.{room.id}", "message": f"{room.room_number}：问题房间须通过问题处理流程修改",
+    }]
+    db.expire_all()
+    assert (room.service_status, room.version) == (original_status, 1)
+    assert db.get(HousingRoom, _DOUBLE_ROOM.id).version == 1
+
+
+@pytest.mark.parametrize("target,original", [
+    ("available", "maintenance"), ("maintenance", "maintenance"), ("disabled", "disabled"),
+])
+def test_batch_service_status_retains_existing_active_stay_guard_semantics(
+    db_client, db, platform_users, target, original,
+) -> None:
+    room = db.get(HousingRoom, _SINGLE_ROOM.id)
+    room.service_status = original
+    now = datetime.now(UTC)
+    actor_id = platform_users["accounts"]["admin"].id
+    stay = HousingStay(
+        person_id=platform_users["people"]["self_student"].id, room_id=room.id,
+        stay_purpose="permanent", duration_mode="fixed_term",
+        planned_check_in_at=now - timedelta(days=1), planned_check_out_at=now + timedelta(days=1),
+        actual_check_in_at=now - timedelta(days=1), status="checked_in",
+        room_name_snapshot=room.room_number, floor_name_snapshot="二楼", building_name_snapshot="测试楼",
+        created_by_user_id=actor_id, checked_in_by_user_id=actor_id, version=1,
+    )
+    db.add(stay)
+    db.commit()
+    response = db_client.post(
+        "/api/v1/housing/rooms/batch-service-status",
+        headers={"X-CSRF-Token": sign_in(db_client, platform_users, "admin")},
+        json={"rooms": [{"room_id": str(room.id), "version": 1}], "service_status": target},
+    )
+    assert response.status_code == 200, response.text
+    db.expire_all()
+    assert (room.service_status, room.version) == (target, 2)
+    assert (stay.room_id, stay.status, stay.version) == (room.id, "checked_in", 1)
+
+
+def test_batch_service_status_masks_sensitive_room_labels_in_conflicts(
+    db_client, db, platform_users,
+) -> None:
+    room = db.get(HousingRoom, _SINGLE_ROOM.id)
+    room.room_number = "13812345678"
+    db.commit()
+    response = db_client.post(
+        "/api/v1/housing/rooms/batch-service-status",
+        headers={"X-CSRF-Token": sign_in(db_client, platform_users, "admin")},
+        json={"rooms": [{"room_id": str(room.id), "version": 999}], "service_status": "available"},
+    )
+    assert response.status_code == 409, response.text
+    assert "13812345678" not in response.text
+    assert response.json()["errors"][0]["field"] == f"rooms.{room.id}"
+    assert "版本" in response.json()["errors"][0]["message"]
 
 
 @pytest.fixture
@@ -399,9 +764,13 @@ def test_initial_overview_truthfully_projects_static_empty_occupancy(
         "unoccupied_rooms": 188,
         "assignable_rooms": 0,
         "unassignable_rooms": 188,
+        "full_rooms": 0,
         "problem_rooms": 0,
         "pending_verification_rooms": 171,
         "pending_cleaning_rooms": 0,
+        "daily_cleaning_rooms": 0,
+        "weekly_cleaning_rooms": 0,
+        "on_demand_cleaning_rooms": 0,
         "total_capacity": 223,
         "current_occupants": 0,
         "remaining_capacity": 223,

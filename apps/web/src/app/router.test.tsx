@@ -23,6 +23,23 @@ import { registrationKeys } from "../registration/keys"
 import { appRoutes } from "./router"
 import type { HousingOverviewPageProps } from "../housing/HousingOverviewPage"
 
+it("uses a safe Chinese fallback for an unexpected top-level route failure", async () => {
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined)
+  try {
+    const privateMessage = "private-route-failure-with-account-and-chunk-url"
+    const routes = appRoutes.map(route => ({ ...route, loader: () => { throw new Error(privateMessage) } }))
+    const router = createMemoryRouter(routes, { initialEntries: ["/login"] })
+    render(<RouterProvider router={router} />)
+    expect(await screen.findByRole("heading", { name: "页面暂时无法加载" })).toBeVisible()
+    expect(screen.getByRole("alert")).toHaveTextContent("未保存")
+    expect(screen.getByRole("button", { name: "刷新页面" })).toBeVisible()
+    expect(screen.queryByText(/private-route-failure-with-account-and-chunk-url/)).not.toBeInTheDocument()
+    expect(screen.queryByText("Unexpected Application Error!")).not.toBeInTheDocument()
+  } finally {
+    consoleError.mockRestore()
+  }
+})
+
 vi.mock(import("../housing/HousingOverviewPage"), () => ({
   HousingOverviewPage: ({ permissions = new Set(), scopedPermissions = new Set(), onViewRoom }: HousingOverviewPageProps = {}) => (
     <section aria-label="housing-route-props" data-global={[...permissions].join(",")} data-scoped={[...scopedPermissions].join(",")}>
@@ -131,6 +148,46 @@ const noPortalContext = {
   food_preferences_onboarding_required: false,
   learning_mode: null,
 }
+
+it("keeps the selected departure window after detail return and focus reauthorization", async () => {
+  const roomId = "20000000-0000-4000-8000-000000000001"
+  const baseFetch = housingRouteFetch({ context: { ...noPortalContext, housing_management_available: true }, permissions: ["housing.read"] })
+  const reminderWindows: string[] = []
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input, init) => {
+    const url = new URL(String(input), "http://localhost")
+    if (url.pathname.endsWith("/portal/departure-reminders")) {
+      const window = url.searchParams.get("window")
+      reminderWindows.push(window ?? "")
+      return Response.json({
+        available: true, observed_at: "2026-10-24T08:00:00+08:00", business_date: "2026-10-24", timezone: "Asia/Shanghai",
+        next_refresh_at: "2026-10-25T00:00:00+08:00", window, today_count: 1, three_day_count: 1, page: 1, page_size: 20, total: 1,
+        items: [{ person_id: "10000000-0000-4000-8000-000000000001", full_name: "工作台提醒学员", nickname: null, events: [
+          { kind: "planned_checkout", source_id: roomId, date: "2026-10-24", detail_path: `/housing/rooms/${roomId}`, building_name: "一号楼", room_number: "101" },
+        ] }],
+      })
+    }
+    return baseFetch(input, init)
+  }))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const router = createMemoryRouter(appRoutes, { initialEntries: ["/"] })
+  render(<QueryClientProvider client={client}><AuthProvider><RouterProvider router={router} /></AuthProvider></QueryClientProvider>)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole("button", { name: "今日 1 人" }))
+  await waitFor(() => expect(screen.getByRole("button", { name: "今日 1 人" })).toHaveAttribute("aria-pressed", "true"))
+  await user.click(screen.getByRole("link", { name: /查看计划退宿详情/ }))
+  expect(await screen.findByRole("heading", { name: "房间运营详情" })).toBeVisible()
+  await act(async () => { await router.navigate(-1) })
+  expect(await screen.findByText("工作台提醒学员")).toBeVisible()
+  expect(screen.getByRole("button", { name: "今日 1 人" })).toHaveAttribute("aria-pressed", "true")
+  expect(screen.getAllByRole("region", { name: "退宿／结营提醒" })).toHaveLength(1)
+  const requestsBeforeFocus = reminderWindows.length
+  await act(async () => { focusManager.setFocused(false); focusManager.setFocused(true) })
+  await waitFor(() => expect(reminderWindows.length).toBeGreaterThan(requestsBeforeFocus))
+  expect(await screen.findByText("工作台提醒学员")).toBeVisible()
+  expect(screen.getByRole("button", { name: "今日 1 人" })).toHaveAttribute("aria-pressed", "true")
+  expect(reminderWindows.slice(1).every((window) => window === "today")).toBe(true)
+  client.clear()
+})
 
 it.each([true, false])("routes claim-only administrators through server context, can_enter=%s", async (canEnter) => {
   const requested: string[] = []
@@ -405,6 +462,18 @@ function renderTalentRoute(
   )
   return router
 }
+
+it('opens the separate ReactionX route read-only for scoped talent readers', async () => {
+  const router = renderTalentRoute('/talent-tests/reactionx', { scopedPermissions: ['talent_tests.read'] })
+  expect(await screen.findByRole('heading', { name: '实体灯专项' })).toBeVisible()
+  expect(router.state.location.pathname).toBe('/talent-tests/reactionx')
+  expect(screen.queryByRole('button', { name: '配对本机连接器' })).not.toBeInTheDocument()
+})
+it('does not grant ReactionX report access from manage or take permission', async () => {
+  const router = renderTalentRoute('/talent-tests/reactionx/reports/11111111-1111-4111-8111-111111111111', { permissions: ['reactionx.manage', 'talent_tests.take'] })
+  await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+  expect(screen.queryByRole('heading', { name: '实体灯训练报告' })).not.toBeInTheDocument()
+})
 
 it("opens the talent landing for an object-scoped read grant", async () => {
   const router = renderTalentRoute("/talent-tests", {
@@ -1474,6 +1543,7 @@ it.each([
 it.each([
   ["没有教学权限", []],
   ["只有范围教学权限", ["teaching.read"]],
+  ["只有范围队伍目录权限", ["professional_teams.manage"]],
 ])("redirects %s away from the teaching catalog", async (_label, scopedPermissions) => {
   const fetchMock = vi.fn<typeof fetch>(async (input) => {
     const url = String(input)
@@ -1565,6 +1635,32 @@ it("renders the teaching catalog for a global teaching reader", async () => {
 
   expect(await screen.findByRole("tab", { name: "电竞项目" })).toBeVisible()
   expect(router.state.location.pathname).toBe("/teaching/catalog")
+})
+
+it("opens the team-only catalog for global team administration without exposing teaching destinations", async () => {
+  const fetchMock = vi.fn<typeof fetch>(async (input) => {
+    const url = String(input)
+    if (url.endsWith("/auth/me")) return Response.json({
+      account_id: "catalog-admin", person_id: "catalog-admin-person", full_name: "行政",
+      email: "catalog-admin@example.com", is_super_admin: false, force_password_change: false,
+      permissions: ["professional_teams.manage"], scoped_permissions: [],
+    })
+    if (url.endsWith("/auth/csrf")) return Response.json({ csrf_token: "catalog-admin-csrf" })
+    if (url.includes("/projects?") || url.includes("/professional-teams?")) return Response.json({ items: [], page: 1, page_size: 100, total: 0 })
+    if (url.endsWith("/team-management/context")) return Response.json({ can_open_management: true, can_read_self: false, can_manage_catalog: true, can_assign_managers: true, can_transfer: true })
+    if (url.endsWith("/portal/context")) return Response.json(noPortalContext)
+    throw new Error(`Unexpected request: ${url}`)
+  })
+  vi.stubGlobal("fetch", fetchMock)
+  const router = createMemoryRouter(appRoutes, { initialEntries: ["/teaching/catalog"] })
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><AuthProvider><RouterProvider router={router} /></AuthProvider></QueryClientProvider>)
+  expect(await screen.findByRole("button", { name: "新增队伍" })).toBeVisible()
+  expect(router.state.location.pathname).toBe("/teaching/catalog")
+  expect(screen.queryByRole("tab", { name: "电竞项目" })).not.toBeInTheDocument()
+  expect(screen.queryByRole("link", { name: "招生教学" })).not.toBeInTheDocument()
+  expect(screen.queryByRole("link", { name: "营期" })).not.toBeInTheDocument()
+  await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/professional-teams?"))).toBe(true))
+  expect(fetchMock.mock.calls.some(([input]) => /\/cohorts\?|\/project-coaches/.test(String(input)))).toBe(false)
 })
 
 it("opens the authorized cohort list for a scoped-only teaching reader", async () => {
@@ -2168,6 +2264,15 @@ function portalRouteFetch(
       return typeof contextResponse === "function"
         ? contextResponse()
         : contextResponse.clone()
+    }
+    if (url.includes("/portal/departure-reminders?")) {
+      return Response.json({ available: false, observed_at: "2026-10-24T08:00:00+08:00", business_date: "2026-10-24", timezone: "Asia/Shanghai", next_refresh_at: "2026-10-25T00:00:00+08:00", window: "three_days", today_count: 0, three_day_count: 0, page: 1, page_size: 20, total: 0, items: [] })
+    }
+    if (url.includes("/portal/rental-reminders?")) {
+      return Response.json({ available: false, can_manage: false, observed_at: "2026-10-24T00:00:00Z", business_date: "2026-10-24", next_refresh_at: "2026-10-24T16:00:00Z", page: 1, page_size: 20, total: 0, items: [] })
+    }
+    if (url.includes("/portal/room-card-reminders?")) {
+      return Response.json({ available: false, observed_at: "2026-11-05T00:00:00Z", business_date: "2026-11-05", next_refresh_at: "2026-11-05T16:00:00Z", page: 1, page_size: 20, total: 0, items: [] })
     }
     if (url.includes("/food-preferences/cuisines?")) {
       return new Response(

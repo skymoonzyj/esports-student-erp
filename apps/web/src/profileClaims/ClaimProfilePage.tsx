@@ -3,10 +3,13 @@ import type { FormEvent } from "react"
 import { Link } from "react-router-dom"
 import { ProblemDetailsError } from "../api/client"
 import { useOptionalAuth } from "../auth/AuthProvider"
+import { PublicEntryAside } from "../registration/PublicEntryAside"
 import { clearProfileClaimSession, getProfileClaimStatus, startProfileClaim, verifyProfileClaim } from "./api"
 import { subscribeProfileClaimBoundary } from "./keys"
 import { ClaimCompletionFields, emptyClaimCompletion, toClaimCompletion } from "./ClaimCompletionFields"
 import type { ClaimPublicStatus } from "./types"
+import type { PersonDocumentType } from "../assistedPeople/types"
+import { documentDemographicNotice, documentNumberLabel, documentTypeLabel, personDocumentTypes } from "../assistedPeople/documentFacts"
 import "../registration/registration.css"
 import "./profileClaims.css"
 
@@ -23,7 +26,7 @@ export function ClaimProfilePage() {
   const auth = useOptionalAuth()
   const [fullName, setFullName] = useState("")
   const [identity, setIdentity] = useState("")
-  const [documentType, setDocumentType] = useState<"cn_id" | "passport">("cn_id")
+  const [documentType, setDocumentType] = useState<PersonDocumentType>("cn_id")
   const [issuer, setIssuer] = useState("")
   const [completion, setCompletion] = useState(emptyClaimCompletion)
   const [email, setEmail] = useState("")
@@ -68,7 +71,7 @@ export function ClaimProfilePage() {
   // Initial session restore can still trigger a real account boundary. Do not
   // accept a draft until that boundary has settled; later boundaries still clear it.
   if (auth?.status === "loading") {
-    return <main className="registrationPage"><section className="registrationCard" role="status">正在确认当前会话…</section></main>
+    return <main className="registrationPage"><PublicEntryAside /><section className="registrationCard" role="status">正在确认当前会话…</section></main>
   }
 
   const expired = expiresAt > 0 && now >= expiresAt
@@ -125,7 +128,7 @@ export function ClaimProfilePage() {
       setStatus(null); setRequested(false); setCode(""); setExpiresAt(0)
       const extra = toClaimCompletion(completion)
       const result = await startProfileClaim({ full_name: fullName, identity_number: identity, email,
-        ...(documentType === "passport" ? { document_type: documentType, issuing_country: issuer.trim() || null } : {}),
+        ...(documentType === "passport" ? { document_type: documentType, issuing_country: issuer.trim() || null } : documentType !== "cn_id" ? { document_type: documentType } : {}),
         ...(extra ? { completion: extra } : {}),
       }, signal)
       if (!active.current || signal.aborted) return
@@ -146,6 +149,7 @@ export function ClaimProfilePage() {
   }
 
   return <main className="registrationPage">
+    <PublicEntryAside />
     <section className="registrationCard" aria-labelledby="claim-profile-title">
       <div className="registrationBrand" aria-hidden="true">竞</div>
       <p className="registrationEyebrow">PROFILE CLAIM</p>
@@ -158,10 +162,11 @@ export function ClaimProfilePage() {
             onChange={(event) => changed(() => setFullName(event.target.value))} /></div>
         <div className="registrationFieldGroup"><label htmlFor="claim-document">证件类型</label>
           <select id="claim-document" value={documentType} disabled={pending} onChange={(event) => changed(() => {
-            setDocumentType(event.target.value as "cn_id" | "passport"); setIdentity(""); setIssuer("")
-          })}><option value="cn_id">中国居民身份证</option><option value="passport">护照</option></select></div>
-        <div className="registrationFieldGroup"><label htmlFor="claim-identity">{documentType === "passport" ? "护照号码" : "身份证"}</label>
-          <input id="claim-identity" value={identity} maxLength={documentType === "passport" ? 80 : 18} autoComplete="off" required disabled={pending}
+            setDocumentType(event.target.value as PersonDocumentType); setIdentity(""); setIssuer("")
+            setCompletion((current) => ({ ...current, date_of_birth: null, sex: null, issuing_country: null }))
+          })}>{personDocumentTypes.map((type) => <option key={type} value={type}>{documentTypeLabel(type)}</option>)}</select></div>
+        <div className="registrationFieldGroup"><label htmlFor="claim-identity">{documentNumberLabel(documentType)}</label>
+          <input id="claim-identity" value={identity} maxLength={documentType === "passport" ? 80 : documentType === "hk_id" ? 24 : 18} autoComplete="off" required disabled={pending}
             onChange={(event) => changed(() => setIdentity(event.target.value))} /></div>
         {documentType === "passport" ? <div className="registrationFieldGroup"><label htmlFor="claim-issuer">签发国家（两位代码，可暂缺）</label>
           <input id="claim-issuer" value={issuer} maxLength={2} pattern="[A-Za-z]{2}" autoComplete="off" disabled={pending}
@@ -170,6 +175,7 @@ export function ClaimProfilePage() {
         <div className="registrationFieldGroup"><label htmlFor="claim-email">本人邮箱</label>
           <input id="claim-email" type="email" value={email} autoComplete="off" required disabled={pending}
             onChange={(event) => changed(() => setEmail(event.target.value))} /></div>
+        {documentDemographicNotice(documentType) ? <p>{documentDemographicNotice(documentType)}不清楚可留空，激活前须补齐并核对。</p> : null}
         <ClaimCompletionFields value={completion} disabled={pending} onChange={(value) => changed(() => setCompletion(value))} />
         <p className="registrationLead">修改任一资料后需重新申请并验证邮箱，不会修改已验证的申请。审核批准不等于账号激活，也不会授予角色或监护权限。</p>
         <button className="primaryButton registrationSubmit" type="submit" disabled={pending || remaining > 0}>

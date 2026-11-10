@@ -1,6 +1,25 @@
 import { apiFetch, apiFetchResponse } from "../api/client"
 
 export type AssetStatus = "available" | "assigned" | "maintenance" | "retired"
+export type OwnershipFilter = "owned" | "rented" | "unconfirmed" | ""
+export type AssetOwnership = {
+  ownership_type?: "owned" | "rented" | null
+  rental_started_on?: string | null
+  rental_expires_on?: string | null
+  rental_returned_on?: string | null
+}
+export type AcquisitionDetails = {
+  acquisition_method?: "purchase" | "other" | null
+  acquisition_channel?: "online" | "offline" | null
+  acquisition_note?: string | null
+}
+
+export type AssetHardware = {
+  cpu_model?: string | null
+  memory_capacity?: string | null
+  gpu_model?: string | null
+  disk_capacity?: string | null
+}
 
 export type AssetAssignment = {
   id: string
@@ -33,7 +52,8 @@ export type AssetWarrantyDetails = {
   warranty_order_number?: string | null
 }
 
-export type Asset = AssetWarrantyDetails & {
+export type Asset = AssetHardware & AssetWarrantyDetails & AssetOwnership & AcquisitionDetails & {
+  rental_revision?: number
   id: string
   asset_code: string
   name: string
@@ -53,7 +73,7 @@ export type Asset = AssetWarrantyDetails & {
   photo: AssetPhoto | null
 }
 
-export type MyAsset = AssetWarrantyDetails & {
+export type MyAsset = AssetHardware & AssetWarrantyDetails & AssetOwnership & {
   id: string
   asset_code: string
   name: string
@@ -77,7 +97,16 @@ export type AssetPage = {
   total: number
 }
 
-export type AssetScan = {
+export type AssetCategoryCatalog = {
+  groups: { key: string; label: string; options: string[] }[]
+  legacy_categories: string[]
+}
+
+export function listAssetCategories(): Promise<AssetCategoryCatalog> {
+  return apiFetch<AssetCategoryCatalog>("/assets/categories", { cache: "no-store" })
+}
+
+export type AssetScan = AssetHardware & AssetOwnership & {
   asset_code: string
   name: string
   category: string | null
@@ -90,7 +119,7 @@ export type AssetScan = {
   scanned_at: string
 }
 
-export type AssetInput = AssetWarrantyDetails & {
+export type AssetInput = AssetHardware & AssetWarrantyDetails & Omit<AssetOwnership, "rental_returned_on"> & AcquisitionDetails & {
   name: string
   category?: string | null
   brand?: string | null
@@ -102,7 +131,7 @@ export type AssetInput = AssetWarrantyDetails & {
   note?: string | null
 }
 
-export type AssetUpdateInput = Partial<AssetInput> & { status?: AssetStatus }
+export type AssetUpdateInput = Partial<AssetInput> & { status?: AssetStatus; expected_rental_revision?: number }
 
 export type AssetExportInput = {
   format: "xlsx" | "csv"
@@ -110,6 +139,7 @@ export type AssetExportInput = {
   query?: string
   status?: AssetStatus | ""
   category?: string
+  ownership_type?: OwnershipFilter
 }
 
 export type AssetExportDownload = { blob: Blob; filename: string }
@@ -118,6 +148,7 @@ export function listAssets(filters: {
   query?: string
   status?: AssetStatus | ""
   category?: string
+  ownership_type?: OwnershipFilter
   page?: number
   pageSize?: number
 } = {}): Promise<AssetPage> {
@@ -128,6 +159,7 @@ export function listAssets(filters: {
   if (filters.query) params.set("query", filters.query)
   if (filters.status) params.set("status", filters.status)
   if (filters.category) params.set("category", filters.category)
+  if (filters.ownership_type) params.set("ownership_type", filters.ownership_type)
   return apiFetch<AssetPage>(`/assets?${params.toString()}`)
 }
 
@@ -145,6 +177,17 @@ export function getAsset(assetId: string): Promise<Asset> {
 
 export function createAsset(input: AssetInput): Promise<Asset> {
   return apiFetch<Asset>("/assets", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  })
+}
+
+export type AssetBatchInput = { operation_key: string; quantity: number; asset: AssetInput }
+export type AssetBatchResult = { operation_key: string; items: Asset[]; total: number }
+
+export function createAssetBatch(input: AssetBatchInput): Promise<AssetBatchResult> {
+  return apiFetch<AssetBatchResult>("/assets/batch", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -190,6 +233,7 @@ export async function exportAssets(input: AssetExportInput): Promise<AssetExport
       query: input.query || undefined,
       status: input.status || undefined,
       category: input.category || undefined,
+      ownership_type: input.ownership_type || undefined,
     }),
   })
   const filename = attachmentFilename(response, input.format)

@@ -19,7 +19,7 @@ from app.housing.models import HousingBuilding, HousingFloor, HousingRoom, Housi
 from app.housing.occupancy_export_service import decrypt_identity, decrypt_phone
 from app.housing.occupancy_service import HousingOccupancyService
 from app.housing.room_status_export_schemas import HousingRoomStatusExportRequest
-from app.housing.schemas import CleaningStatus
+from app.housing.schemas import CleaningFrequency, CleaningStatus
 from app.housing.sorting import building_order_expressions
 from app.identity.models import Person, StaffProfile, StudentProfile, VisitorProfile
 from app.personnel_intake.models import AssistedPersonProfile
@@ -55,6 +55,7 @@ class RoomStatusExportRow:
     is_assignable: bool
     daily_cleaning_enabled: bool
     cleaning_status: CleaningStatus
+    cleaning_frequency: CleaningFrequency = "unspecified"
     person_name: str | None = None
     sex: str | None = None
     identity_number: str | None = None
@@ -192,15 +193,19 @@ class HousingRoomStatusExportService:
             current_gender=request.current_gender,
             occupancy=request.occupancy,
             assignability=request.assignability,
+            quick_filter=request.quick_filter,
             cleaning_statuses=frozenset(request.cleaning_statuses),
             daily_cleaning_enabled=request.daily_cleaning_enabled,
+            cleaning_frequencies=frozenset(request.cleaning_frequencies),
         )
         inventory = HousingInventoryService(self.db)
         selected = []
         for room, building, floor in room_rows:
             projection = projections[room.id]
             card = inventory._room_card(room, building, floor, access, projection)
-            if inventory._matches_filters(card, filters, projection):
+            if inventory._matches_filters(card, filters, projection) and inventory._matches_quick_filter(
+                card, filters.quick_filter
+            ):
                 selected.append((room, card))
         if len(selected) > MAX_EXPORT_ROOMS:
             self._limit_exceeded()
@@ -277,7 +282,8 @@ class HousingRoomStatusExportService:
                         verification_status=card.verification_status,
                         service_status=card.service_status,
                         is_assignable=card.is_assignable,
-                        daily_cleaning_enabled=room.daily_cleaning_enabled,
+                        daily_cleaning_enabled=card.daily_cleaning_enabled,
+                        cleaning_frequency=card.cleaning_frequency,
                         cleaning_status=cast(CleaningStatus, room.cleaning_status),
                         **person_fields,
                     )

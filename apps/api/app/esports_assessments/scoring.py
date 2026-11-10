@@ -4,22 +4,27 @@ from __future__ import annotations
 
 from decimal import Decimal
 from fractions import Fraction
+from itertools import pairwise
 
 from .catalog import validate_raw
-from .config_schemas import AimParams, RecognitionParams, TaskConfig
+from .config_schemas import AimParams, MultiTargetParams, RecognitionParams, TaskConfig
 from .quality import quality_flags
 from .raw_schemas import (
     AimRaw,
     DodgeChoiceRaw,
     DodgeRaw,
+    LaneLastHitRaw,
+    LaneTowerLastHitRaw,
     LastHitRaw,
     MapRaw,
     MoveFireRaw,
     MoveFireV3Raw,
+    MultiTargetRaw,
     RawResult,
     RecognitionRaw,
     RhythmRaw,
     SkillAimRaw,
+    Spheretrack90Raw,
     TrackingRaw,
 )
 from .schemas import Grade, PracticeResult, QualityInput, ScoredResult
@@ -102,6 +107,18 @@ def _uses_v2_rule(config: TaskConfig, test_id: str) -> bool:
 
 
 def _summarize_validated(config: TaskConfig, raw: RawResult) -> Metrics:
+    if isinstance(raw, MultiTargetRaw):
+        hit_times = [shot.at_ms for shot in raw.shots if shot.hit]
+        hits, shots = len(hit_times), len(raw.shots)
+        return {
+            "hits": hits,
+            "shots": shots,
+            "accuracy": float(_ratio(hits, shots)) if shots else 0,
+            "hits_per_second": float(_ratio(hits, 60)),
+            "successful_average_interval_ms": _mean(
+                [second - first for first, second in pairwise(hit_times)]
+            ),
+        }
     if _uses_v2_rule(config, "switching"):
         assert isinstance(raw, AimRaw)
         groups = tuple(zip(raw.trials[::2], raw.trials[1::2], strict=True))
@@ -135,7 +152,7 @@ def _summarize_validated(config: TaskConfig, raw: RawResult) -> Metrics:
             "successful_average_latency_ms": _mean(successful_latency),
             "average_latency_ms": _mean([trial.latency_ms for trial in raw.trials]),
         }
-    if isinstance(raw, TrackingRaw):
+    if isinstance(raw, (TrackingRaw, Spheretrack90Raw)):
         return {
             "coverage_ms": raw.coverage_ms,
             "coverage_rate": float(_ratio(raw.coverage_ms, 60000)),
@@ -187,6 +204,35 @@ def _summarize_validated(config: TaskConfig, raw: RawResult) -> Metrics:
             "joint_rate": float(_ratio(joint, len(raw.rounds))),
             "shots": raw.shots,
             "accuracy": float(_ratio(hits, raw.shots)) if raw.shots else 0,
+        }
+    if isinstance(raw, (LaneLastHitRaw, LaneTowerLastHitRaw)):
+        assert config.params.kind in ("lane_last_hit", "lane_last_hit_towers")
+        opportunities = config.params.wave_count * (
+            config.params.melee_per_wave + config.params.ranged_per_wave
+        )
+        lane_hits = [d for d in raw.deaths if d.by_player]
+        return {
+            "last_hits": len(lane_hits),
+            "enemy_deaths": len(raw.deaths),
+            "missed": len(raw.deaths) - len(lane_hits),
+            "unresolved": opportunities - len(raw.deaths),
+            "last_hit_rate": float(_ratio(len(lane_hits), len(raw.deaths))) if raw.deaths else 0,
+            "opportunity_completion": len(lane_hits) / opportunities,
+            "last_hits_per_minute": len(lane_hits) / 5,
+            "attacks": raw.attacks,
+            "cancelled_attacks": raw.cancelled_attacks,
+            **(
+                {
+                    "hero_deaths": len(raw.hero_death_times),
+                    "hero_damage_taken": raw.hero_damage_taken,
+                }
+                if isinstance(raw, LaneTowerLastHitRaw)
+                else {}
+            ),
+            **{
+                f"minute_{i + 1}_last_hits": sum(d.at_ms // 60000 == i for d in lane_hits)
+                for i in range(5)
+            },
         }
     if isinstance(raw, LastHitRaw):
         successes = sum(wave.success for wave in raw.waves)
@@ -291,6 +337,16 @@ def summarize_metrics(config: TaskConfig, raw: RawResult) -> Metrics:
 
 
 def _score_validated(config: TaskConfig, raw: RawResult) -> int:
+    if isinstance(raw, MultiTargetRaw):
+        assert isinstance(config.params, MultiTargetParams)
+        hits, shots = sum(shot.hit for shot in raw.shots), len(raw.shots)
+        if not shots:
+            return 0
+        return _round_fraction(
+            100
+            * min(Fraction(hits, config.params.reference_hits), _FRACTION_ONE)
+            * Fraction(hits, shots)
+        )
     if _uses_v2_rule(config, "switching"):
         assert isinstance(raw, AimRaw)
         assert isinstance(config.params, AimParams)
@@ -330,7 +386,7 @@ def _score_validated(config: TaskConfig, raw: RawResult) -> int:
             * (Fraction(7, 10) + Fraction(3, 10) * speed)
             * (Fraction(1, 2) + Fraction(1, 2) * accuracy)
         )
-    if isinstance(raw, TrackingRaw):
+    if isinstance(raw, (TrackingRaw, Spheretrack90Raw)):
         return _round_fraction(Fraction(100) * _fraction_ratio(raw.coverage_ms, config.duration_ms))
     if isinstance(raw, RecognitionRaw):
         assert isinstance(config.params, RecognitionParams)
@@ -370,6 +426,14 @@ def _score_validated(config: TaskConfig, raw: RawResult) -> int:
             Fraction(100)
             * _fraction_ratio(joint, len(raw.rounds))
             * (Fraction(1, 2) + Fraction(1, 2) * accuracy)
+        )
+    if isinstance(raw, (LaneLastHitRaw, LaneTowerLastHitRaw)):
+        assert config.params.kind in ("lane_last_hit", "lane_last_hit_towers")
+        opportunities = config.params.wave_count * (
+            config.params.melee_per_wave + config.params.ranged_per_wave
+        )
+        return _round_fraction(
+            Fraction(100) * _fraction_ratio(sum(d.by_player for d in raw.deaths), opportunities)
         )
     if isinstance(raw, LastHitRaw):
         return _round_fraction(

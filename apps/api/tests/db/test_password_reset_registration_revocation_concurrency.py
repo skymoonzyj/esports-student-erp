@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -12,10 +13,11 @@ from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+import app.auth.service as auth_service_module
 from app.audit.models import AuditEvent
 from app.auth.models import AccountLoginIdentifier, AuthSession, UserAccount
 from app.auth.schemas import AccountCreate
-from app.auth.service import AccountService, AuthService
+from app.auth.service import AccountService, AuthContext, AuthService
 from app.identity.models import Person
 from app.identity.schemas import PersonBaseInput
 from app.identity.service import IdentityService
@@ -399,6 +401,226 @@ def _complete_reset(db: Session, scenario: ResetRaceScenario) -> None:
         ),
         verification=_verification(db, CapturingVerificationSender(messages=[])),
     )
+
+
+@pytest.mark.parametrize("change_kind", ["ordinary", "admin", "recovery"])
+def test_reset_issuance_serializes_with_password_change(
+    postgres_engine: Engine, monkeypatch: pytest.MonkeyPatch, change_kind: str
+) -> None:
+    sequence = {"ordinary": 981, "admin": 983, "recovery": 985}[change_kind]
+    scenario = _setup_scenario(postgres_engine, sequence=sequence)
+    issued_uncommitted = threading.Event()
+    release_issue = threading.Event()
+    change_started = threading.Event()
+    change_pid: list[int] = []
+    sender = CapturingVerificationSender(messages=[])
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return NOW if tz is not None else NOW.replace(tzinfo=None)
+
+    monkeypatch.setattr(auth_service_module, "datetime", FrozenDateTime)
+    with Session(postgres_engine) as setup, setup.begin():
+        setup.execute(
+            update(RegistrationVerificationChallenge)
+            .where(RegistrationVerificationChallenge.id == scenario.reset_challenge_id)
+            .values(last_sent_at=NOW - timedelta(seconds=61))
+        )
+        session = AuthSession(
+            user_id=scenario.account_id, token_digest=f"issue-race-session-{sequence}",
+            csrf_digest=f"issue-race-csrf-{sequence}",
+            expires_at=NOW + timedelta(hours=1),
+        )
+        setup.add(session)
+        setup.flush()
+        session_id = session.id
+
+    class PausingSender(CapturingVerificationSender):
+        def send_code(self, **kwargs):
+            super().send_code(**kwargs)
+            issued_uncommitted.set()
+            assert release_issue.wait(timeout=5), "timed out releasing reset issuance"
+
+    def issue():
+        with Session(postgres_engine) as db:
+            return _auth(db).issue_password_reset(
+                identifier=scenario.phone, request_source="127.0.9.81",
+                verification=_verification(
+                    db, PausingSender(messages=sender.messages),
+                ),
+            )
+
+    def change():
+        with Session(postgres_engine) as db:
+            change_pid.append(db.scalar(select(func.pg_backend_pid())))
+            change_started.set()
+            if change_kind == "recovery":
+                _complete_reset(db, scenario)
+            elif change_kind == "admin":
+                AccountService(
+                    db, passwords=PasswordService(),
+                    identity_service=IdentityService(
+                        db, cipher=EnvelopeCipher(FIELD_KEY), lookup=LookupDigest(FIELD_KEY)
+                    ),
+                ).reset_password(scenario.account_id)
+            else:
+                account = db.get(UserAccount, scenario.account_id)
+                person = db.get(Person, scenario.person_id)
+                session = db.get(AuthSession, session_id)
+                _auth(db).change_password(
+                    AuthContext(account=account, person=person, session=session),
+                    current_password=OLD_PASSWORD, new_password=NEW_PASSWORD,
+                )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            issuance = pool.submit(issue)
+            assert issued_uncommitted.wait(timeout=5)
+            mutation = pool.submit(change)
+            try:
+                assert change_started.wait(timeout=5)
+                deadline = time.monotonic() + 3
+                while not mutation.done():
+                    with Session(postgres_engine) as observer:
+                        blocked = observer.scalar(
+                            select(func.cardinality(func.pg_blocking_pids(change_pid[0])))
+                        )
+                    if blocked:
+                        break
+                    assert time.monotonic() < deadline, "change neither completed nor blocked"
+                    threading.Event().wait(0.01)
+            finally:
+                release_issue.set()
+            issued = issuance.result(timeout=5)
+            mutation.result(timeout=5)
+        with Session(postgres_engine) as check:
+            challenge = check.get(RegistrationVerificationChallenge, issued.challenge_id)
+            assert challenge is not None
+            assert challenge.expires_at <= NOW, "racing issuance survived the newer password"
+            with pytest.raises(VerificationInvalidOrExpired):
+                _auth(check).complete_password_reset(
+                    challenge_id=issued.challenge_id,
+                    code=sender.code_for(issued.challenge_id),
+                    new_password="StaleRace2026Aa", request_id="stale-racing-reset",
+                    verification=_verification(check, CapturingVerificationSender(messages=[])),
+                )
+    finally:
+        release_issue.set()
+        _cleanup_scenario(postgres_engine, scenario)
+
+
+@pytest.mark.parametrize("winner", ["ordinary", "other_identifier_recovery"])
+def test_waiting_recovery_rejects_code_after_newer_password_change(
+    postgres_engine: Engine, winner: str
+) -> None:
+    sequence = 987 if winner == "ordinary" else 989
+    scenario = _setup_scenario(postgres_engine, sequence=sequence)
+    sender = CapturingVerificationSender(messages=[])
+    with Session(postgres_engine) as setup, setup.begin():
+        email = f"recovery-race-{sequence}@example.com"
+        db_identifier = AccountLoginIdentifier(
+            account_id=scenario.account_id, kind="email",
+            identifier_digest=auth_service_module.login_identifier_digest(
+                LookupDigest(FIELD_KEY), auth_service_module.normalize_login_identifier(email)
+            ),
+            verified_at=NOW, verification_source="test_verified", is_primary=False,
+        )
+        setup.add(db_identifier)
+        session = AuthSession(
+            user_id=scenario.account_id, token_digest=f"completion-race-session-{sequence}",
+            csrf_digest=f"completion-race-csrf-{sequence}",
+            expires_at=NOW + timedelta(hours=1),
+        )
+        setup.add(session)
+        setup.flush()
+        session_id = session.id
+    with Session(postgres_engine) as setup:
+        other = _auth(setup).issue_password_reset(
+            identifier=email, request_source="127.0.9.87",
+            verification=_verification(setup, sender),
+        )
+    winner_locked = threading.Event()
+    release_winner = threading.Event()
+    loser_started = threading.Event()
+    loser_pid: list[int] = []
+
+    def change():
+        with Session(postgres_engine) as db:
+            connection = db.connection()
+
+            def pause(_conn, _cursor, statement, _params, _ctx, _many):
+                normalized = " ".join(statement.lower().split())
+                if (
+                    "from user_accounts" in normalized
+                    and "for update" in normalized
+                    and not winner_locked.is_set()
+                ):
+                    winner_locked.set()
+                    assert release_winner.wait(timeout=5)
+
+            event.listen(connection, "after_cursor_execute", pause)
+            try:
+                if winner == "ordinary":
+                    _auth(db).change_password(
+                        AuthContext(
+                            account=db.get(UserAccount, scenario.account_id),
+                            person=db.get(Person, scenario.person_id),
+                            session=db.get(AuthSession, session_id),
+                        ),
+                        current_password=OLD_PASSWORD, new_password=NEW_PASSWORD,
+                    )
+                else:
+                    _complete_reset(db, scenario)
+            finally:
+                event.remove(connection, "after_cursor_execute", pause)
+
+    def recover():
+        with Session(postgres_engine) as db:
+            loser_pid.append(db.scalar(select(func.pg_backend_pid())))
+            loser_started.set()
+            with pytest.raises(VerificationInvalidOrExpired):
+                _auth(db).complete_password_reset(
+                    challenge_id=other.challenge_id, code=sender.code_for(other.challenge_id),
+                    new_password="Stale987PassAa", request_id="blocked-stale-recovery",
+                    verification=_verification(db, CapturingVerificationSender(messages=[])),
+                )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            mutation = pool.submit(change)
+            assert winner_locked.wait(timeout=5)
+            recovery = pool.submit(recover)
+            try:
+                assert loser_started.wait(timeout=5)
+                deadline = time.monotonic() + 3
+                while not recovery.done():
+                    with Session(postgres_engine) as observer:
+                        blocked = observer.scalar(
+                            select(func.cardinality(func.pg_blocking_pids(loser_pid[0])))
+                        )
+                    if blocked:
+                        break
+                    assert time.monotonic() < deadline, "recovery did not block"
+                    threading.Event().wait(0.01)
+                assert not recovery.done(), "recovery bypassed the in-flight password change"
+            finally:
+                release_winner.set()
+            mutation.result(timeout=5)
+            recovery.result(timeout=5)
+        with Session(postgres_engine) as check:
+            assert PasswordService().verify(
+                NEW_PASSWORD, check.get(UserAccount, scenario.account_id).password_hash
+            )
+            assert check.scalar(
+                select(func.count(AuditEvent.id)).where(
+                    AuditEvent.action == "auth.password_reset",
+                    AuditEvent.resource_id == scenario.account_id,
+                )
+            ) == (0 if winner == "ordinary" else 1)
+    finally:
+        release_winner.set()
+        _cleanup_scenario(postgres_engine, scenario)
 
 
 def test_late_registration_session_is_revoked_after_password_reset(

@@ -76,7 +76,13 @@ def test_old_formal_http_session_returns_frozen_v1_config_after_latest_catalog_i
     assert created.status_code == 201
     assert created.json()["suite_config"] == expected
     session_id = created.json()["id"]
-    assert catalog.get_suite(suite_id).catalog_version == f"{suite_id}-v3"
+    assert catalog.get_suite(suite_id).catalog_version == (
+        "pc-fps-v5"
+        if suite_id == "pc-fps"
+        else "pc-moba-v5"
+        if suite_id == "pc-moba"
+        else f"{suite_id}-v3"
+    )
     read = db_client.get(f"{PREFIX}/sessions/{session_id}")
     assert read.status_code == 200 and read.json()["suite_config"] == expected
     abandoned = db_client.post(
@@ -91,7 +97,7 @@ def test_old_formal_http_session_returns_frozen_v1_config_after_latest_catalog_i
 @pytest.mark.parametrize(
     "suite_id,test_id",
     [
-        ("pc-fps", "precision"),
+        ("pc-fps", "gridshot"),
         ("mobile-fps", "precision"),
         ("pc-moba", "last-hit"),
         ("mobile-moba", "dodge"),
@@ -112,10 +118,22 @@ def test_closed_suite_routes_are_actor_bound_for_actual_superadmin(
     assert context["available_suites"] == ["pc-fps", "mobile-fps", "pc-moba", "mobile-moba"]
     assert [item["suite_id"] for item in suites.json()["items"]] == context["available_suites"]
     created = db_client.post(
-        f"{PREFIX}/sessions", json=_json(session_request(suite_id)), headers=headers
+        f"{PREFIX}/sessions",
+        json=_json(
+            session_request(suite_id).model_copy(update={"attack_mode": "melee"})
+            if suite_id == "pc-moba"
+            else session_request(suite_id)
+        ),
+        headers=headers,
     )
     assert created.status_code == 201
-    assert created.json()["suite_config"]["catalog_version"] == f"{suite_id}-v3"
+    assert created.json()["suite_config"]["catalog_version"] == (
+        "pc-fps-v5"
+        if suite_id == "pc-fps"
+        else "pc-moba-v5"
+        if suite_id == "pc-moba"
+        else f"{suite_id}-v3"
+    )
     started = db_client.post(
         f"{PREFIX}/sessions/{created.json()['id']}/attempts",
         json=_json(attempt_request(suite_id, test_id)),
@@ -130,6 +148,7 @@ def test_closed_suite_routes_are_actor_bound_for_actual_superadmin(
     assert interrupted.status_code == 200
     practice = PracticeCreate(
         suite_id=suite_id,
+        attack_mode="melee" if suite_id == "pc-moba" else None,
         test_id=test_id,
         difficulty=3,
         settings=settings(suite_id),
@@ -172,12 +191,12 @@ def test_formal_context_catalog_recovery_detail_and_expired_interrupt(
         headers=headers,
     )
     assert created.status_code == 201
-    assert len(created.json()["members"]) == 4
+    assert len(created.json()["members"]) == 3
     session_id = created.json()["id"]
 
     started = db_client.post(
         f"{PREFIX}/sessions/{session_id}/attempts",
-        json=_json(attempt_request("pc-fps", "precision")),
+        json=_json(attempt_request("pc-fps", "gridshot")),
         headers=headers,
     )
     assert started.status_code == 201
@@ -224,7 +243,7 @@ def test_practice_submit_routes_never_create_formal_result_or_report(
     headers = {"X-CSRF-Token": csrf}
     request = PracticeCreate(
         suite_id="pc-fps",
-        test_id="precision",
+        test_id="gridshot",
         difficulty=4,
         settings=settings("pc-fps"),
         environment=environment("pc-fps"),
@@ -235,7 +254,7 @@ def test_practice_submit_routes_never_create_formal_result_or_report(
     run = started.json()
     submit = result_request(
         "pc-fps",
-        "precision",
+        "gridshot",
         seed=run["seed"],
         catalog_version=run["config"]["catalog_version"],
     )
@@ -304,6 +323,7 @@ def test_practice_expired_interrupt_is_http_410(
     headers = {"X-CSRF-Token": csrf}
     request = PracticeCreate(
         suite_id="pc-moba",
+        attack_mode="melee",
         test_id="last-hit",
         difficulty=3,
         settings=settings("pc-moba"),
@@ -341,7 +361,7 @@ def test_revoked_permission_precedes_budget_and_business_mutation(
     created = db_client.post(f"{PREFIX}/sessions", json=_json(session_request()), headers=headers)
     started = db_client.post(
         f"{PREFIX}/sessions/{created.json()['id']}/attempts",
-        json=_json(attempt_request("pc-fps", "precision")),
+        json=_json(attempt_request("pc-fps", "gridshot")),
         headers=headers,
     )
     account = platform_users["accounts"]["self_student"]
@@ -373,7 +393,7 @@ def test_revoked_permission_precedes_budget_and_business_mutation(
         json=_json(
             result_request(
                 "pc-fps",
-                "precision",
+                "gridshot",
                 seed=started.json()["seed"],
                 catalog_version=started.json()["config"]["catalog_version"],
             )

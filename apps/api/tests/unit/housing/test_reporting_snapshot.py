@@ -93,7 +93,9 @@ def test_old_snapshot_without_phone_tags_remains_readable():
     assert row.phone_evidence == "verified_identifier"
 
 
-@pytest.mark.parametrize("person_type", ["player", "student_player"])
+@pytest.mark.parametrize(
+    "person_type", ["player", "student_player", "team_manager", "assistant_coach"]
+)
 def test_new_source_snapshot_keeps_unverified_phone_tags(person_type):
     original = projection()
     original = original.model_copy(

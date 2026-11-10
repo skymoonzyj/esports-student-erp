@@ -110,21 +110,38 @@ class PortalCoachService:
                 )
             ).tuples()
         )
-        tokens_by_class = self.rbac.class_resource_tokens_many(
+        allowed_ids = self.authorized_class_ids(
             actor_person_id=actor_person_id,
             class_ids={row[1].id for row in rows},
-            at=now,
+            now=now,
+            decisions=decisions,
         )
         authorized: dict[UUID, AssignmentRow] = {}
         for row in rows:
             assignment, teaching_class, _, _, _ = row
-            tokens = tokens_by_class[teaching_class.id]
-            if all(
-                decisions.decide(permission, tokens).allowed
-                for permission in self._PERMISSIONS
-            ):
+            if teaching_class.id in allowed_ids:
                 authorized[assignment.class_id] = row
         return list(authorized.values())
+
+    def authorized_class_ids(
+        self,
+        *,
+        actor_person_id: UUID,
+        class_ids: set[UUID],
+        now: datetime,
+        decisions: RbacDecisionContext,
+    ) -> frozenset[UUID]:
+        """Share only the existing batch token/combination authorization."""
+        tokens_by_class = self.rbac.class_resource_tokens_many(
+            actor_person_id=actor_person_id,
+            class_ids=class_ids,
+            at=now,
+        )
+        return frozenset(
+            class_id
+            for class_id, tokens in tokens_by_class.items()
+            if all(decisions.decide(permission, tokens).allowed for permission in self._PERMISSIONS)
+        )
 
     @staticmethod
     def _option_for_group(

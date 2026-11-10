@@ -13,7 +13,9 @@ import type {
   HousingRoomCreate,
   HousingRoomUpdate,
   RoomType,
+  CleaningFrequency,
 } from "./api"
+import { CLEANING_FREQUENCY_OPTIONS, roomCleaningFrequency, roomCleaningFrequencyLabel } from "./api"
 import { HousingDialogShell } from "./HousingDialogShell"
 
 function notes(value: string): string | null {
@@ -88,6 +90,7 @@ export function FloorDialog({ building, floor, pending, error, focusFallbackRef,
 }
 
 const CAPACITY: Record<Exclude<RoomType, "custom">, number> = { single: 1, double: 2, triple: 3, functional: 0 }
+const SERVICE_STATUS_LABELS = { available: "可用", maintenance: "维修", disabled: "停用" }
 
 export function isHousingRoomDestinationAllowed(catalog: HousingCatalog, floorId: string): boolean {
   const floor = catalog.floors.find((item) => item.id === floorId)
@@ -112,11 +115,9 @@ export function RoomDialog({ catalog, initialFloor, room, pending, error, focusF
   const [roomType, setRoomType] = useState<RoomType>(draftRoom?.room_type ?? "single")
   const [customCapacity, setCustomCapacity] = useState(draftRoom?.room_type === "custom" ? String(draftRoom.capacity) : "")
   const [area, setArea] = useState(draftRoom?.area_square_meters ?? "")
-  const [service, setService] = useState<"available" | "maintenance" | "disabled">(
-    draftRoom?.service_status === "maintenance" || draftRoom?.service_status === "disabled" ? draftRoom.service_status : "available",
-  )
+  const [service, setService] = useState<"" | "available" | "maintenance" | "disabled">("")
   const [note, setNote] = useState(draftRoom?.notes ?? "")
-  const [dailyCleaningEnabled, setDailyCleaningEnabled] = useState(draftRoom?.daily_cleaning_enabled ?? false)
+  const [cleaningFrequency, setCleaningFrequency] = useState<CleaningFrequency>(roomCleaningFrequency(draftRoom))
   const canManageCare = draftRoom ? Boolean(room?.allowed_actions.manage_care)
     : Boolean(floors.find((floor) => floor.id === floorId)?.allowed_actions.includes("manage_care"))
   function submit(event: FormEvent): void {
@@ -124,13 +125,13 @@ export function RoomDialog({ catalog, initialFloor, room, pending, error, focusF
     const capacity = roomType === "custom" ? Number(customCapacity) : CAPACITY[roomType]
     const common = { room_number: roomNumber.trim(), room_type: roomType, capacity, area_square_meters: area.trim() || null, notes: notes(note) }
     if (!draftRoom) {
-      onSubmit({ ...common, floor_id: floorId, ...(canManageCare ? { daily_cleaning_enabled: dailyCleaningEnabled } : {}) })
+      onSubmit({ ...common, floor_id: floorId, ...(canManageCare ? { cleaning_frequency: cleaningFrequency } : {}) })
       return
     }
     const input: HousingRoomUpdate = { ...common, version: draftRoom.version }
-    if (room?.allowed_actions.manage_care) input.daily_cleaning_enabled = dailyCleaningEnabled
+    if (room?.allowed_actions.manage_care) input.cleaning_frequency = cleaningFrequency
     if (floorId && floorId !== draftRoom.floor_id) input.floor_id = floorId
-    if (draftRoom.service_status !== "problem") input.service_status = service
+    if (draftRoom.service_status !== "problem" && service) input.service_status = service
     onSubmit(input)
   }
   const title = draftRoom ? `编辑房间 ${draftRoom.room_number}` : `在${initialFloor?.name ?? "所选楼层"}新建房间`
@@ -138,23 +139,26 @@ export function RoomDialog({ catalog, initialFloor, room, pending, error, focusF
     <HousingDialogShell title={title} pending={pending} error={error} focusFallbackRef={focusFallbackRef} onClose={onClose}>
       <form onSubmit={submit}>
         <fieldset disabled={pending}>
-          {draftRoom ? <p className="housingDialog__warning">结构变更会将房间重置为待核对。</p> : null}
+          {draftRoom ? <p className="housingDialog__warning">结构变更未设置服务状态时会将房间重置为待核对。</p> : null}
           {draftRoom ? <p className="housingDialog__currentLocation">当前位置：{draftRoom.building_name} · {draftRoom.floor_name}</p> : null}
           <label>所属楼层<select data-autofocus={draftRoom ? true : undefined} required={!draftRoom} value={floorId} onChange={(event) => {
             const nextFloorId = event.currentTarget.value
             setFloorId(nextFloorId)
-            if (!draftRoom && !floors.find((floor) => floor.id === nextFloorId)?.allowed_actions.includes("manage_care")) setDailyCleaningEnabled(false)
+            if (!draftRoom && !floors.find((floor) => floor.id === nextFloorId)?.allowed_actions.includes("manage_care")) setCleaningFrequency("unspecified")
           }}>{draftRoom ? <option value="">保持当前位置（不移动）</option> : null}{floors.map((floor) => <option key={floor.id} value={floor.id}>{floor.building_name} · {floor.name}</option>)}</select></label>
           <label>房间号<input data-autofocus={draftRoom ? undefined : true} required maxLength={32} value={roomNumber} onChange={(event) => setRoomNumber(event.currentTarget.value)} /></label>
           <label>房型<select value={roomType} onChange={(event) => setRoomType(event.currentTarget.value as RoomType)}><option value="single">单人间</option><option value="double">双人间</option><option value="triple">三人间</option><option value="custom">自定义房型</option><option value="functional">功能间</option></select></label>
           {roomType === "custom" ? <label>自定义容量<input required type="number" min="1" max="100" value={customCapacity} onChange={(event) => setCustomCapacity(event.currentTarget.value)} /></label> : null}
           <label>面积（平方米）<input type="number" min="0.01" step="0.01" value={area} onChange={(event) => setArea(event.currentTarget.value)} /></label>
-          {draftRoom?.service_status === "problem" ? <p className="housingDialog__warning">问题房状态需通过问题流程处理</p> : draftRoom ? <label>服务状态<select value={service} onChange={(event) => setService(event.currentTarget.value as typeof service)}><option value="available">可用</option><option value="maintenance">维修</option><option value="disabled">停用</option></select></label> : null}
+          {draftRoom?.service_status === "problem" ? <p className="housingDialog__warning">问题房状态需通过问题流程处理</p> : draftRoom ? <>
+            <label>服务状态<select value={service} onChange={(event) => setService(event.currentTarget.value as typeof service)}><option value="">保持当前状态（{SERVICE_STATUS_LABELS[draftRoom.service_status]}）</option><option value="available">可用</option><option value="maintenance">维修</option><option value="disabled">停用</option></select></label>
+            <p>设置服务状态将同步完成核对。退房待保洁房间仍需完成保洁后才能安排入住。</p>
+          </> : null}
           <label>备注<textarea maxLength={500} value={note} onChange={(event) => setNote(event.currentTarget.value)} /></label>
           {draftRoom ? <>
-            <p>每日保洁：{room?.daily_cleaning_enabled ? "需要" : "无需"}（只读）</p>
+            {!canManageCare && room ? <p>保洁频率：{roomCleaningFrequencyLabel(room)}（只读）</p> : null}
           </> : null}
-          {canManageCare ? <label><input type="checkbox" checked={dailyCleaningEnabled} onChange={(event) => setDailyCleaningEnabled(event.currentTarget.checked)} />需要每日保洁</label> : null}
+          {canManageCare ? <label>保洁频率<select value={cleaningFrequency} onChange={(event) => setCleaningFrequency(event.currentTarget.value as CleaningFrequency)}>{CLEANING_FREQUENCY_OPTIONS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label> : null}
           <footer><button type="button" onClick={onClose}>取消</button><button type="submit">{pending ? "正在保存" : "保存房间"}</button></footer>
         </fieldset>
       </form>

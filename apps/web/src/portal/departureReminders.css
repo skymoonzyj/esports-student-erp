@@ -1,0 +1,183 @@
+.departureReminders {
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 24px;
+  padding: 22px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--ui-radius-lg, 12px);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card-soft);
+  overflow-wrap: anywhere;
+}
+
+.departureHeader,
+.departureWindows,
+.departureEventHeading,
+.departurePagination,
+.departureError {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.departureHeader,
+.departurePagination,
+.departureError {
+  justify-content: space-between;
+}
+
+.departureHeader > div,
+.departurePeople > li {
+  min-width: 0;
+}
+
+.departureReminders h2,
+.departureReminders h3 {
+  margin: 0;
+  color: var(--color-text-strong);
+  font-size: 18px;
+}
+
+.departureReminders h3 {
+  font-size: 16px;
+}
+
+.departureHeader p,
+.departureDate,
+.departureStatus,
+.departurePagination p,
+.departureEvent p {
+  margin: 8px 0 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.departureDate {
+  margin-top: 16px;
+}
+
+.departureReminders button,
+.departureEvent a {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  color: var(--color-text-strong);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.departureReminders button[aria-pressed="true"] {
+  color: var(--color-accent-600);
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent-600);
+}
+
+.departureReminders button:disabled {
+  opacity: .6;
+  cursor: default;
+}
+
+.departureReminders button:focus-visible,
+.departureEvent a:focus-visible {
+  outline: 3px solid var(--color-accent-600);
+  outline-offset: 3px;
+}
+
+.departurePeople,
+.departureEvents {
+  padding: 0;
+  margin: 16px 0 0;
+  list-style: none;
+}
+
+.departurePeople {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.departurePerson {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+}
+
+.departureNickname {
+  display: inline-block;
+  margin-left: 10px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: normal;
+}
+
+.departureEvents {
+  display: grid;
+  gap: 12px;
+}
+
+.departureEvent {
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--color-surface-muted, #f5f7fa);
+  font-size: 13px;
+}
+
+.departureEvent.today {
+  box-shadow: inset 3px 0 var(--color-accent-600);
+}
+
+.departureToday,
+.departureCompleted {
+  display: inline-block;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.departureToday {
+  color: var(--color-accent-600);
+  background: var(--color-accent-soft);
+}
+
+.departureCompleted {
+  margin-top: 8px;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+}
+
+.departureEvent a {
+  display: inline-flex;
+  box-sizing: border-box;
+  align-items: center;
+  margin-top: 8px;
+  color: var(--color-accent-600);
+  text-decoration: none;
+}
+
+.departureError {
+  margin-top: 16px;
+  color: var(--color-danger-700);
+}
+
+.departurePagination {
+  margin-top: 20px;
+}
+
+@media (max-width: 767px) {
+  .departureReminders { padding: 16px; }
+  .departurePeople { grid-template-columns: minmax(0, 1fr); }
+  .departurePerson { padding: 12px; }
+  .departurePagination p { flex-basis: 100%; order: -1; }
+}
+
+html[data-ui-theme="command"] .departureReminders { padding: 18px 20px; box-shadow: none; }
+html[data-ui-theme="command"] .departurePeople { gap: 1px; background: var(--color-border-soft); border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-sm, 5px); overflow: hidden; }
+html[data-ui-theme="command"] .departurePerson { border: 0; border-radius: 0; background: var(--color-surface); }
+@media (max-width: 767px) { html[data-ui-theme="command"] .departureReminders { padding: 16px; } }

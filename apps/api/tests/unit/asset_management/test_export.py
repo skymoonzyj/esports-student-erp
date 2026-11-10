@@ -30,6 +30,17 @@ def make_asset() -> SimpleNamespace:
         warranty_contact_phone=None,
         warranty_product_url="https://shop.example.com/item/1",
         warranty_order_number="000012345678901234567890",
+        ownership_type="rented",
+        acquisition_method=None,
+        acquisition_channel=None,
+        acquisition_note=None,
+        rental_started_on=date(2026, 1, 1),
+        rental_expires_on=date(2027, 1, 31),
+        rental_returned_on=None,
+        cpu_model="Ryzen 7",
+        memory_capacity="32GB",
+        gpu_model="核显",
+        disk_capacity="1TB SSD + 2TB HDD",
     )
 
 
@@ -71,6 +82,28 @@ def test_renders_csv_with_formula_safe_text() -> None:
     assert "'=HYPERLINK" in text
 
 
+def test_appends_hardware_columns_and_preserves_formula_safe_text() -> None:
+    import csv
+    from io import StringIO
+
+    asset = make_asset()
+    asset.cpu_model = "=CPU"
+    asset.memory_capacity = "+32GB"
+    asset.gpu_model = "@核显"
+    asset.disk_capacity = "-1TB SSD + 2TB HDD"
+    for format in ("csv", "xlsx"):
+        content, _, _, _ = render_asset_export([(asset, None, None)], format=format, occurred_at=datetime.fromisoformat("2026-10-28T00:00:00+00:00"))
+        if format == "csv":
+            rows = list(csv.reader(StringIO(content.decode("utf-8-sig"))))
+        else:
+            workbook = load_workbook(BytesIO(content), data_only=False)
+            rows = list(workbook.active.values)
+            assert all(cell.data_type != "f" for cell in workbook.active[2])
+            workbook.close()
+        assert tuple(rows[0][-4:]) == ("CPU", "内存容量", "GPU", "硬盘容量")
+        assert tuple(rows[1][-4:]) == ("'=CPU", "'+32GB", "'@核显", "'-1TB SSD + 2TB HDD")
+
+
 def test_renders_xlsx_with_headers() -> None:
     content, mime, filename, format = render_asset_export(
         [(make_asset(), None, None)],
@@ -81,6 +114,9 @@ def test_renders_xlsx_with_headers() -> None:
     assert workbook.active["A2"].value == "AST-20260821-ABCD1234"
     assert workbook.active["Q2"].value == "线上"
     assert workbook.active["V2"].value == "000012345678901234567890"
+    assert workbook.active["W2"].value == "租用"
+    assert workbook.active["AA2"].value == "2026-01-01"
+    assert workbook.active["AB2"].value == "2027-01-31"
     workbook.close()
     assert mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     assert filename.endswith(".xlsx")

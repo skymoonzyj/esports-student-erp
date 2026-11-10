@@ -1,4 +1,4 @@
-import { CanvasTexture, CircleGeometry, Color, DoubleSide, GridHelper, Group, Mesh, MeshBasicMaterial, PerspectiveCamera, PlaneGeometry, RingGeometry, Scene, WebGLRenderer, type Material } from 'three'
+import { CanvasTexture, CircleGeometry, Color, DirectionalLight, DoubleSide, GridHelper, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshPhongMaterial, PerspectiveCamera, PlaneGeometry, RingGeometry, Scene, SphereGeometry, WebGLRenderer, type Material } from 'three'
 import type { FpsSceneSnapshot, FpsTargetSnapshot } from '../engineRuntime/types'
 import { verticalFovDeg } from './math'
 
@@ -25,7 +25,12 @@ function targetMesh(target: FpsTargetSnapshot): Group {
   const group = new Group()
   group.name = target.id
   group.userData.type = target.type
+  group.userData.shape = target.shape
   const color = target.type === 'friend' ? 0x40bbff : target.type === 'enemy' ? 0xff675e : 0x7cf5c7
+  if (target.shape === 'sphere') {
+    group.add(new Mesh(new SphereGeometry(1, 40, 28), new MeshPhongMaterial({ color, shininess: 45, specular: 0xa6e9ff })))
+    return group
+  }
   group.add(new Mesh(new CircleGeometry(1, 64), new MeshBasicMaterial({ color, side: DoubleSide })))
   const ring = new Mesh(new RingGeometry(.91, 1, 64), new MeshBasicMaterial({ color: 0xffffff, side: DoubleSide }))
   ring.position.z = .005
@@ -60,6 +65,10 @@ export function createFpsRenderer(canvas: HTMLCanvasElement): FpsRenderer {
   camera.rotation.order = 'YXZ'
   const grid = new GridHelper(100, 40, 0x33465e, 0x1b2a3d)
   scene.add(grid)
+  scene.add(new HemisphereLight(0xd8f5ff, 0x19283d, 1.6))
+  const light = new DirectionalLight(0xffffff, 2)
+  light.position.set(-3, 8, 5)
+  scene.add(light)
   const targets = new Map<string, Group>()
   const checkpoints = new Map<string, Mesh>()
   let disposed = false
@@ -80,15 +89,19 @@ export function createFpsRenderer(canvas: HTMLCanvasElement): FpsRenderer {
       const visible = snapshot.targets.filter(target => target.state !== 'hidden' && target.state !== 'hit' && target.state !== 'missed')
       for (const [id, group] of targets) {
         const next = visible.find(target => target.id === id)
-        if (!next || next.type !== group.userData.type) { disposeGroup(group); scene.remove(group); targets.delete(id) }
+        if (!next || next.type !== group.userData.type || next.shape !== group.userData.shape) { disposeGroup(group); scene.remove(group); targets.delete(id) }
       }
       for (const target of visible) {
         let group = targets.get(target.id)
         if (!group) { group = targetMesh(target); targets.set(target.id, group); scene.add(group) }
         group.position.set(target.position.x, target.position.y, target.position.z)
         group.lookAt(camera.position)
-        const radius = group.position.distanceTo(camera.position) * Math.tan(target.angular_diameter_deg * Math.PI / 360)
+        const halfAngle = target.angular_diameter_deg * Math.PI / 360
+        const radius = group.position.distanceTo(camera.position) * (target.shape === 'sphere' ? Math.sin(halfAngle) : Math.tan(halfAngle))
         group.scale.setScalar(radius)
+        if (snapshot.feedback?.kind === 'spheretrack90') {
+          ;((group.children[0] as Mesh).material as MeshBasicMaterial).color.set(snapshot.feedback.covered ? 0x7cf5c7 : 0xff675e)
+        }
         for (const child of group.children) {
           const material = (child as Mesh).material as MeshBasicMaterial
           material.opacity = target.state === 'highlighted' ? 1 : .35

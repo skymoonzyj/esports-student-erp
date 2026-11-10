@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFi
 from sqlalchemy.orm import Session
 
 from app.audit.service import AuditService
-from app.auth.dependencies import require_standard_account
+from app.auth.dependencies import require_current_standard_account, require_standard_account
 from app.auth.service import AuthContext
 from app.core.database import get_db
 from app.core.errors import ProblemError
@@ -213,6 +213,10 @@ def _download(
         filename = report.converted_filename
         digest = report.converted_sha256
         action = "travel_report.converted.download"
+    # Retrieval may wait for a row lock or regenerate the converted workbook.
+    # Do not release bytes or record success using the pre-retrieval authority.
+    context = require_current_standard_account(db, context)
+    _require_permission(context, db, "travel_reports.export")
     _audit(db, request, context, action=action, report=report, file_sha256=digest)
     db.commit()
     return Response(

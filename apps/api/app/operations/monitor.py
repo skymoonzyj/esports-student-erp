@@ -76,6 +76,11 @@ def service_conditions(
             "metrics_buffer_pressure", "warning", "请求统计缓冲区压力较大",
             "数据库写入延迟期间部分请求已合并统计，总数保留，但接口和分钟分布精度降低，请检查数据库连接。",
         ))
+    if store.error_pressure_recent(now=now.timestamp()):
+        conditions.append(AlertCondition(
+            "request_error_detail_buffer_pressure", "warning", "请求失败明细缓冲区已满",
+            f"当前API进程已丢弃{store.dropped_error_details}条失败请求明细；请求统计仍保留，请检查数据库写入状态。",
+        ))
     service = OperationsMonitorService(
         db, request_metrics=store, runtime_sampler=sampler,
         scheduler_interval_seconds=scheduler_interval_seconds,

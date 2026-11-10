@@ -1,11 +1,15 @@
 # Private ERP source snapshot
 
-This snapshot contains the source, tests, migrations and build/deployment configuration of the selected development workspace. It is not a database backup and does not establish production release acceptance.
+This is a sanitized source snapshot of the current profile/housing ERP workspace,
+including the completed PC MOBA v5 update and previously deployed changes.
+The original Git history, operational data, real environment files, credentials,
+verification logs, screenshots, databases and attachments are not included.
 
-The original Git history remains in the local project and has not been uploaded. Local databases, attachments, exports, verification screenshots/logs, real environment files and original E2E account values are excluded.
+The E2E credential fixture is the previously published synthetic test-only fixture.
+Never reuse its accounts or passwords in production. The safe `.env.example` is
+also preserved from the previously published snapshot; supply new local secrets.
 
-Where the seed/test helpers require `apps/api/app/cli/e2e_credentials.json`, it contains synthetic test-only identifiers and passwords. Phone identifiers retain their validation format and the email-only case uses example.invalid. Never reuse these fixtures for production accounts.
-
-The safe `.env.example` comes from the main ERP workspace. Create a local environment file and supply new deployment secrets. Follow README.md for setup and tests.
-
-GitHub `main` represents the current profile/housing development workspace. `snapshots/nas-release-sync`, `snapshots/local-main`, and `snapshots/assisted-personnel` retain the other source variants separately. They have not been merged into this workspace.
+`SOURCE_PROVENANCE.json` and `SOURCE_MANIFEST.sha256` identify this dirty-worktree
+snapshot. The source Git revision alone does not identify its full contents.
+This publication does not run a deployment. Refer to the supplied release metadata
+and verification report for the separately completed NAS release.

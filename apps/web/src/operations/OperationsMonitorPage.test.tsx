@@ -3,14 +3,32 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 
+import { AuthProvider } from "../auth/AuthProvider"
+import type { AuthUser } from "../auth/AuthProvider"
 import * as operationsApi from "./api"
 import type { OperationsOverview } from "./api"
 import { OperationsMonitorPage } from "./OperationsMonitorPage"
 
 beforeEach(() => {
+  const user: AuthUser = {
+    account_id: "11111111-1111-4111-8111-111111111111",
+    person_id: "22222222-2222-4222-8222-222222222222",
+    full_name: "平台管理员",
+    email: null,
+    force_password_change: false,
+    is_super_admin: true,
+    permissions: ["operations.monitor.read"],
+  }
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input) => {
+    const url = String(input)
+    if (url.endsWith("/auth/me")) return new Response(JSON.stringify(user), { status: 200 })
+    if (url.endsWith("/auth/csrf")) return new Response(JSON.stringify({ csrf_token: "test-token" }), { status: 200 })
+    throw new Error(`Unexpected request: ${url}`)
+  }))
   vi.spyOn(operationsApi, "getOperationsBackupStatus").mockResolvedValue({ status: "unknown", completed_at: null, last_success_at: null, started_at: null, verification_at: null, verification_status: "unverified", size_bytes: null, error_code: null, reason: "等待备份状态", secondary_copy: { configured: false, status: "not_configured", last_success_at: null } })
   vi.spyOn(operationsApi, "getOperationsHistory").mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, retention_days: 30 })
   vi.spyOn(operationsApi, "getOperationsAlerts").mockResolvedValue({ items: [], total: 0, page: 1, page_size: 10 })
+  vi.spyOn(operationsApi, "getOperationsRequestErrors").mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, retention_days: 30 })
 })
 
 const sampleOverview: OperationsOverview = {
@@ -86,13 +104,14 @@ function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <OperationsMonitorPage />
+      <AuthProvider><OperationsMonitorPage /></AuthProvider>
     </QueryClientProvider>,
   )
 }
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 it("renders operational metrics and refreshes on demand", async () => {
@@ -138,4 +157,12 @@ it("shows a retryable error state", async () => {
 
   expect(await screen.findByRole("alert")).toHaveTextContent("监控服务暂时不可用")
   expect(screen.getByRole("button", { name: "重试" })).toBeVisible()
+})
+
+it("offers request-level error details alongside aggregate monitoring", async () => {
+  vi.spyOn(operationsApi, "getOperationsOverview").mockResolvedValue(sampleOverview)
+  renderPage()
+
+  expect(await screen.findByRole("heading", { name: "运维监控" })).toBeVisible()
+  expect(await screen.findByRole("region", { name: "请求错误明细" })).toBeVisible()
 })

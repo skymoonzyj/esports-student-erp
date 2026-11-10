@@ -35,7 +35,9 @@ def test_fatal_quality_is_rejected_instead_of_being_saved_as_complete(
     overrides: dict[str, object], reason: str
 ) -> None:
     with pytest.raises(QualityRejected) as exc_info:
-        quality_flags(get_task("pc-fps", "precision"), quality(**overrides))
+        quality_flags(
+            get_task("pc-fps", "precision", catalog_version="pc-fps-v3"), quality(**overrides)
+        )
 
     assert exc_info.value.reason_codes == (reason,)
 
@@ -43,7 +45,7 @@ def test_fatal_quality_is_rejected_instead_of_being_saved_as_complete(
 def test_all_fatal_quality_reasons_are_safe_and_deterministic() -> None:
     with pytest.raises(QualityRejected) as exc_info:
         quality_flags(
-            get_task("pc-fps", "precision"),
+            get_task("pc-fps", "precision", catalog_version="pc-fps-v3"),
             quality(
                 duration_ms=0,
                 max_frame_gap_ms=501,
@@ -64,7 +66,7 @@ def test_all_fatal_quality_reasons_are_safe_and_deterministic() -> None:
 
 
 def test_quality_thresholds_are_strictly_greater_than_the_boundary() -> None:
-    config = get_task("pc-fps", "precision")
+    config = get_task("pc-fps", "precision", catalog_version="pc-fps-v3")
 
     assert (
         quality_flags(
@@ -91,7 +93,7 @@ def test_input_quality_warnings_preserve_complete_results(
 ) -> None:
     assert (
         quality_flags(
-            get_task(suite_id, "precision"),
+            get_task(suite_id, "precision", catalog_version=f"{suite_id}-v3"),
             quality(input_kind=input_kind),
         )
         == expected
@@ -99,7 +101,7 @@ def test_input_quality_warnings_preserve_complete_results(
 
 
 def test_practice_result_has_raw_metrics_but_never_a_score_or_grade() -> None:
-    config = get_task("pc-fps", "precision", difficulty=3)
+    config = get_task("pc-fps", "precision", difficulty=3, catalog_version="pc-fps-v3")
     raw = validate_raw(config, sample_raw("pc-fps", "precision", perfect=True))
 
     result = practice_result(config, raw, quality(input_kind="unknown"))
@@ -120,7 +122,7 @@ def test_practice_result_has_raw_metrics_but_never_a_score_or_grade() -> None:
 
 
 def test_practice_result_cannot_persist_interrupted_input_as_complete() -> None:
-    config = get_task("pc-fps", "precision")
+    config = get_task("pc-fps", "precision", catalog_version="pc-fps-v3")
     raw = validate_raw(config, sample_raw("pc-fps", "precision", perfect=True))
 
     with pytest.raises(QualityRejected):

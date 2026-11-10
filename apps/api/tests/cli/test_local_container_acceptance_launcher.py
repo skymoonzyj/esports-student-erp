@@ -19,7 +19,7 @@ COMPOSE_E2E = REPOSITORY_ROOT / "compose.e2e.yaml"
 BAIT_DATABASE_URL = "postgresql+psycopg://production-user:production-password@db/production"
 BAIT_SERVICE_TOKEN = "production-evaluation-service-token-do-not-leak"
 BAIT_FIELD_SECRET = "production-field-encryption-secret-do-not-leak"
-EXPECTED_ALEMBIC_HEAD = "0071_housing_room_care"
+EXPECTED_ALEMBIC_HEAD = "0090_administration_team_mgmt"
 
 
 @dataclass(frozen=True)

@@ -512,6 +512,63 @@ def test_batch_verify_locks_sorted_ids_returns_request_order_and_is_atomic(
     )
 
 
+def test_batch_service_status_locks_once_in_sorted_order_and_authorizes_full_set(
+    db: Session, housing_actor_id: UUID,
+) -> None:
+    # Per-room requests/locks would break whole-set reauthorization and ordering.
+    service = HousingInventoryService(db)
+    seeds = list(INITIAL_ROOMS[:3])
+    inputs = [RoomVersionInput(room_id=seed.id, version=1) for seed in reversed(seeds)]
+    statements: list[str] = []
+    authorized_ids: list[UUID] = []
+    connection = db.connection()
+
+    def observe(conn, cursor, statement, parameters, context, executemany):
+        del conn, cursor, parameters, context, executemany
+        if "FROM housing_rooms" in statement and "FOR UPDATE" in statement:
+            statements.append(statement)
+
+    def authorize(rooms):
+        authorized_ids.extend(room.id for room in rooms)
+        assert all(room.service_status == "available" and room.version == 1 for room in rooms)
+
+    event.listen(connection, "before_cursor_execute", observe)
+    try:
+        result = service.update_rooms_service_status(
+            inputs, service_status="disabled", actor_user_id=housing_actor_id,
+            authorize_rooms=authorize,
+        )
+    finally:
+        event.remove(connection, "before_cursor_execute", observe)
+    assert authorized_ids == [item.room_id for item in inputs]
+    assert [room.id for room in result] == [item.room_id for item in inputs]
+    assert all(room.service_status == "disabled" and room.version == 2 for room in result)
+    assert len(statements) == 1
+    assert "ORDER BY housing_rooms.id" in statements[0]
+
+
+def test_batch_service_status_missing_room_fails_before_authorization_or_write(
+    db: Session, housing_actor_id: UUID,
+) -> None:
+    from app.housing.errors import HousingResourceNotFound
+
+    room_id = INITIAL_ROOMS[0].id
+
+    def should_not_authorize(rooms):
+        pytest.fail("partial room sets must not be authorized")
+
+    with pytest.raises(HousingResourceNotFound):
+        HousingInventoryService(db).update_rooms_service_status(
+            [RoomVersionInput(room_id=room_id, version=1),
+             RoomVersionInput(room_id=uuid4(), version=1)],
+            service_status="maintenance", actor_user_id=housing_actor_id,
+            authorize_rooms=should_not_authorize,
+        )
+    db.expire_all()
+    room = db.get(HousingRoom, room_id)
+    assert (room.service_status, room.version) == ("available", 1)
+
+
 def test_catalog_delete_rejects_children_then_succeeds_in_dependency_order(
     db: Session,
     housing_actor_id: UUID,

@@ -1,0 +1,9 @@
+.teamStaffPanel { display: grid; gap: 14px; min-width: 0; padding-block: 18px; border-block: 1px solid var(--color-border-soft); color: var(--color-text); }
+.teamStaffPanel h3 { margin: 0; color: var(--color-text-strong); }
+.teamStaffPanel .teamPageHeader { align-items: flex-start; }
+.teamStaffPanel .teamPageHeader > button { flex-shrink: 0; }
+.teamStaffStatus { display: grid; gap: 7px; max-width: 16rem; font-size: 12px; font-weight: 650; }
+.teamStaffStatus select { min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 8px); background: var(--color-surface); color: var(--color-text); font: inherit; }
+.teamStaffRowActions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+html[data-ui-theme="command"] .teamStaffPanel { gap: 10px; padding-block: 14px; }
+@media (max-width: 600px) { .teamStaffStatus { max-width: none; } .teamStaffPanel .teamAssignmentList li { align-items: stretch; flex-direction: column; } .teamStaffRowActions > button { flex: 1; } }

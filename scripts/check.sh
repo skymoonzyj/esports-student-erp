@@ -210,6 +210,14 @@ env -i \
   PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-}" \
   PLAYWRIGHT_EXECUTABLE_PATH="${PLAYWRIGHT_EXECUTABLE_PATH:-}" \
   bash scripts/run-housing-care-gate.sh
+# Departure browser acceptance creates its own task-owned database. It must
+# never reuse this check's generic erp_e2e DB, ledger, secrets, or service ports.
+env -i \
+  PATH="$PATH" HOME="${HOME:-$repo_root}" DOCKER_HOST="$docker_endpoint" \
+  E2E_PYTHON_BIN="$python_cmd" \
+  PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-}" \
+  PLAYWRIGHT_EXECUTABLE_PATH="${PLAYWRIGHT_EXECUTABLE_PATH:-}" \
+  bash scripts/run-departure-reminders-gate.sh
 bash scripts/run-self-service-registration-e2e.sh
 bash scripts/run-team-management-e2e.sh
 # Only this gate's fixed Compose project/override creates the attested database;
@@ -222,6 +230,25 @@ env -i \
   PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-}" \
   PLAYWRIGHT_EXECUTABLE_PATH="${PLAYWRIGHT_EXECUTABLE_PATH:-}" \
   bash scripts/run-assisted-personnel-e2e.sh --suite assisted
+# Activation-role acceptance is a separate fixed/reseeded suite. Reuse only
+# this gate's owned disposable DB attestation, never ambient runtime secrets.
+env -i \
+  PATH="$PATH" HOME="${HOME:-$repo_root}" APP_ENV=test \
+  TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+  ASSISTED_E2E_DISPOSABLE_DATABASE=erp_e2e \
+  E2E_PYTHON_BIN="$python_cmd" E2E_API_PORT=18029 E2E_WEB_PORT=15209 \
+  PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-}" \
+  PLAYWRIGHT_EXECUTABLE_PATH="${PLAYWRIGHT_EXECUTABLE_PATH:-}" \
+  bash scripts/run-intake-activation-roles-e2e.sh
+# Unified identity/staff acceptance is fixed and rejects incomplete reports.
+env -i \
+  PATH="$PATH" HOME="${HOME:-$repo_root}" APP_ENV=test \
+  TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+  ASSISTED_E2E_DISPOSABLE_DATABASE=erp_e2e \
+  E2E_PYTHON_BIN="$python_cmd" E2E_API_PORT=18039 E2E_WEB_PORT=15219 \
+  PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-}" \
+  PLAYWRIGHT_EXECUTABLE_PATH="${PLAYWRIGHT_EXECUTABLE_PATH:-}" \
+  bash scripts/run-intake-identity-teams-e2e.sh
 bash scripts/run-evaluation-page-e2e.sh
 SCORE_REPO="${STAGE2_SCORE_REPO:-$repo_root/../.worktrees/game-score-system-evaluation-processing}" \
   bash scripts/run-stage2-local-acceptance.sh

@@ -2,8 +2,8 @@ import { expect, test, type Page, type Request, type Route } from '@playwright/t
 import type { AssessmentContextView, AttemptDetailView, HistoryPage, RecoveryPage } from '../src/esportsAssessments/apiContracts'
 import type { AttemptView, ResultSaveView } from '../src/esportsAssessments/contracts'
 import {
-  captureSafeEvidence, chooseFormal, choosePractice, chooseProject, exercisePcInput,
-  expectFrozenV3TaskIdentity, expectPhase, finishTrial, isUiResultRequest, loginAsAssessmentPreviewAdmin,
+  SUITES, captureSafeEvidence, chooseFormal, choosePractice, chooseProject, exercisePcInput,
+  expectCurrentTaskIdentity, expectPhase, finishTrial, isUiResultRequest, loginAsAssessmentPreviewAdmin,
   observeNativeActiveRun, observeUiSave, openAssessmentHome, prepareTrial, readAssessmentJson, recordFailureContext, startMeasured,
 } from './helpers/esportsAssessment'
 
@@ -50,12 +50,12 @@ async function losePersistedResponse(page: Page, mode: 'formal' | 'practice') {
   }
 }
 
-async function finishRealPrecision(page: Page, mode: 'formal' | 'practice') {
+async function finishRealGridshot(page: Page, mode: 'formal' | 'practice') {
   const nativeRun = await observeNativeActiveRun(page)
   try {
     await startMeasured(page, mode)
     await expectPhase(page, 'running')
-    await exercisePcInput(page, 'pc-fps', 'precision')
+    await exercisePcInput(page, 'pc-fps', 'gridshot')
     expect(await nativeRun.activeDurationMs(), 'native finish must reach the fixed 60-second logical deadline').toBeGreaterThanOrEqual(60_000)
   } finally { await nativeRun.dispose() }
 }
@@ -64,13 +64,13 @@ test('EA-REC-FORMAL-001 real-time persisted formal response loss reconciles the 
   await loginAsAssessmentPreviewAdmin(page)
   await openAssessmentHome(page)
   await chooseFormal(page, 'pc-fps')
-  await chooseProject(page, 'precision')
+  await chooseProject(page, 'gridshot')
   await prepareTrial(page)
   await finishTrial(page)
   const save = observeUiSave(page, 'formal')
   const fault = await losePersistedResponse(page, 'formal')
   try {
-    await finishRealPrecision(page, 'formal')
+    await finishRealGridshot(page, 'formal')
     const persisted = await fault.waitPersisted()
     await expect(page.getByRole('region', { name: '恢复与保存', exact: true })).toBeVisible()
     // Read-only cache evidence: never inject/remove pending or print raw/operation IDs.
@@ -109,19 +109,20 @@ test('EA-REC-FORMAL-001 real-time persisted formal response loss reconciles the 
     const detail = await readAssessmentJson<AttemptDetailView>(page, `/attempts/${persisted.attemptId}`)
     expect(detail.attempt.state === 'submitted' && detail.saved?.result_id === persisted.resultId).toBe(true)
     expect(detail.saved?.mode === 'formal' && detail.saved.session.results.length === 1).toBe(true)
-    expectFrozenV3TaskIdentity(detail.attempt.config, 'pc-fps', 'precision')
+    expectCurrentTaskIdentity(detail.attempt.config, 'pc-fps', 'gridshot')
+    expect(detail.saved?.scored.metrics.shots).toBe(5)
     expect(save.postCount(), 'reload must reconcile by GET, not resubmit').toBe(1)
     expect(save.operationKeysAgree()).toBe(true)
     await captureSafeEvidence(page, testInfo, { real_active_60s: true, upstream_response_lost: true, upstream_persisted: true, original_pending_retained: true, confirmed_pending_cleared: true, reload_get_reconciled: true, duplicate_save_absent: true })
     await page.getByRole('button', { name: '继续下一项', exact: true }).click()
-    await expect(page.getByText('已保存 1 / 4', { exact: true })).toBeVisible()
+    await expect(page.getByText(`已保存 1 / ${SUITES['pc-fps'].tests.length}`, { exact: true })).toBeVisible()
   } finally { save.dispose(); await fault.dispose() }
 })
 
 test('EA-REC-PRACTICE-002 real-time practice survives response loss and a fresh tab with no local pending', async ({ page, context }, testInfo) => {
   await loginAsAssessmentPreviewAdmin(page)
   await openAssessmentHome(page)
-  await choosePractice(page, 'pc-fps', 'precision')
+  await choosePractice(page, 'pc-fps', 'gridshot')
   await prepareTrial(page)
   await finishTrial(page)
   const fault = await losePersistedResponse(page, 'practice')
@@ -130,12 +131,12 @@ test('EA-REC-PRACTICE-002 real-time practice survives response loss and a fresh 
   context.on('request', countPost)
   let fresh: Page | null = null
   try {
-    await finishRealPrecision(page, 'practice')
+    await finishRealGridshot(page, 'practice')
     const persisted = await fault.waitPersisted()
     await expect(page.getByRole('region', { name: '恢复与保存', exact: true })).toBeVisible()
     // No opener means no sessionStorage copy. Cookies authenticate the same preview admin.
     fresh = await context.newPage()
-    await fresh.goto(`/esports-assessments/practice?suite=pc-fps&test=precision&difficulty=3&practice_id=${persisted.attemptId}`)
+    await fresh.goto(`/esports-assessments/practice?suite=pc-fps&test=gridshot&difficulty=3&practice_id=${persisted.attemptId}`)
     const pendingAbsent = await fresh.evaluate(() => !Object.keys(sessionStorage).some(key => key.startsWith('erp:esports-assessments:pending:')))
     expect(pendingAbsent).toBe(true)
     await page.close()
@@ -144,8 +145,8 @@ test('EA-REC-PRACTICE-002 real-time practice survives response loss and a fresh 
     const detail = await readAssessmentJson<AttemptDetailView>(fresh, `/practice-runs/${persisted.attemptId}`)
     expect(detail.attempt.state === 'submitted' && detail.saved?.result_id === persisted.resultId).toBe(true)
     expect(detail.saved?.mode === 'practice' && detail.saved.scored.score === null && detail.saved.scored.grade === null).toBe(true)
-    expectFrozenV3TaskIdentity(detail.attempt.config, 'pc-fps', 'precision')
-    expect((detail.saved?.scored.metrics.shots ?? 0) >= 3).toBe(true)
+    expectCurrentTaskIdentity(detail.attempt.config, 'pc-fps', 'gridshot')
+    expect(detail.saved?.scored.metrics.shots).toBe(5)
     expect(posts, 'fresh detail recovery must not submit a second practice').toBe(1)
     const history = await readAssessmentJson<HistoryPage>(fresh, '/history?mode=practice&limit=100')
     expect(history.visible_total === 1 && history.items.length === 1).toBe(true)
@@ -172,7 +173,7 @@ test('EA-REC-MULTITAB-003 second tab only reconciles the held attempt and leaves
   try {
     await openAssessmentHome(page)
     await chooseFormal(page, 'pc-fps', { resume: true })
-    await chooseProject(page, 'tracking')
+    await chooseProject(page, 'sixshot')
     await prepareTrial(page)
     await finishTrial(page)
     const created = page.waitForResponse(response => response.request().method() === 'POST' && /\/esports-assessments\/sessions\/[a-f0-9-]+\/attempts$/.test(new URL(response.url()).pathname))
@@ -180,6 +181,7 @@ test('EA-REC-MULTITAB-003 second tab only reconciles the held attempt and leaves
     const response = await created
     expect(response.ok()).toBe(true)
     const attempt = await response.json() as AttemptView
+    expectCurrentTaskIdentity(attempt.config, 'pc-fps', 'sixshot')
     await expectPhase(page, 'running')
     const recoveryUrl = page.url()
     // Background navigation is deliberate. Some browsers still blur the first tab;

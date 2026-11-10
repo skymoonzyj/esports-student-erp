@@ -129,6 +129,18 @@ def _require_permission(
         )
 
 
+def _require_catalog_read(context: AuthContext, db: Session) -> None:
+    decision = RbacService(db).decision_context(context.account.id)
+    teaching = decision.decide("teaching.read", {"global"})
+    # Preserve existing explicit catalog-read restrictions when admitting the
+    # alternative team-directory grant; absence of teaching.read is sufficient.
+    if teaching.reason == "explicit_deny" or (
+        not teaching.allowed
+        and not decision.decide("professional_teams.manage", {"global"}).allowed
+    ):
+        raise ProblemError(status=403, code="permission_denied", detail="没有执行此操作的权限")
+
+
 def _teaching_visibility(
     context: AuthContext,
     db: Session,
@@ -377,7 +389,7 @@ def list_projects(
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> Page[ProjectResponse]:
-    _require_permission(context, db, "teaching.read")
+    _require_catalog_read(context, db)
     projects, total = service.list_projects(
         name=name,
         include_inactive=include_inactive,
@@ -536,7 +548,7 @@ def list_professional_teams(
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> Page[ProfessionalTeamResponse]:
-    _require_permission(context, db, "teaching.read")
+    _require_catalog_read(context, db)
     teams, total = service.list_teams(
         project_id=project_id,
         name=name,

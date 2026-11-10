@@ -80,14 +80,22 @@ def effective_run_state(
 
 def _jsonable(value: object) -> object:
     if isinstance(value, BaseModel):
-        return value.model_dump(mode="json")
+        payload = value.model_dump(mode="json")
+        # Optional new creation metadata must not invalidate pre-v4 retry digests.
+        if "attack_mode" in payload and payload["attack_mode"] is None:
+            payload.pop("attack_mode")
+        return payload
     if isinstance(value, UUID):
         return str(value)
     if isinstance(value, datetime):
         _aware(value, "operation datetime")
         return value.isoformat()
     if isinstance(value, dict):
-        return {str(key): _jsonable(item) for key, item in value.items()}
+        return {
+            str(key): _jsonable(item)
+            for key, item in value.items()
+            if key != "attack_mode" or item is not None
+        }
     if isinstance(value, (list, tuple)):
         return [_jsonable(item) for item in value]
     if value is None or isinstance(value, (str, int, float, bool)):

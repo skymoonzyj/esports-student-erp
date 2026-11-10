@@ -101,5 +101,48 @@ export function RevenueShareFinancePage() {
     }
   }
 
-  return <main className="revenueSharePage"><header className="revenueShareHeader"><div><p className="pageEyebrow">FINANCE</p><h1>财务结算</h1><p>公司收款后的分成应结台账</p></div><button className="secondaryButton" type="button" onClick={() => { setError(null); setExportOpen(true) }}><Download aria-hidden="true" />导出</button></header>{summary.isLoading ? <p className="revenueShareStatus">正在汇总分成数据…</p> : null}{summary.isError ? <p className="formError">财务汇总暂时无法读取</p> : null}{summary.data ? <><section className="revenueShareStats" aria-label="分成汇总"><div><span>累计应分</span><strong>{formatCny(summary.data.earned_cents)}</strong></div><div><span>已结算</span><strong>{formatCny(summary.data.settled_cents)}</strong></div><div><span>未结算</span><strong className={summary.data.outstanding_cents < 0 ? "negativeAmount" : ""}>{formatCny(summary.data.outstanding_cents)}</strong></div><div><span>待分配付款</span><strong>{summary.data.pending_payment_count}</strong></div></section><section className="revenueShareSection"><div className="revenueShareSectionHeading"><div><p className="pageEyebrow">SETTLEMENTS</p><h2>收款对象余额</h2></div><span>{summary.data.items.length} 个对象</span></div><div className="revenueShareTableWrap"><table className="revenueShareTable"><thead><tr><th>收款对象</th><th>类型</th><th>累计应分</th><th>已结算</th><th>未结算</th><th>操作</th></tr></thead><tbody>{summary.data.items.map((item) => <tr key={`${item.beneficiary_kind}-${item.beneficiary_id}`}><td><strong>{item.beneficiary_name}</strong></td><td>{item.beneficiary_kind === "person" ? "个人" : "机构"}</td><td>{formatCny(item.earned_cents)}</td><td>{formatCny(item.settled_cents)}</td><td className={item.outstanding_cents < 0 ? "negativeAmount" : ""}>{formatCny(item.outstanding_cents)}</td><td><button className="iconTextButton" type="button" disabled={item.outstanding_cents <= 0} onClick={() => { setError(null); setSettlement(item) }}><Banknote aria-hidden="true" />登记打款</button></td></tr>)}{summary.data.items.length === 0 ? <tr><td colSpan={6}>暂无分成余额</td></tr> : null}</tbody></table></div></section></> : null}{settlement ? <SettlementDialog item={settlement} pending={pending} error={error} onClose={() => { if (!pending) setSettlement(null) }} onSubmit={submitSettlement} /> : null}{exportOpen ? <ExportDialog pending={pending} error={error} onClose={() => { if (!pending) setExportOpen(false) }} onSubmit={submitExport} /> : null}</main>
+  return (
+    <main className="revenueSharePage">
+      <header className="revenueShareHeader">
+        <div><p className="pageEyebrow">FINANCE</p><h1>财务结算</h1><p>公司收款后的分成应结台账</p></div>
+        <button className="secondaryButton" type="button" onClick={() => { setError(null); setExportOpen(true) }}><Download aria-hidden="true" />导出</button>
+      </header>
+      {summary.isLoading ? <p className="revenueShareStatus">正在汇总分成数据…</p> : null}
+      {summary.isError ? <p className="formError">财务汇总暂时无法读取</p> : null}
+      {summary.data ? <>
+        <section className="revenueShareStats" aria-label="分成汇总">
+          <div><span>累计应分</span><strong>{formatCny(summary.data.earned_cents)}</strong></div>
+          <div><span>已结算</span><strong>{formatCny(summary.data.settled_cents)}</strong></div>
+          <div><span>未结算</span><strong className={summary.data.outstanding_cents < 0 ? "negativeAmount" : ""}>{formatCny(summary.data.outstanding_cents)}</strong></div>
+          <div><span>待分配付款</span><strong>{summary.data.pending_payment_count}</strong></div>
+        </section>
+        <section className="revenueShareSection">
+          <div className="revenueShareSectionHeading">
+            <div><p className="pageEyebrow">SETTLEMENTS</p><h2>收款对象余额</h2></div>
+            <span>{summary.data.items.length} 个对象</span>
+          </div>
+          <div className="revenueShareTableWrap" role="region" aria-label="收款对象余额，可横向滚动" tabIndex={0}>
+            <table className="revenueShareTable">
+              <thead><tr><th>收款对象</th><th>类型</th><th className="financeAmount">累计应分</th><th className="financeAmount">已结算</th><th className="financeAmount">未结算</th><th>操作</th></tr></thead>
+              <tbody>
+                {summary.data.items.map((item) => (
+                  <tr key={`${item.beneficiary_kind}-${item.beneficiary_id}`}>
+                    <td><strong>{item.beneficiary_name}</strong></td>
+                    <td>{item.beneficiary_kind === "person" ? "个人" : "机构"}</td>
+                    <td className="financeAmount">{formatCny(item.earned_cents)}</td>
+                    <td className="financeAmount">{formatCny(item.settled_cents)}</td>
+                    <td className={`financeAmount${item.outstanding_cents < 0 ? " negativeAmount" : ""}`}>{formatCny(item.outstanding_cents)}</td>
+                    <td><button className="iconTextButton" type="button" disabled={item.outstanding_cents <= 0} onClick={() => { setError(null); setSettlement(item) }}><Banknote aria-hidden="true" />登记打款</button></td>
+                  </tr>
+                ))}
+                {summary.data.items.length === 0 ? <tr><td colSpan={6}>暂无分成余额</td></tr> : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </> : null}
+      {settlement ? <SettlementDialog item={settlement} pending={pending} error={error} onClose={() => { if (!pending) setSettlement(null) }} onSubmit={submitSettlement} /> : null}
+      {exportOpen ? <ExportDialog pending={pending} error={error} onClose={() => { if (!pending) setExportOpen(false) }} onSubmit={submitExport} /> : null}
+    </main>
+  )
 }

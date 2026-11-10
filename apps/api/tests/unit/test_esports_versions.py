@@ -50,7 +50,7 @@ V3_SCORE_REPORT_V2 = {
 
 @pytest.mark.parametrize("suite_id", SUITES)
 def test_default_v3_catalogs_use_exact_registered_versions_and_new_comparison_identity(suite_id):
-    suite = get_suite(suite_id)
+    suite = get_suite(suite_id, catalog_version=f"{suite_id}-v3")
     assert suite.catalog_version == f"{suite_id}-v3"
     previous = SuiteConfig.model_validate(V2[suite_id])
     for test_id in suite.test_ids:
@@ -85,11 +85,15 @@ def test_only_exact_registered_version_combinations_are_accepted(suite_id, level
 @pytest.mark.parametrize(
     "suite_id,test_id,result_revision",
     [
-        ("pc-fps", "switching", 2), ("pc-fps", "precision", 1),
-        ("mobile-fps", "switching", 2), ("mobile-fps", "move-fire", 2),
+        ("pc-fps", "switching", 2),
+        ("pc-fps", "precision", 1),
+        ("mobile-fps", "switching", 2),
+        ("mobile-fps", "move-fire", 2),
         ("mobile-fps", "precision", 1),
-        ("pc-moba", "dodge", 2), ("pc-moba", "last-hit", 1),
-        ("mobile-moba", "dodge", 2), ("mobile-moba", "skill-aim", 1),
+        ("pc-moba", "dodge", 2),
+        ("pc-moba", "last-hit", 1),
+        ("mobile-moba", "dodge", 2),
+        ("mobile-moba", "skill-aim", 1),
     ],
 )
 @pytest.mark.parametrize(
@@ -98,9 +102,7 @@ def test_only_exact_registered_version_combinations_are_accepted(suite_id, level
 def test_v3_changed_and_unchanged_tasks_reject_mixed_versions(
     suite_id, test_id, result_revision, levels
 ):
-    payload = get_task(suite_id, test_id, catalog_version=f"{suite_id}-v3").model_dump(
-        mode="json"
-    )
+    payload = get_task(suite_id, test_id, catalog_version=f"{suite_id}-v3").model_dump(mode="json")
     payload.update({field: f"{suite_id}-v{level}" for field, level in zip(VERSIONS, levels)})
     if levels == (3, 3, result_revision, result_revision):
         assert TaskConfig.model_validate(payload).test_id == test_id
@@ -178,7 +180,7 @@ def test_unknown_catalogs_cannot_fall_back_to_latest_rules(suite_id, version_kin
     version = {
         "empty": "",
         "unknown": "unknown",
-        "future": f"{suite_id}-v4",
+        "future": f"{suite_id}-v6",
         "different_suite": f"{'mobile-moba' if suite_id != 'mobile-moba' else 'pc-fps'}-v3",
     }[version_kind]
     with pytest.raises(ValueError):
@@ -195,9 +197,9 @@ def test_audit_accepts_exact_registered_v3_catalog_and_v2_score_versions(suite_i
 @pytest.mark.parametrize(
     "metadata",
     [
-        {"catalog_version": "pc-fps-v4"},
+        {"catalog_version": "pc-fps-v6"},
         {"catalog_version": "mobile-fps-v4"},
-        {"catalog_version": "pc-moba-v4"},
+        {"catalog_version": "pc-moba-v6"},
         {"catalog_version": "mobile-moba-v4"},
         {"scoring_version": "pc-fps-v3"},
         {"scoring_version": "mobile-fps-v3"},

@@ -37,6 +37,34 @@
 .assessmentHostImmersive .assessmentHostToolbar { min-height: 44px; }
 .assessmentHostImmersive .assessmentHostToolbar h2 { font-size: .95rem; }
 
+.assessmentFullscreenHint { margin: 0; font-size: .85rem; color: var(--color-text-secondary, #526273); }
+.assessmentHostFullscreen:fullscreen {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 8px;
+  gap: 8px;
+  grid-template-rows: 64px 24px auto;
+  grid-auto-rows: max-content;
+  align-content: start;
+  overflow: auto;
+  scrollbar-gutter: stable both-edges;
+  background: var(--color-surface, #fff);
+  color: var(--color-text, #182434);
+}
+.assessmentHostFullscreen::backdrop { background: #080d16; }
+.assessmentHostFullscreen .assessmentHostToolbar {
+  height: 64px;
+  min-height: 64px;
+  flex-wrap: nowrap;
+}
+.assessmentHostFullscreen .assessmentHostToolbar h2 { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.assessmentHostFullscreen .assessmentHostToolbar > span,
+.assessmentHostFullscreen .assessmentHostToolbar > button { flex-shrink: 0; white-space: nowrap; }
+.assessmentHostFullscreen .assessmentFullscreenHint { height: 24px; line-height: 24px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.assessmentHostFullscreen .assessmentStageContainer { align-self: start; }
+.assessmentHostFullscreen:is([data-host-phase='trial'], [data-host-phase='starting'], [data-host-phase='countdown'], [data-host-phase='running']) { overflow: hidden; }
+
 .assessmentMobaInstructions {
   border: 1px solid #c9dbea;
   border-radius: 12px;
@@ -69,6 +97,15 @@
   pointer-events: none;
 }
 .assessmentMobaFeedbackState, .assessmentMobaFeedbackOutcome { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.assessmentLaneFeedback {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(2, 22px);
+  align-items: center;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.assessmentLaneFeedback > span { white-space: nowrap; }
 .assessmentMobaFeedbackState { font-weight: 650; }
 .assessmentMobaMobileTitle { min-width: 0; max-width: min(50vw, 400px); }
 .assessmentMobaFeedbackCompact { height: 18px; min-height: 18px; max-height: 18px; padding: 0; display: block; background: transparent; font-size: 11px; line-height: 18px; white-space: nowrap; text-overflow: ellipsis; }
@@ -97,20 +134,24 @@
 .assessmentHome {
   display: grid;
   gap: 22px;
+  min-width: 0;
+  color: var(--color-text);
 }
 
 .assessmentHero,
 .assessmentSuiteCard,
 .assessmentOngoing {
-  border: 1px solid var(--border, #d9e0e8);
-  border-radius: 18px;
-  background: var(--surface, #fff);
-  box-shadow: 0 10px 30px rgb(20 31 48 / 7%);
+  border: 1px solid var(--color-border, #d9e0e8);
+  border-radius: var(--ui-radius-lg, 16px);
+  background: var(--color-surface, #fff);
+  box-shadow: var(--shadow-card-soft);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .assessmentHero {
   padding: clamp(22px, 4vw, 42px);
-  background: linear-gradient(135deg, #f1f7ff 0%, #fff 58%, #f4f8f5 100%);
+  background: linear-gradient(120deg, var(--color-accent-soft), var(--color-surface) 72%);
 }
 
 .assessmentHero h1,
@@ -121,7 +162,7 @@
 
 .assessmentEyebrow {
   margin: 0 0 8px;
-  color: #365c85;
+  color: var(--color-accent-800);
   font-weight: 700;
   letter-spacing: 0.08em;
 }
@@ -135,8 +176,12 @@
 
 .assessmentActions a,
 .assessmentOngoingLinks a {
-  color: #174f88;
+  color: var(--color-accent-800);
   font-weight: 650;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  text-underline-offset: 3px;
 }
 
 .assessmentNotice,
@@ -144,7 +189,8 @@
   margin: 0;
   padding: 14px 16px;
   border-radius: 12px;
-  background: #eef5fc;
+  background: var(--color-accent-soft);
+  color: var(--color-text);
 }
 
 .assessmentNoticeWarning {
@@ -193,6 +239,26 @@
 
 .assessmentSuiteCard button {
   justify-self: start;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid var(--color-accent-600);
+  border-radius: var(--ui-radius-sm, 8px);
+  color: white;
+  background: var(--color-accent-600);
+  font-weight: 700;
+  box-shadow: var(--ui-shadow-button);
+}
+
+/* The host, feedback strip, controls, canvas and instructions above retain calibration. */
+html[data-ui-theme="command"] .assessmentHome { gap: 16px; }
+html[data-ui-theme="command"] :is(.assessmentHero, .assessmentSuiteCard, .assessmentOngoing) { box-shadow: none; }
+html[data-ui-theme="command"] .assessmentHero { padding: 24px; border-top: 3px solid var(--color-accent-600); background: var(--color-surface); }
+html[data-ui-theme="command"] .assessmentCatalog { gap: 0; border: 1px solid var(--color-border); border-radius: var(--ui-radius-lg, 10px); overflow: hidden; background: var(--color-surface); }
+html[data-ui-theme="command"] .assessmentSuiteCard { padding: 18px; border: 0; border-radius: 0; border-inline-end: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); gap: 12px; min-height: 174px; }
+
+@media (max-width: 420px) {
+  .assessmentSuiteHeading { align-items: flex-start; flex-wrap: wrap; }
+  .assessmentHero { padding: 20px; }
 }
 
 @media (max-width: 720px) {

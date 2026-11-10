@@ -5,8 +5,9 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import Numeric, Select, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import ColumnElement, FromClause
 
 from app.auth.service import AuthContext
 from app.identity.models import Person
@@ -16,7 +17,26 @@ from .catalog import get_suite
 from .config_schemas import SuiteConfig
 from .errors import AssessmentNotFound
 from .models import AssessmentAttempt, AssessmentReport, AssessmentResult, AssessmentSession
-from .ranking_schemas import AssessmentRankingView, RankingItem
+from .ranking_schemas import AnonymousTopScore, AssessmentRankingView, RankingItem
+
+
+def _anonymous_top_query(
+    source: FromClause,
+    score: ColumnElement[Any],
+    rank: ColumnElement[Any],
+    subject_score: float,
+) -> Select[Any]:
+    """Only three score/rank/gap values leave SQL, never peer identities."""
+    return (
+        select(
+            rank.label("rank"),
+            score.label("anonymous_score"),
+            (score - Decimal(str(subject_score))).label("gap"),
+        )
+        .select_from(source)
+        .order_by(score.desc(), source.c.completed_at, source.c.report_id)
+        .limit(3)
+    )
 
 
 def _input_group(
@@ -64,7 +84,14 @@ class AssessmentRankings:
         _, target = authorized
         try:
             suite = SuiteConfig.model_validate(target.catalog_snapshot)
-            canonical = get_suite(target.suite_id, catalog_version=suite.catalog_version)
+            lane = suite.tasks.get("last-hit")
+            canonical = get_suite(
+                target.suite_id,
+                catalog_version=suite.catalog_version,
+                attack_mode=lane.params.attack_mode
+                if lane and lane.params.kind in ("lane_last_hit", "lane_last_hit_towers")
+                else None,
+            )
             if suite != canonical or target.catalog_snapshot != canonical.model_dump(mode="json"):
                 return self._ineligible(report_id, "incompatible_input")
         except (ValueError, TypeError):
@@ -171,8 +198,7 @@ class AssessmentRankings:
             .join(AssessmentResult, AssessmentResult.session_id == overall.c.session_id)
             .cte("item_ranks")
         )
-        # Only the requested subject's four values leave PostgreSQL. No leaderboard
-        # identities, scores or histories are materialized in application memory.
+        # Only the requested subject's frozen member values leave this projection.
         ranked = (
             self.db.execute(select(items).where(items.c.person_id == target.person_id))
             .mappings()
@@ -186,6 +212,29 @@ class AssessmentRankings:
             Decimal("0.01"),
             rounding=ROUND_HALF_UP,
         )
+        top_scores: tuple[AnonymousTopScore, ...] = ()
+        item_tops: dict[str, tuple[AnonymousTopScore, ...]] = {}
+        if suite.catalog_version in ("pc-fps-v4", "pc-fps-v5", "pc-moba-v4", "pc-moba-v5"):
+            mean_score = func.round(cast(overall.c.score_sum, Numeric) / len(suite.test_ids), 2)
+            overall_query = _anonymous_top_query(
+                overall, mean_score, overall.c.overall_rank, float(mean)
+            )
+            top_scores = tuple(
+                AnonymousTopScore(
+                    rank=row["rank"], score=float(row["anonymous_score"]), gap=float(row["gap"])
+                )
+                for row in self.db.execute(overall_query).mappings()
+            )
+            for test_id in suite.test_ids:
+                query = _anonymous_top_query(
+                    items, items.c.score, items.c.item_rank, by_test[test_id]["score"]
+                ).where(items.c.test_id == test_id)
+                item_tops[test_id] = tuple(
+                    AnonymousTopScore(
+                        rank=row["rank"], score=float(row["anonymous_score"]), gap=float(row["gap"])
+                    )
+                    for row in self.db.execute(query).mappings()
+                )
         return AssessmentRankingView(
             report_id=report_id,
             calculated_at=self.now,
@@ -195,11 +244,13 @@ class AssessmentRankings:
             overall_score=float(mean),
             overall_rank=first["overall_rank"],
             participant_count=first["participant_count"],
+            top_scores=top_scores,
             items=tuple(
                 RankingItem(
                     test_id=test_id,
                     score=by_test[test_id]["score"],
                     rank=by_test[test_id]["item_rank"],
+                    top_scores=item_tops.get(test_id, ()),
                 )
                 for test_id in suite.test_ids
             ),

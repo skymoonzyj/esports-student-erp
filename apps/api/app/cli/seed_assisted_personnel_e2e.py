@@ -29,7 +29,9 @@ if TYPE_CHECKING:
 
 TEAM_ID = UUID("e9100000-0000-4000-8000-000000000001")
 OTHER_TEAM_ID = UUID("e9100000-0000-4000-8000-000000000002")
+IDENTITY_UNASSIGNED_TEAM_ID = UUID("e9100000-0000-4000-8000-000000000003")
 PROJECT_ID = UUID("30000000-0000-4000-8000-000000000002")
+IDENTITY_NO_TEAM_DENIED_PERMISSION = "team_manager_assignments.manage"
 _PROTECTED_LOCKED_UNTIL = datetime(2100, 1, 1, tzinfo=UTC)
 _PROTECTED_DELETED_AT = datetime(2026, 10, 1, tzinfo=UTC)
 
@@ -65,6 +67,7 @@ ACCOUNTS = {row.key: row for row in (
     FixtureAccount("review_intake_only", "E2E认领仅建档权限", 42, "admin"),
     FixtureAccount("review_both_nonadmin", "E2E认领双权限非管理员", 43, "staff"),
     FixtureAccount("review_both_admin", "E2E认领双权限管理员", 44, "admin"),
+    FixtureAccount("identity_no_team", "E2E身份禁止分队超管", 45, "super_admin"),
 )}
 
 
@@ -436,13 +439,21 @@ def seed_assisted_personnel_e2e(
             if fixture.key == "legacy_disabled":
                 db.add(StudentProfile(person_id=fixture.person_id,
                                       student_number="E2E-ASSISTED-LEGACY", status="active"))
-        for team_id, name in ((TEAM_ID, "E2E协助目标队"), (OTHER_TEAM_ID, "E2E协助无关队")):
+        for team_id, name in ((TEAM_ID, "E2E协助目标队"), (OTHER_TEAM_ID, "E2E协助无关队"),
+                              (IDENTITY_UNASSIGNED_TEAM_ID, "E2E身份未授权队")):
             db.add(ProfessionalTeam(id=team_id, project_id=PROJECT_ID, name=name,
                                     is_active=True, created_by_user_id=admin.id))
         db.flush()
         for key, team_id in (("manager", TEAM_ID), ("other_manager", OTHER_TEAM_ID)):
             db.add(TeamManagerAssignment(account_id=ACCOUNTS[key].account_id,
                                         team_id=team_id, created_by_user_id=admin.id))
+        # Keep actual root status and ordinary delegation checks intact. This
+        # actor loses only staff-team assignment through the real deny policy.
+        db.add(UserPermissionOverride(
+            user_id=ACCOUNTS["identity_no_team"].account_id,
+            permission_id=PERMISSIONS[IDENTITY_NO_TEAM_DENIED_PERMISSION].id,
+            effect="deny", scope_kind="global",
+        ))
         # Real administration role, constrained to existing A building by denies.
         for building in db.scalars(select(HousingBuilding).where(HousingBuilding.code != "A")):
             for permission in ("housing.read", "housing.rooms.manage", "housing.stays.manage",

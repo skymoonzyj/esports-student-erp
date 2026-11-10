@@ -2,6 +2,8 @@ import { useId } from "react"
 import type { AssistedGuardianInput } from "../assistedPeople/types"
 import { todayDateInput } from "../shared/date"
 import type { ClaimCompletionInput } from "./types"
+import { birthdayAgeText, documentDemographicNotice, documentNumberLabel, documentTypeLabel, identityDocumentTypes } from "../assistedPeople/documentFacts"
+import type { IdentityDocumentType } from "../assistedPeople/documentFacts"
 
 type GuardianDraft = Omit<AssistedGuardianInput, "sex"> & { sex: "male" | "female" | "" }
 export interface ClaimCompletionDraft {
@@ -38,16 +40,20 @@ export function ClaimCompletionFields({ value, onChange, disabled = false }: {
     <div className="registrationFieldGroup"><label htmlFor={`${id}-birth`}>出生日期（可暂缺）</label>
       <input id={`${id}-birth`} type="date" min="1900-01-01" max={todayDateInput()} autoComplete="off" value={value.date_of_birth ?? ""} onChange={(event) => change({ date_of_birth: event.target.value || null })} />
       <small>四位年份，格式 YYYY-MM-DD，不含时间。</small></div>
+    <p>{birthdayAgeText(value.date_of_birth)}</p>
     {value.guardians.map((guardian, index) => <fieldset className="registrationFieldset claimGuardianFields" key={index}>
       <legend>监护人 {index + 1}</legend>
-      {([["full_name", "姓名"], ["identity_number", "身份证"], ["phone", "手机号"], ["email", "邮箱（可选）"], ["relationship", "与本人关系"], ["date_of_birth", "出生日期"]] as const).map(([key, label]) => <div className="registrationFieldGroup" key={key}>
+      <div className="registrationFieldGroup"><label htmlFor={`${id}-${index}-document`}>{`监护人${index + 1}证件类型`}</label>
+        <select id={`${id}-${index}-document`} value={guardian.document_type ?? "cn_id"} onChange={(event) => guardianChange(index, { document_type: event.target.value as IdentityDocumentType, identity_number: "", date_of_birth: "", sex: "", ...(guardian.document_issuing_country !== undefined ? { document_issuing_country: null } : {}) })}>{identityDocumentTypes.map((type) => <option key={type} value={type}>{documentTypeLabel(type)}</option>)}</select></div>
+      {([["full_name", "姓名"], ["identity_number", documentNumberLabel(guardian.document_type)], ["phone", "手机号"], ["email", "邮箱（可选）"], ["relationship", "与本人关系"], ["date_of_birth", "出生日期"]] as const).map(([key, label]) => <div className="registrationFieldGroup" key={key}>
         <label htmlFor={`${id}-${index}-${key}`}>{`监护人${index + 1}${label}`}</label>
         <input id={`${id}-${index}-${key}`} type={key === "date_of_birth" ? "date" : key === "email" ? "email" : key === "phone" ? "tel" : "text"}
           min={key === "date_of_birth" ? "1900-01-01" : undefined} max={key === "date_of_birth" ? todayDateInput() : undefined}
-          maxLength={key === "full_name" ? 80 : key === "relationship" ? 40 : key === "identity_number" ? 18 : undefined}
+          maxLength={key === "full_name" ? 80 : key === "relationship" ? 40 : key === "identity_number" ? guardian.document_type === "hk_id" ? 24 : 18 : undefined}
           minLength={key === "relationship" ? 2 : undefined} autoComplete="off" required={key !== "email"}
           value={guardian[key] ?? ""} onChange={(event) => guardianChange(index, { [key]: key === "email" ? event.target.value || null : event.target.value })} />
       </div>)}
+      <p>监护人{birthdayAgeText(guardian.date_of_birth)}{documentDemographicNotice(guardian.document_type) ? `；${documentDemographicNotice(guardian.document_type)}` : ""}</p>
       <div className="registrationFieldGroup"><label htmlFor={`${id}-${index}-sex`}>{`监护人${index + 1}性别`}</label>
         <select id={`${id}-${index}-sex`} value={guardian.sex} required onChange={(event) => guardianChange(index, { sex: event.target.value as GuardianDraft["sex"] })}>
           <option value="">请选择</option><option value="male">男</option><option value="female">女</option></select></div>

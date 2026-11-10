@@ -91,4 +91,48 @@ describe('FpsStage lazy lifecycle', () => {
     expect(cue).toHaveTextContent('已到位')
     view.unmount()
   })
+
+  it('shows observed click counts, accuracy and run time without a client final score', async () => {
+    const { FpsStage } = await import('./FpsStage')
+    const props = { viewport, dpr: 1, canvasRef: createRef<HTMLCanvasElement>(), onError: vi.fn() }
+    const view = render(<FpsStage {...props} scene={{ ...scene, at_ms: 12500, feedback: { kind: 'multi_target', shots: 4, hits: 3 } }} />)
+    const hud = screen.getByLabelText('FPS 实时反馈')
+    expect(hud).toHaveTextContent('12.5 / 60.0 秒')
+    expect(hud).toHaveTextContent('命中 3 · 射击 4 · 准确率 75%')
+    expect(hud).not.toHaveTextContent('得分')
+    expect(hud).toHaveStyle({ pointerEvents: 'none' })
+    view.rerender(<FpsStage {...props} scene={{ ...scene, feedback: { kind: 'spheretrack90', covered: false } }} />)
+    expect(hud).toHaveTextContent('离靶')
+    expect(hud).toHaveStyle({ color: '#ff675e' })
+    view.rerender(<FpsStage {...props} scene={{ ...scene, feedback: { kind: 'spheretrack90', covered: true } }} />)
+    expect(hud).toHaveTextContent('瞄准中')
+    expect(hud).toHaveStyle({ color: '#7cf5c7' })
+    view.unmount()
+  })
+
+  it('uses the actual runtime duration for trial feedback rather than the formal rule duration', async () => {
+    const { FpsStage } = await import('./FpsStage')
+    const props = { viewport, dpr: 1, canvasRef: createRef<HTMLCanvasElement>(), onError: vi.fn() }
+    const current = { ...scene, at_ms: 12500, feedback: { kind: 'multi_target' as const, shots: 4, hits: 3 } }
+    const view = render(<FpsStage {...props} durationMs={20000} scene={current} />)
+    const hud = screen.getByLabelText('FPS 实时反馈')
+    expect(hud).toHaveTextContent('12.5 / 20.0 秒')
+    expect(hud).not.toHaveTextContent('60.0 秒')
+    view.rerender(<FpsStage {...props} durationMs={60000} scene={current} />)
+    expect(hud).toHaveTextContent('12.5 / 60.0 秒')
+    view.unmount()
+  })
+
+  it('can keep shooting feedback outside the canvas without moving the canvas or hiding its crosshair', async () => {
+    const { FpsStage } = await import('./FpsStage')
+    const props = { viewport, dpr: 1, canvasRef: createRef<HTMLCanvasElement>(), onError: vi.fn() }
+    const shooting = { ...scene, feedback: { kind: 'multi_target' as const, shots: 4, hits: 3 } }
+    const view = render(<FpsStage {...props} scene={shooting} feedbackOutsideCanvas />)
+    expect(screen.queryByLabelText('FPS 实时反馈')).toBeNull()
+    expect(screen.getByText('+')).toBeInTheDocument()
+    expect(props.canvasRef.current?.parentElement).toHaveStyle({ width: '800px', height: '450px' })
+    view.rerender(<FpsStage {...props} scene={shooting} />)
+    expect(screen.getByLabelText('FPS 实时反馈')).toHaveStyle({ position: 'absolute', top: '12px', left: '12px' })
+    view.unmount()
+  })
 })

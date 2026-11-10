@@ -72,6 +72,7 @@ function facts(kind: PersonKind, minor: boolean, sequence: number, name?: string
     phone: "19900009888", email: null, sex: "male", date_of_birth: minor ? "2015-01-03" : "2000-01-03",
     coach_person_ids: kind === "player" ? [] : [COACH], team_id: kind === "student" ? null : TEAM,
     guardians: minor ? [{ full_name: `E2E认领监护${sequence}`, identity_number: makeCnId("19800103", sequence),
+      document_type: "cn_id", document_issuing_country: null,
       phone: "19900009889", email: null, sex: "male", date_of_birth: "1980-01-03", relationship: "father", is_primary: true }] : [],
   }
 }
@@ -254,9 +255,9 @@ async function arrangeStay(page: Page, name: string, room: string): Promise<stri
   if ((page.viewportSize()?.width ?? 1440) < 720) await page.getByRole("button", { name: "打开筛选", exact: true }).click()
   const filters = page.locator(".housingFilters")
   await filters.getByLabel("搜索房间").fill(room)
-  await filters.getByRole("button", { name: "应用筛选", exact: true }).click()
   const card = page.locator(".housingRoomCard").filter({ hasText: room })
   await expect(card).toHaveCount(1)
+  if ((page.viewportSize()?.width ?? 1440) < 720) await filters.getByRole("button", { name: "关闭筛选", exact: true }).click()
   await card.getByRole("button", { name: `核对房间 ${room}`, exact: true }).click()
   await card.getByRole("button", { name: `查看房间 ${room} 详情`, exact: true }).click()
   await expect(page.getByRole("heading", { name: `房间 ${room}`, exact: true })).toBeVisible()

@@ -154,7 +154,7 @@ export type StudentDirectoryItem = {
 export type StaffDirectoryItem = {
   staff_person_id: string
   staff_name: string
-  staff_type: "coach" | "life_teacher" | "customer_service" | "administration" | "other"
+  staff_type: "coach" | "life_teacher" | "customer_service" | "administration" | "other" | "team_manager" | "assistant_coach"
 }
 
 export type StaffRole = {

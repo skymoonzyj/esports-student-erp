@@ -42,6 +42,33 @@ class RoleAssignmentRequest(BaseModel):
     role_id: UUID
 
 
+class JobRoleChangeRequest(BaseModel):
+    from_role_id: UUID | None
+    to_role_id: UUID
+    keep_concurrent_roles: Annotated[bool, Field(strict=True)]
+    expected_role_ids: list[UUID]
+
+    @model_validator(mode="after")
+    def validate_snapshot(self) -> JobRoleChangeRequest:
+        if len(self.expected_role_ids) != len(set(self.expected_role_ids)):
+            raise ValueError("当前角色快照不能包含重复角色")
+        return self
+
+
+class JobRoleSummary(BaseModel):
+    id: UUID
+    key: str
+    name: str
+
+
+class JobRoleChangeResponse(BaseModel):
+    account_id: UUID
+    added_role_ids: list[UUID]
+    removed_role_ids: list[UUID]
+    retained_role_ids: list[UUID]
+    roles: list[JobRoleSummary]
+
+
 class PermissionOverrideCreate(BaseModel):
     permission_id: UUID
     effect: Literal["allow", "deny"]

@@ -3,6 +3,7 @@ from typing import Literal
 from fastapi import APIRouter
 
 from app.admissions.router import router as admissions_router
+from app.appearance.router import router as appearance_router
 from app.asset_management.router import router as asset_management_router
 from app.audit.router import router as audit_router
 from app.auth.admin_router import router as account_admin_router
@@ -34,20 +35,32 @@ from app.housing.history_void_router import router as housing_history_void_route
 from app.housing.occupancy_router import router as housing_occupancy_router
 from app.housing.person_router import router as person_housing_router
 from app.housing.portal_router import router as housing_portal_router
+from app.housing.property_export_router import router as housing_property_export_router
+from app.housing.property_router import router as housing_property_router
 from app.housing.reporting_router import router as housing_reporting_router
+from app.housing.room_card_router import router as housing_room_card_router
 from app.housing.room_photo_router import router as housing_room_photo_router
 from app.housing.room_status_export_router import router as housing_room_status_export_router
 from app.housing.router import router as housing_router
+from app.identity.assignments.router import router as person_assignments_router
 from app.identity.router import router as identity_router
 from app.mail.settings_router import router as mail_settings_router
 from app.operations.router import router as operations_router
 from app.personnel_intake.activation_router import router as activation_router
 from app.personnel_intake.claims.admin_router import router as profile_claim_admin_router
 from app.personnel_intake.claims.public_router import router as profile_claim_router
+from app.personnel_intake.quick_import_router import router as quick_intake_router
 from app.personnel_intake.router import router as personnel_intake_router
+from app.portal.departure_router import router as departure_router
+from app.portal.rental_reminders import router as rental_reminders_router
+from app.portal.room_card_reminders import router as room_card_reminders_router
 from app.portal.router import router as portal_router
 from app.procurement.router import router as procurement_router
 from app.rbac.router import router as rbac_router
+from app.reactionx.client_router import router as reactionx_client_router
+from app.reactionx.router import router as reactionx_router
+from app.reactionx.uncertainty_router import browser_router as reactionx_uncertainty_router
+from app.reactionx.uncertainty_router import client_router as reactionx_client_uncertainty_router
 from app.referrals.router import router as referrals_router
 from app.registration.admin_router import router as registration_admin_router
 from app.registration.router import router as registration_router
@@ -60,6 +73,11 @@ from app.team_management.router import router as team_management_router
 from app.travel_reports.router import router as travel_reports_router
 
 api_router = APIRouter()
+api_router.include_router(reactionx_router)
+api_router.include_router(reactionx_client_router)
+api_router.include_router(reactionx_uncertainty_router)
+api_router.include_router(reactionx_client_uncertainty_router)
+api_router.include_router(appearance_router)
 api_router.include_router(admissions_router)
 api_router.include_router(asset_management_router)
 api_router.include_router(auth_router)
@@ -74,11 +92,15 @@ api_router.include_router(referrals_router)
 api_router.include_router(procurement_router)
 api_router.include_router(travel_reports_router)
 api_router.include_router(identity_router)
+api_router.include_router(person_assignments_router)
 api_router.include_router(mail_settings_router)
 api_router.include_router(operations_router)
 api_router.include_router(housing_router)
 api_router.include_router(housing_cleaning_router)
 api_router.include_router(housing_room_photo_router)
+api_router.include_router(housing_room_card_router)
+api_router.include_router(housing_property_router)
+api_router.include_router(housing_property_export_router)
 api_router.include_router(housing_room_status_export_router)
 api_router.include_router(housing_occupancy_router)
 api_router.include_router(housing_history_void_router)
@@ -90,7 +112,11 @@ api_router.include_router(rbac_router)
 api_router.include_router(audit_router)
 api_router.include_router(teaching_router)
 api_router.include_router(portal_router)
+api_router.include_router(departure_router)
+api_router.include_router(rental_reminders_router)
+api_router.include_router(room_card_reminders_router)
 api_router.include_router(personnel_intake_router)
+api_router.include_router(quick_intake_router)
 api_router.include_router(evaluation_router)
 api_router.include_router(evaluation_task_router)
 api_router.include_router(evaluation_portal_router)

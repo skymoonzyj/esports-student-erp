@@ -7,6 +7,8 @@ import { assetKeys } from "./keys"
 import { statusLabels } from "./status"
 import { AssetPhotoLink } from "./AssetPhotoLink"
 import { AssetWarrantyDetails } from "./AssetWarrantyDetails"
+import { AssetHardwareDetails } from "./AssetHardwareDetails"
+import { OwnershipDetails } from "./OwnershipFields"
 import "./assets.css"
 
 function displayTime(value: string | null): string {
@@ -40,6 +42,8 @@ export function MyAssetsPage() {
               </dl>
               <AssetPhotoLink assetId={asset.id} photo={asset.photo} />
               <AssetWarrantyDetails asset={asset} />
+              <AssetHardwareDetails asset={asset} />
+              <OwnershipDetails asset={asset} />
               {asset.note ? <small>{asset.note}</small> : null}
             </article>
           ))}

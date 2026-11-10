@@ -8,9 +8,11 @@ import { GameHost } from "./GameHost"
 import type { DynamicVisionRule, ResultView, SessionView, Submission } from "./contracts"
 import { putPending, readPending } from "./pending"
 import { useTalentSession } from "./useTalentSession"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 function render(element: ReactElement) {
-  return renderBase(element, { wrapper: MemoryRouter })
+  const client = new QueryClient()
+  return renderBase(element, { wrapper: ({ children }) => <MemoryRouter><QueryClientProvider client={client}>{children}</QueryClientProvider></MemoryRouter> })
 }
 
 const accountId = "f2000000-0000-4000-8000-000000000001"

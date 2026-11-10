@@ -1,0 +1,61 @@
+.personAffiliations > .detailCardHeader {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.personAffiliations > .detailCardHeader > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.personAffiliations .staffProfileForm fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border, #dfe3ed);
+  border-radius: 10px;
+}
+
+.personAffiliations .staffProfileForm fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  overflow-wrap: anywhere;
+}
+
+.personAffiliations .staffProfileForm input[type="checkbox"] {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--color-accent-600);
+}
+
+.personAffiliations .staffProfileForm textarea {
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #dfe3ed);
+  border-radius: 10px;
+  font: inherit;
+  resize: vertical;
+}
+
+.personAffiliations { margin-top: 20px; }
+.personAffiliations > .detailCardHeader { align-items: center; }
+.personAffiliations > .detailCardHeader > button { color: var(--color-accent-800); background: var(--color-accent-soft); border-color: var(--color-accent-300); }
+.personAffiliations > .detailCardHeader > button[aria-expanded="true"] { box-shadow: inset 0 -3px 0 var(--color-accent-600); }
+.personAffiliations > .detailCardHeader .formHint { flex: 1 1 220px; font-size: 12px; line-height: 1.7; }
+.personAffiliations > div:not(.detailCardHeader) { min-width: 0; }
+.personAffiliations .detailCard { margin-top: 16px; border-radius: 12px; background: var(--color-canvas); box-shadow: none; }
+.personAffiliations .staffProfileForm fieldset { border-color: var(--color-border); background: var(--color-surface); }
+.personAffiliations .staffProfileForm fieldset label { min-height: 44px; }
+.personAffiliations .staffProfileForm textarea { border-color: var(--color-border); }
+.personAffiliations :is(input, select, textarea, button):focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }
+html[data-ui-theme="command"] .personAffiliations { margin-top: 14px; }
+html[data-ui-theme="command"] .personAffiliations .detailCard { margin-top: 12px; border-radius: 5px; }
+@media (max-width: 480px) {
+  .personAffiliations > .detailCardHeader > button { width: 100%; }
+}

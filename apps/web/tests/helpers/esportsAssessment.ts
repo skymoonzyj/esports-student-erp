@@ -4,17 +4,23 @@ import { expect, test, type BrowserContext, type Locator, type Page, type Reques
 import { loginWithIdentifier } from '../helpers'
 import { e2eCredentialTuple } from '../e2eCredentials'
 import type { ResultSaveView, TaskConfig } from '../../src/esportsAssessments/contracts'
+import { fixtureV4Config } from '../../src/esportsAssessments/testSupport/fixturesV4'
+import { fixtureV5Config } from '../../src/esportsAssessments/testSupport/fixturesV5'
+import { fixtureMobaV4Config } from '../../src/esportsAssessments/testSupport/fixturesMobaV4'
+import { fixtureMobaV5Config } from '../../src/esportsAssessments/testSupport/fixturesMobaV5'
+import { laneWorldToScreen } from '../../src/esportsAssessments/lane/projection'
 import { nativeActiveDuration } from './esportsTiming'
 import { activateOwnedDesktopBrowser } from './desktopBrowserFocus'
-import { validArtifactIdentity } from './esportsArtifactIdentity'
+import { validArtifactIdentity, type SafeEvidencePhase } from './esportsArtifactIdentity'
 import { readHostInterruption } from './esportsInterruption'
+import { BoundedNetworkDiagnostics } from './esportsNetworkDiagnostics'
 import { AssessmentTestClock } from './esportsClock'
 import { projectSelection, type CatalogRevision, type TestId } from './esportsSelection'
 
 export { TEST_LABELS, type TestId } from './esportsSelection'
 export const SUITES = {
-  'pc-fps': { label: '端游 FPS', tests: ['precision', 'tracking', 'switching', 'recognition'] },
-  'pc-moba': { label: '端游 MOBA', tests: ['last-hit', 'orb-walk', 'dodge', 'map-awareness'] },
+  'pc-fps': { label: '端游 FPS', tests: ['gridshot', 'sixshot', 'spheretrack90'] },
+  'pc-moba': { label: '端游 MOBA', tests: ['last-hit'] },
   'mobile-fps': { label: '手游 FPS', tests: ['precision', 'tracking', 'switching', 'move-fire'] },
   'mobile-moba': { label: '手游 MOBA', tests: ['dodge', 'skill-aim', 'move-attack', 'map-awareness'] },
 } as const
@@ -24,9 +30,32 @@ const click: Activate = locator => locator.click()
 const simulated = new AssessmentTestClock()
 type BrowserEvents = { console_error_seen: boolean; page_error_seen: boolean; request_failure_seen: boolean }
 const browserEvents = new WeakMap<Page, BrowserEvents>()
+const networkDiagnostics = new WeakMap<Page, BoundedNetworkDiagnostics>()
 const observedContexts = new WeakSet<BrowserContext>()
 
-export function expectFrozenV3TaskIdentity(config: TaskConfig, suite: Suite, testId: TestId): void {
+export function currentCatalogVersion(suite: Suite): string {
+  return suite === 'pc-fps' ? 'pc-fps-v5' : suite === 'pc-moba' ? 'pc-moba-v5' : `${suite}-v3`
+}
+
+/** Canonical exact configuration, not merely an accepted version prefix. */
+export function expectCurrentTaskIdentity(config: TaskConfig | undefined, suite: Suite, testId: TestId): void {
+  if (suite === 'pc-fps') {
+    if (testId !== 'gridshot' && testId !== 'sixshot' && testId !== 'spheretrack90') throw new Error('current PC FPS task is not a triad member')
+    expect(config).toEqual(fixtureV5Config(testId))
+  } else if (suite === 'pc-moba') {
+    if (!config || config.params.kind !== 'lane_last_hit_towers' || testId !== 'last-hit') throw new Error('current PC MOBA requires the signed tower lane mode')
+    expect(config).toEqual(fixtureMobaV5Config(config.params.attack_mode))
+  } else expect(config).toEqual(fixtureV4Config(suite, testId))
+}
+
+/** Historical native fixtures remain exact v4; never alias them to current rules. */
+export function expectFrozenMobaV4TaskIdentity(config: TaskConfig | undefined): void {
+  if (!config || config.params.kind !== 'lane_last_hit') throw new Error('frozen v4 lane configuration is missing')
+  expect(config).toEqual(fixtureMobaV4Config(config.params.attack_mode))
+}
+
+export function expectFrozenV3TaskIdentity(config: TaskConfig | undefined, suite: Suite, testId: TestId): void {
+  if (!config) throw new Error('frozen v3 task configuration is missing')
   const catalogVersion = `${suite}-v3`
   const usesV2ResultRules = testId === 'switching' || testId === 'move-fire' || testId === 'dodge'
   const resultVersion = `${suite}-v${usesV2ResultRules ? 2 : 1}`
@@ -42,14 +71,93 @@ function observeBrowserEvents(page: Page): void {
   if (browserEvents.has(page)) return
   const events: BrowserEvents = { console_error_seen: false, page_error_seen: false, request_failure_seen: false }
   browserEvents.set(page, events)
-  page.on('console', message => { if (message.type() === 'error') events.console_error_seen = true })
+  const diagnostics = new BoundedNetworkDiagnostics()
+  networkDiagnostics.set(page, diagnostics)
+  page.on('console', message => { if (message.type() === 'error') { events.console_error_seen = true; diagnostics.recordConsole(message.location().url) } })
   page.on('pageerror', () => { events.page_error_seen = true })
-  page.on('requestfailed', () => { events.request_failure_seen = true })
+  page.on('requestfailed', request => { events.request_failure_seen = true; diagnostics.recordFailure(request.url(), request.method(), request.failure()?.errorText ?? '') })
+  page.on('response', response => diagnostics.recordResponse(response.url(), response.request().method(), response.status()))
   // Never collect message text, stack traces, request bodies or URLs.
 }
 
 export const host = (page: Page): Locator => page.getByRole('region', { name: '测试场景', exact: true })
-export const canvas = (page: Page, suite: Suite): Locator => page.getByLabel(suite.endsWith('fps') ? 'FPS 测试场景' : 'MOBA 测评场景', { exact: true })
+export const canvas = (page: Page, suite: Suite): Locator => page.getByLabel(suite.endsWith('fps') ? 'FPS 测试场景' : suite === 'pc-moba' ? /^MOBA (?:兵线)?测评场景$/ : 'MOBA 测评场景', { exact: true })
+
+export interface LaneLifeFeedback { health: number; max_health: number; deaths: number; respawn_seconds: number | null }
+
+/** Only values already visible in the public HUD; never engine/React/private state. */
+export function parseLaneLifeFeedback(text: string): LaneLifeFeedback {
+  const life = text.match(/生命 (\d+) \/ (\d+)/)
+  const deaths = text.match(/死亡 (\d+)/)
+  const respawn = text.match(/复活倒计时 (\d+) 秒/)
+  if (!life || !deaths) throw new Error('visible lane life feedback is unavailable')
+  const result = { health: Number(life[1]), max_health: Number(life[2]), deaths: Number(deaths[1]), respawn_seconds: respawn ? Number(respawn[1]) : null }
+  if (result.max_health !== 1000 || result.health > result.max_health || (result.health === 0) !== (result.respawn_seconds !== null)) throw new Error('visible lane life feedback is inconsistent')
+  return result
+}
+
+interface VisibleBox { x: number; y: number; width: number; height: number }
+export interface LaneHudBounds {
+  viewport: { width: number; height: number }
+  feedback: VisibleBox
+  cells: Array<{ box: VisibleBox; text: VisibleBox }>
+}
+
+/** Check actual rendered cell AND text bounds, not just the outer clipped box. */
+export function expectLaneHudBounds(layout: LaneHudBounds): void {
+  const inside = (inner: VisibleBox, outer: VisibleBox) => {
+    expect(inner.width).toBeGreaterThan(0)
+    expect(inner.height).toBeGreaterThan(0)
+    expect(inner.x).toBeGreaterThanOrEqual(outer.x - .5)
+    expect(inner.y).toBeGreaterThanOrEqual(outer.y - .5)
+    expect(inner.x + inner.width).toBeLessThanOrEqual(outer.x + outer.width + .5)
+    expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height + .5)
+  }
+  expect(layout.feedback.height).toBe(64)
+  expect(layout.cells).toHaveLength(8)
+  inside(layout.feedback, { x: 0, y: 0, ...layout.viewport })
+  for (const cell of layout.cells) { inside(cell.box, layout.feedback); inside(cell.text, cell.box) }
+}
+
+export async function observeLaneHudBounds(page: Page): Promise<LaneHudBounds> {
+  return page.getByLabel('兵线实时反馈', { exact: true }).evaluate(element => {
+    const box = (rect: DOMRect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })
+    return { viewport: { width: window.innerWidth, height: window.innerHeight }, feedback: box(element.getBoundingClientRect()), cells: [...element.children].map(cell => {
+      const range = document.createRange()
+      range.selectNodeContents(cell)
+      return { box: box(cell.getBoundingClientRect()), text: box(range.getBoundingClientRect()) }
+    }) }
+  })
+}
+
+export interface StageLayoutObservation {
+  canvas: { x: number; y: number; width: number; height: number }
+  host: { x: number; y: number }
+  window_scroll: { x: number; y: number }
+  ancestor_scroll: Array<{ tag: string; left: number; top: number }>
+}
+
+export function expectStableStageLayout(before: StageLayoutObservation, after: StageLayoutObservation): void {
+  const relative = (observation: StageLayoutObservation) => ({ ...observation.canvas,
+    x: observation.canvas.x - observation.host.x, y: observation.canvas.y - observation.host.y })
+  expect(relative(after), `stage layout before/after (host-relative; includes scroll offsets): ${JSON.stringify({ before, after })}`).toEqual(relative(before))
+}
+
+export async function observeStageLayout(page: Page): Promise<StageLayoutObservation> {
+  return canvas(page, 'pc-fps').evaluate(element => {
+    const hostElement = element.closest('[aria-label="测试场景"]')
+    if (!hostElement) throw new Error('assessment canvas has no owning Host')
+    const rect = element.getBoundingClientRect(), hostRect = hostElement.getBoundingClientRect()
+    const ancestor_scroll: StageLayoutObservation['ancestor_scroll'] = []
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+      if (parent.scrollHeight > parent.clientHeight || parent.scrollWidth > parent.clientWidth) {
+        ancestor_scroll.push({ tag: parent.tagName, left: parent.scrollLeft, top: parent.scrollTop })
+      }
+    }
+    return { canvas: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, host: { x: hostRect.x, y: hostRect.y },
+      window_scroll: { x: window.scrollX, y: window.scrollY }, ancestor_scroll }
+  })
+}
 
 const HOST_PHASES = ['intro', 'preflight', 'trial', 'starting', 'countdown', 'running', 'pending', 'saved', 'interrupted'] as const
 type HostPhase = typeof HOST_PHASES[number]
@@ -122,7 +230,7 @@ export interface NativeActiveRunObservation {
 }
 
 /** Observe Host-owned native boundaries, not the lagging React phase commit times. */
-export async function observeNativeActiveRun(page: Page): Promise<NativeActiveRunObservation> {
+export async function observeNativeActiveRun(page: Page, durationMs: 60000 | 300000 = 60000): Promise<NativeActiveRunObservation> {
   await page.evaluate(() => {
     type Observation = {
       observer: MutationObserver
@@ -154,7 +262,7 @@ export async function observeNativeActiveRun(page: Page): Promise<NativeActiveRu
         if (!timing) throw new Error('native active-run boundaries are incomplete')
         return timing
       })
-      return nativeActiveDuration(timing)
+      return nativeActiveDuration(timing, durationMs)
     },
     dispose: () => page.evaluate(() => {
       type Observation = { observer: MutationObserver }
@@ -165,15 +273,17 @@ export async function observeNativeActiveRun(page: Page): Promise<NativeActiveRu
   }
 }
 
-export async function loginAsAssessmentPreviewAdmin(page: Page): Promise<void> {
+async function loginAsAssessmentAccount(page: Page, key: 'admin' | 'student'): Promise<void> {
   observeBrowserEvents(page)
   if (!observedContexts.has(page.context())) {
     observedContexts.add(page.context())
     page.context().on('page', observeBrowserEvents)
   }
-  await loginWithIdentifier(page, ...e2eCredentialTuple('admin'))
+  await loginWithIdentifier(page, ...e2eCredentialTuple(key))
   await activateOwnedDesktopBrowser(page, test.info().project.name)
 }
+export async function loginAsAssessmentPreviewAdmin(page: Page): Promise<void> { await loginAsAssessmentAccount(page, 'admin') }
+export async function loginAsAssessmentParticipant(page: Page): Promise<void> { await loginAsAssessmentAccount(page, 'student') }
 
 async function activateAvailableSelection(locator: Locator, activate: Activate): Promise<void> {
   await expect(locator, 'assessment preview selection must be visible').toBeVisible({ timeout: 15_000 })
@@ -190,8 +300,9 @@ export async function openAssessmentHome(page: Page, activate: Activate = click)
   await expect(page.getByRole('heading', { name: '天赋评测 2', exact: true })).toBeVisible()
 }
 
-export async function chooseFormal(page: Page, suite: Suite, options: { resume?: boolean; activate?: Activate } = {}): Promise<void> {
+export async function chooseFormal(page: Page, suite: Suite, options: { resume?: boolean; activate?: Activate; attack_mode?: 'melee' | 'ranged' } = {}): Promise<void> {
   const activate = options.activate ?? click
+  if (suite === 'pc-moba' && !options.resume) await page.getByRole('combobox', { name: '端游 MOBA 人物模式' }).selectOption(options.attack_mode ?? 'melee')
   const selection = options.resume
     ? page.getByRole('link', { name: `继续 ${SUITES[suite].label}`, exact: true })
     : page.getByRole('button', { name: `${SUITES[suite].label} 正式测试`, exact: true })
@@ -208,8 +319,8 @@ export async function choosePractice(page: Page, suite: Suite, test: TestId, opt
   const activate = options.activate ?? click
   await activateAvailableSelection(page.getByRole('button', { name: `${SUITES[suite].label} 自由练习`, exact: true }), activate)
   await expect(page.getByRole('heading', { name: '自由练习', exact: true })).toBeVisible()
-  await page.getByRole('combobox', { name: '练习难度', exact: true }).selectOption(String(options.difficulty ?? 3))
-  await chooseProject(page, test, activate, options.catalogRevision)
+  if (suite !== 'pc-moba') await page.getByRole('combobox', { name: '练习难度', exact: true }).selectOption(String(options.difficulty ?? 3))
+  await chooseProject(page, test, activate, options.catalogRevision ?? (suite === 'pc-moba' ? 4 : 3))
 }
 
 /** Install before login/navigation. This never changes production constants. */
@@ -265,13 +376,22 @@ export async function exercisePcInput(page: Page, suite: Suite, test: TestId): P
   const box = await canvas(page, suite).boundingBox()
   if (!box) throw new Error('assessment canvas is not visible')
   if (suite === 'pc-fps') {
+    const singleClick = test === 'gridshot' || test === 'sixshot'
+    if (singleClick) {
+      await page.mouse.move(box.x + box.width * .5, box.y + box.height * .5)
+      await page.mouse.down()
+      // A held left button must still contribute exactly one shot in v4.
+      await inputGap(page, 350)
+      await page.mouse.up()
+    }
     for (let index = 0; index < 4; index += 1) {
       await page.mouse.move(box.x + box.width * (0.48 + index * 0.01), box.y + box.height * 0.5, { steps: 3 })
-      if (test !== 'tracking') await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5)
-      await inputGap(page, 260)
+      if (test !== 'tracking' && test !== 'spheretrack90') await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5)
+      await inputGap(page, singleClick ? 75 : 260)
     }
+  } else if (test === 'last-hit') {
+    await exerciseLaneInput(page)
   } else {
-    // Last-hit's visibly adjacent minion is at (590, 281.25) in the 1000×562.5 arena.
     // Other scenes receive ordinary attack/move and point inputs, not guaranteed hits.
     for (let index = 0; index < 4; index += 1) {
       await page.mouse.click(box.x + box.width * 0.59, box.y + box.height * 0.5, { button: 'right' })
@@ -279,6 +399,18 @@ export async function exercisePcInput(page: Page, suite: Suite, test: TestId): P
       await inputGap(page, 1_100)
     }
   }
+}
+
+/** Native clicks from the public formation and elapsed clock, never hidden engine state. */
+export async function exerciseLaneInput(page: Page): Promise<void> {
+  const box = await canvas(page, 'pc-moba').boundingBox()
+  if (!box) throw new Error('lane canvas is not visible')
+  const elapsed = await host(page).evaluate(element => performance.now() - Number(element.getAttribute('data-run-start-ms')))
+  if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed > 3000) throw new Error('native lane input missed the initial formation')
+  const point = laneWorldToScreen({ x: 900 - 85 * elapsed / 1000, y: 247.25 })
+  await page.mouse.click(box.x + point.x / 1000 * box.width, box.y + point.y / 562.5 * box.height)
+  // Let the selected-target chase and repeated actual attacks resolve.
+  await inputGap(page, 11000)
 }
 
 /** GET only, through the same authenticated browser context and local web proxy. */
@@ -325,15 +457,16 @@ export function observeUiSave(page: Page, mode: 'formal' | 'practice') {
   return {
     postCount: () => count,
     operationKeysAgree: () => !malformed && keys.length === count && new Set(keys).size === 1,
-    async waitSaved(): Promise<ResultSaveView> {
-      await expect.poll(() => saved !== null, { timeout: 90_000, message: 'UI result submission must be confirmed by server' }).toBe(true)
+    async waitSaved(timeout = 90_000): Promise<ResultSaveView> {
+      await expect.poll(() => saved !== null, { timeout, message: 'UI result submission must be confirmed by server' }).toBe(true)
       if (!saved || malformed) throw new Error('invalid UI save evidence')
       return saved
     },
     inputResponded(test: TestId): boolean {
       const metrics = saved?.scored.metrics ?? {}
+      if (test === 'gridshot' || test === 'sixshot') return metrics.shots === 5
       if (test === 'precision') return typeof metrics.shots === 'number' && metrics.shots >= 3
-      if (test === 'last-hit') return ['successes', 'early_attacks', 'late_attacks'].reduce((sum, key) => sum + (metrics[key] ?? 0), 0) >= 3
+      if (test === 'last-hit') return (metrics.attacks ?? 0) >= 3
       if (test === 'move-fire') return typeof metrics.shots === 'number' && metrics.shots >= 3
         && typeof metrics.reached === 'number' && typeof metrics.joint_successes === 'number'
       if (test === 'move-attack' || test === 'orb-walk') return (metrics.attacks_completed ?? 0) + (metrics.cancelled_attacks ?? 0) >= 3
@@ -346,19 +479,25 @@ export function observeUiSave(page: Page, mode: 'formal' | 'practice') {
 }
 
 /** Only explicit non-identifying region captures and fixed boolean categories escape the runner. */
-export async function captureSafeEvidence(page: Page, testInfo: TestInfo, categories: Record<string, boolean>): Promise<void> {
+export async function captureSafeEvidence(page: Page, testInfo: TestInfo, categories: Record<string, boolean>, phase?: SafeEvidencePhase): Promise<void> {
   const directory = process.env.ESPORTS_E2E_ARTIFACT_DIR
   const caseId = testInfo.title.split(' ')[0]
-  if (!directory || !validArtifactIdentity(directory, caseId, categories)) {
+  if (!directory || !validArtifactIdentity(directory, caseId, categories, phase)) {
     throw new Error('safe assessment artifact identity is unavailable')
   }
   await mkdir(directory, { recursive: true })
-  const prefix = `${testInfo.project.name}-${caseId}`
+  const prefix = `${testInfo.project.name}-${caseId}${phase ? `-${phase}` : ''}`
   // Never capture the account header, report identity, raw snapshots or private URLs.
-  const safeRegion = page.locator('canvas[aria-label="FPS 测试场景"], canvas[aria-label="MOBA 测评场景"]').first()
+  const safeRegion = phase?.endsWith('_report') ? page.getByRole('region', { name: '内部训练排名', exact: true }) : page.locator('canvas[aria-label="FPS 测试场景"], canvas[aria-label="MOBA 测评场景"], canvas[aria-label="MOBA 兵线测评场景"]').first()
   if (await safeRegion.isVisible()) await safeRegion.screenshot({ path: join(directory, `${prefix}-scene.png`) })
+  if (phase?.startsWith('lane_') && !phase.endsWith('_report')) {
+    const hud = page.getByLabel('兵线实时反馈', { exact: true })
+    if (await hud.isVisible()) await hud.screenshot({ path: join(directory, `${prefix}-hud.png`) })
+  }
   const events = browserEvents.get(page)
   if (!events) throw new Error('browser event observation was not installed')
   // Native observations win over caller categories, including expected recovery faults.
   await writeFile(join(directory, `${prefix}-browser-events.json`), JSON.stringify({ ...categories, ...events }, null, 2))
+  const network = networkDiagnostics.get(page)
+  if (network) await writeFile(join(directory, `${prefix}-network-events.json`), JSON.stringify(network.snapshot(), null, 2))
 }

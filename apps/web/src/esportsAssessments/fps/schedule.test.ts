@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { createDistanceSchedule, createRng, FpsTimeline } from './schedule'
+import { createDistanceSchedule, createRng, FpsTimeline, validateFpsViewport } from './schedule'
+import { fixtureV4Config } from '../testSupport/fixturesV4'
+import { fixtureV5Config } from '../testSupport/fixturesV5'
 
 describe('FPS scheduling', () => {
+  it('preflights exact v5 fixed boards as actual 16:9 canvases without restricting historical grids or tracking', () => {
+    const wide = { width: 2560, height: 1080 }
+    for (const id of ['gridshot', 'sixshot'] as const) {
+      expect(() => validateFpsViewport(fixtureV5Config(id), { width: 800.5, height: 450 })).not.toThrow()
+      expect(() => validateFpsViewport(fixtureV5Config(id), wide)).toThrow(/比例|viewport/)
+      expect(() => validateFpsViewport(fixtureV4Config('pc-fps', id), wide)).not.toThrow()
+    }
+    for (const config of [fixtureV4Config('pc-fps', 'spheretrack90'), fixtureV5Config('spheretrack90')]) expect(() => validateFpsViewport(config, { width: 1600.5, height: 900 })).not.toThrow()
+  })
+
   it('preserves registered bin counts and deterministic seed order', () => {
     const schedule = createDistanceSchedule([10, 20, 30], 10, 123)
     expect(schedule).toEqual(createDistanceSchedule([10, 20, 30], 10, 123))

@@ -13,15 +13,24 @@ import { pcFpsFactory } from './suites/pcFps'
 import { mobileFpsFactory } from './suites/mobileFps'
 import { pcMobaFactory } from './suites/pcMoba'
 import { mobileMobaFactory } from './suites/mobileMoba'
-import type { SessionView, TaskConfig } from './contracts'
+import { isLaneTaskConfig, type SessionView, type TaskConfig } from './contracts'
+import { isPcFpsTriadCatalog, isPcMobaLaneCatalog } from './versionRules'
 import { Metrics, QualityNotice } from './reportPresentation'
 import { loadPending } from './pending'
 import './reports.css'
 
 const factories = { 'pc-fps': pcFpsFactory, 'mobile-fps': mobileFpsFactory, 'pc-moba': pcMobaFactory, 'mobile-moba': mobileMobaFactory }
 function legacyRoundNotice(config: Pick<TaskConfig, 'suite_id' | 'catalog_version'>): string | undefined {
-  if ((config.suite_id === 'pc-fps' || config.suite_id === 'mobile-fps') && config.catalog_version === `${config.suite_id}-v1`) {
-    return '本轮使用旧版目标规则。完成本轮后新建，或放弃本轮后新建，可使用屏内刷新。放弃会保留已保存项目，但本轮不再生成报告。'
+  if (config.suite_id === 'pc-moba' && !isPcMobaLaneCatalog(config.suite_id, config.catalog_version)) return `${config.catalog_version === 'pc-moba-v1' ? '本轮使用旧版 MOBA 操作。' : ''}本轮保留旧版四项 60 秒规则；新建轮次才使用五分钟兵线补刀。旧成绩不会自动升级，新旧版本及近战／远程不混榜。`
+  const targetNotice = '本轮使用旧版目标规则。完成本轮后新建，或放弃本轮后新建，可使用屏内刷新。放弃会保留已保存项目，但本轮不再生成报告。'
+  if (config.catalog_version === 'pc-fps-v4') {
+    return '本轮保留旧版三项规则，可继续完成或主动放弃；不会自动删除或替换已保存成绩。新建轮次使用固定靶区，新旧版本不直接比较或混榜。'
+  }
+  if (config.suite_id === 'pc-fps' && !isPcFpsTriadCatalog(config.suite_id, config.catalog_version)) {
+    return `${config.catalog_version === 'pc-fps-v1' ? `${targetNotice} ` : ''}本轮保留旧版四项规则，可继续完成或主动放弃；不会自动删除或替换已保存成绩。新建端游 FPS 轮次使用网格射击、六目标射击和 90°范围跟枪，新旧版本不直接比较或混榜。`
+  }
+  if (config.suite_id === 'mobile-fps' && config.catalog_version === 'mobile-fps-v1') {
+    return targetNotice
   }
   if (config.suite_id.endsWith('moba') && config.catalog_version === `${config.suite_id}-v1`) {
     return '本轮使用旧版 MOBA 操作。完成本轮后新建，或主动放弃后新建，可使用新版操作反馈（端游支持左键兼容操作）。已保存成绩保留，放弃的轮次不再生成报告。'
@@ -114,6 +123,7 @@ export function AssessmentSessionPage() {
   if (!context.data.can_take || !context.data.can_read_self) return <p role="alert">当前账号没有参加本专项的权限。</p>
   if (!suite || !available) return selected ? <AssessmentRecovery key={activeKey} identity={{ mode: 'formal', suite_id: view.suite_id, session_id: sessionId, test_id: selected }} />
     : <section><p role="status">此专项暂未开放。请选择项目查看已有尝试。</p>{view.members.map(test => <button key={test} onClick={() => setSearch({ test })}>{assessmentTaskLabel(view.suite_config.tasks[test]!)}</button>)}<Link to="/esports-assessments">返回入口</Link></section>
-  return <section className="assessmentSession"><h1>正式评测项目</h1><p aria-live="polite">已保存 {view.results.length} / 4</p>{roundNotice && <p className="assessmentNotice">{roundNotice}</p>}<p>可以任意顺序完成；只以服务器保存为准。每项正式运行 60 秒，试练最多 20 秒，试练不保存成绩。</p><div className="assessmentActions">{view.members.map(test => <button key={test} disabled={view.results.some(result => result.test_id === test)} onClick={() => setSearch({ test })}>{assessmentTaskLabel(view.suite_config.tasks[test]!)}{view.results.some(result => result.test_id === test) ? '（已保存）' : ''}</button>)}</div><AbandonRound key={`${account}:${sessionId}`} account={account} sessionId={sessionId} onSaved={value => { client.setQueryData([...assessmentKeys.root(account), 'formal-session', sessionId], value); void client.invalidateQueries({ queryKey: assessmentKeys.root(account) }) }} /><Link to="/esports-assessments">返回评测入口</Link></section>
+  const lane = view.suite_config.tasks['last-hit']
+  return <section className="assessmentSession"><h1>正式评测项目</h1><p aria-live="polite">已保存 {view.results.length} / {view.members.length}</p>{roundNotice && <p className="assessmentNotice">{roundNotice}</p>}<p>{lane && isLaneTaskConfig(lane) ? `本轮只有一个五分钟兵线补刀项目，人物已锁定为${lane.params.attack_mode === 'melee' ? '近战' : '远程'}，无需再做另一种人物。` : '可以任意顺序完成；每项正式运行 60 秒。'}只以服务器保存为准。试练最多 20 秒，试练不保存成绩。</p><div className="assessmentActions">{view.members.map(test => <button key={test} disabled={view.results.some(result => result.test_id === test)} onClick={() => setSearch({ test })}>{assessmentTaskLabel(view.suite_config.tasks[test]!)}{view.results.some(result => result.test_id === test) ? '（已保存）' : ''}</button>)}</div><AbandonRound key={`${account}:${sessionId}`} account={account} sessionId={sessionId} onSaved={value => { client.setQueryData([...assessmentKeys.root(account), 'formal-session', sessionId], value); void client.invalidateQueries({ queryKey: assessmentKeys.root(account) }) }} /><Link to="/esports-assessments">返回评测入口</Link></section>
 }
 export default AssessmentSessionPage

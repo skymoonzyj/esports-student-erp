@@ -89,3 +89,74 @@
 .managedPersonCard h2 { font-size: 18px; }
 .managedPersonCard dl > div { display: flex; gap: 12px; flex-wrap: wrap; }
 .managedPersonCard dd { margin: 0; }
+
+/* Keep deferred intake and guardian information visibly separate. */
+.assistedPeoplePage > h1 { margin: 0; font-size: clamp(24px, 2.5vw, 30px); font-weight: 680; letter-spacing: -.025em; color: var(--color-text-strong); }
+.assistedPeoplePage > p { color: var(--color-text-muted); font-size: 13px; line-height: 1.8; }
+.assistedPeoplePage > [role="group"],
+.assistedPeoplePage > .personFormActions { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding: 16px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); }
+.assistedPeoplePage > .personFormActions label { display: grid; gap: 7px; min-width: 0; flex: 1 1 180px; font-size: 12px; }
+.assistedPeoplePage button { min-height: 44px; padding: 10px 14px; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 8px); background: var(--color-surface); color: var(--color-text-strong); font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
+.assistedPeoplePage button:disabled { opacity: .55; cursor: not-allowed; }
+.assistedPeoplePage button[aria-pressed="true"] { border-color: var(--color-accent-500); background: var(--color-accent-soft); color: var(--color-accent-800); }
+.assistedPeoplePage > .personFormActions :is(input, select) { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 8px); background: var(--color-surface); color: var(--color-text); font: inherit; }
+.assistedPeoplePage > nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; margin-block: 16px; font-size: 12px; color: var(--color-text-muted); }
+.assistedPeoplePage > section[aria-label="建档申请详情"] { margin-top: 20px; padding: 20px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); }
+.assistedRequestTable { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; margin-top: 18px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); overflow: clip; font-size: 12px; }
+.assistedRequestTable th { padding: 12px 16px; color: var(--color-text-muted); background: var(--ui-header-bg, var(--color-canvas)); text-align: left; font-size: 11px; font-weight: 650; }
+.assistedRequestTable td { padding: var(--ui-table-cell-y, 14px) 16px; border-top: 1px solid var(--color-border-soft); overflow-wrap: anywhere; }
+.assistedRequestTable th:first-child { width: 24%; }
+.assistedRequestTable th:last-child { width: 10%; }
+.assistedRequestTable tbody tr:hover { background: var(--color-canvas); }
+.assistedPeoplePage :is(button, input, select, textarea):focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }
+.assistedPeoplePage .primaryButton { color: white; background: var(--color-accent-700); border-color: var(--color-accent-700); }
+.assistedPersonForm { gap: 24px; min-width: 0; }
+.assistedPersonForm .formSection,
+.assistedAssignments,
+.assistedGuardian,
+.managedPersonCard { padding: 22px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); }
+.assistedPersonForm .formSection { min-width: 0; }
+.assistedPersonForm .formSection h2 { margin-top: 0; color: var(--color-text-strong); }
+.assistedFormNotice { line-height: 1.8; }
+.assistedGuardian > legend,
+.assistedAssignments > legend { padding-inline: 6px; color: var(--color-text-strong); font-size: 13px; font-weight: 700; }
+.assistedPersonForm .formField { display: grid; gap: 8px; min-width: 0; color: var(--color-text-strong); font-size: 12px; }
+.assistedPersonForm button,
+.assistedPersonForm input:not([type="checkbox"]):not([type="radio"]),
+.assistedPersonForm select,
+.managedPeopleFilters input,
+.managedPeopleFilters select,
+.assistedCheckbox { min-height: 44px; }
+.assistedPersonForm input:not([type="checkbox"]):not([type="radio"]),
+.assistedPersonForm select,
+.assistedPersonForm textarea,
+.managedPeopleFilters input,
+.managedPeopleFilters select { width: 100%; min-width: 0; max-width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 8px); color: var(--color-text); background: var(--color-surface); font: inherit; }
+.assistedPersonForm :is(input, select, textarea, button):focus-visible,
+.managedPeopleFilters :is(input, select):focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }
+.managedPeopleFilters { padding: 18px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); }
+.managedPersonCard h2 { margin-top: 0; color: var(--color-text-strong); }
+.managedPersonCard dt { color: var(--color-text-muted); }
+html[data-ui-theme="command"] .assistedPersonForm .formSection,
+html[data-ui-theme="command"] .assistedAssignments,
+html[data-ui-theme="command"] .assistedGuardian,
+html[data-ui-theme="command"] .managedPersonCard { padding: 18px; }
+html[data-ui-theme="command"] .managedPeopleCards { gap: 10px; }
+html[data-ui-theme="command"] .assistedFormBody { gap: 16px; }
+@media (max-width: 600px) {
+  .assistedPeoplePage > .personFormActions { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .assistedRequestTable,
+  .assistedRequestTable tbody { display: block; border: 0; border-radius: 0; background: transparent; overflow: visible; }
+  .assistedRequestTable thead { display: none; }
+  .assistedRequestTable tr { display: grid; grid-template-columns: minmax(0, 1fr); margin-bottom: 12px; padding: 6px 14px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); }
+  .assistedRequestTable td { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 12px; padding: 10px 0; min-width: 0; }
+  .assistedRequestTable td:first-child { border-top: 0; }
+  .assistedRequestTable td::before { content: attr(data-label); color: var(--color-text-muted); font-size: 11px; }
+  .assistedPeoplePage > section[aria-label="建档申请详情"] { padding: 16px; }
+  .assistedPersonForm .formSection,
+  .assistedAssignments,
+  .assistedGuardian,
+  .managedPersonCard { padding: 16px; }
+  .assistedAssignments label { min-width: 0; overflow-wrap: anywhere; }
+  .managedPeopleFilters { margin-block: 16px; padding: 16px; }
+}

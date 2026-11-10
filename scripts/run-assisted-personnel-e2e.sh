@@ -14,7 +14,7 @@ if (( $# != 0 )); then
     exit 2
   fi
   case $2 in
-    assisted|team|registration|housing-occupancy|housing-reporting) ;;
+    assisted|intake-roles|intake-identity|team|registration|housing-occupancy|housing-reporting) ;;
     *) echo "Assisted E2E refused: unknown fixed suite" >&2; exit 2 ;;
   esac
 fi
@@ -46,6 +46,7 @@ import re
 import secrets
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -79,6 +80,12 @@ seeds, specs, projects = {
     "assisted": (("seed_e2e", "seed_assisted_personnel_e2e"), (
         "assisted-personnel.spec.ts", "profile-claims.spec.ts",
         "pending-profile-lifecycle.spec.ts", "person-housing.spec.ts",
+    ), two_projects),
+    "intake-roles": (("seed_e2e", "seed_assisted_personnel_e2e"), (
+        "intake-activation-roles.spec.ts",
+    ), two_projects),
+    "intake-identity": (("seed_e2e", "seed_assisted_personnel_e2e"), (
+        "intake-identity-teams.spec.ts",
     ), two_projects),
     "team": (("seed_e2e", "seed_team_management_e2e"), ("team-management.spec.ts",), two_projects),
     "registration": (("seed_e2e", "seed_registration_e2e"), (
@@ -151,20 +158,37 @@ def signal_owned(child, sig):
     except ProcessLookupError:
         pass
     except PermissionError:
-        # Darwin returns EPERM for a group containing only its zombie leader.
-        # An alive process refusing termination is still a cleanup failure.
-        if not finished(child):
-            raise
+        # Darwin can return EPERM after the last signalable group member exits.
+        # Its non-reaping ps observation can lag that transition. Keep the same
+        # owned leader unreaped and briefly observe only; never retarget/retry a
+        # signal or treat a persistently live inaccessible process as success.
+        deadline = time.monotonic() + .5
+        while not finished(child):
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(.05)
 
 
 def stop_children():
+    errors = []
     for sig in (signal.SIGTERM, signal.SIGKILL):
         for child in children:
-            signal_owned(child, sig)
+            try:
+                signal_owned(child, sig)
+            except (OSError, subprocess.SubprocessError) as exc:
+                errors.append(exc)
         if sig == signal.SIGTERM:
             time.sleep(.2)
+    # Reap only after every owned group has received both cleanup attempts. An
+    # inaccessible live leader must not hang cleanup or prevent the others from
+    # being signalled/reaped; retain and report the first error after all efforts.
     for child in children:
-        child.wait()
+        try:
+            child.wait(timeout=1)
+        except (OSError, subprocess.SubprocessError) as exc:
+            errors.append(exc)
+    if errors:
+        raise errors[0]
 
 
 def checked(args, *, cwd, env, log):
@@ -370,8 +394,116 @@ def ready(child, url, marker, log, env):
     raise Failed("owned service readiness timed out")
 
 
+INTAKE_SCREENSHOTS = ("role-picker-clear.png", "role-picker-command.png",
+                      "role-plan-clear.png", "role-plan-command.png")
+if suite == "intake-identity":
+    INTAKE_SCREENSHOTS = tuple(f"{name}-{theme}.png" for theme in ("clear", "command")
+                               for name in ("identity-selection", "staff-roster"))
+
+
+def verify_identity_report(path, spec, project):
+    """A zero Playwright exit is insufficient: every fixed case must pass once."""
+    try:
+        data = json.loads(path.read_text())
+        if not isinstance(data, dict) or data.get("errors") != []:
+            raise ValueError
+        found = []
+
+        def walk(value):
+            if not isinstance(value, dict):
+                raise ValueError
+            for entry in value.get("specs", []):
+                if Path(entry.get("file", "")).name != spec:
+                    raise ValueError
+                tests = entry.get("tests")
+                if not isinstance(tests, list) or len(tests) != 1:
+                    raise ValueError
+                test = tests[0]
+                results = test.get("results")
+                if (test.get("projectName") != project or test.get("expectedStatus") != "passed"
+                        or test.get("status") != "expected" or not isinstance(results, list)
+                        or len(results) != 1 or results[0].get("status") != "passed"
+                        or results[0].get("retry") != 0):
+                    raise ValueError
+                found.append(entry.get("title"))
+            for child in value.get("suites", []):
+                walk(child)
+
+        walk(data)
+        expected = [f"IDT{case} {theme}" for theme in ("clear", "command") for case in range(1, 7)]
+        if sorted(found) != sorted(expected):
+            raise ValueError
+    except (OSError, ValueError, TypeError, AttributeError, KeyError):
+        raise Failed("fixed identity acceptance report incomplete") from None
+
+
+def intake_artifact_destination():
+    destination = root
+    plan, leaf = (("2026-11-06-intake-identity-teams", "task-6-e2e-artifacts")
+                  if suite == "intake-identity" else
+                  ("2026-11-06-intake-identity-teams", "task-6-legacy-role-artifacts"))
+    for name in (".superpowers", "sdd", plan, leaf):
+        destination = destination / name
+        try:
+            mode = destination.lstat().st_mode
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISDIR(mode) or name == leaf:
+            # Never delete/archive/overwrite another invocation's evidence. Root
+            # must explicitly archive prior output before a known rerun.
+            raise Refused("prior or unsafe screenshot destination; archive prior evidence before rerun")
+    return destination
+
+
+def stage_intake_screenshots(results, project, staging):
+    # Only these reviewed, synthetic picker/readonly-panel crops survive private
+    # runtime cleanup. Never export traces, reports, raw logs or activation forms.
+    images = []
+    for name in INTAKE_SCREENSHOTS:
+        candidates = list(results.rglob(name)) if results.is_dir() else []
+        if len(candidates) != 1:
+            raise Failed("missing or duplicate synthetic screenshot")
+        for source in candidates:
+            local_parts = [source, *list(source.parents)[:list(source.parents).index(results) + 1]]
+            if (any(part.is_symlink() for part in local_parts)
+                    or not stat.S_ISREG(source.lstat().st_mode) or source.stat().st_size > 5_000_000):
+                raise Failed("unsafe synthetic screenshot")
+            data = source.read_bytes()
+            if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+                raise Failed("invalid synthetic screenshot")
+            images.append((name, data))
+    destination = staging / project
+    destination.mkdir(mode=0o700, parents=True)
+    for name, data in images:
+        target = destination / name
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(data)
+
+
+def publish_intake_screenshots(staging):
+    # All requested projects and postchecks have passed. Build the complete
+    # eight-crop directory on its destination filesystem, then publish once.
+    destination = intake_artifact_destination()
+    destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".task-3-crops-publish.", dir=destination.parent) as temporary:
+        publication = Path(temporary)
+        for project in projects:
+            (publication / project).mkdir(mode=0o700)
+            for name in INTAKE_SCREENSHOTS:
+                data = (staging / project / name).read_bytes()
+                descriptor = os.open(publication / project / name,
+                                     os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                with os.fdopen(descriptor, "wb") as output:
+                    output.write(data)
+        intake_artifact_destination()  # Recheck immediately before publication.
+        publication.rename(destination)
+
+
 def main():
     global phase
+    if suite in {"intake-roles", "intake-identity"}:
+        intake_artifact_destination()  # Before any DB/process mutation.
     if os.environ.get("APP_ENV", "test") != "test":
         raise Refused("APP_ENV must be test")
     for key, value in os.environ.items():
@@ -427,7 +559,7 @@ def main():
         "apps/web/tests/helpers.ts", "apps/web/tests/e2eCredentials.ts",
         "apps/api/app/cli/e2e_credentials.json",
     ))
-    if suite in {"registration", "assisted"}:
+    if suite in {"registration", "assisted", "intake-roles", "intake-identity"}:
         dependencies.append("apps/api/app/cli/read_registration_test_code.py")
     if suite == "housing-reporting":
         dependencies.append("apps/web/tests/support/inspect-housing-report.py")
@@ -501,7 +633,7 @@ def main():
             # never inherit this deployment flag or enable it for other suites.
             api_server_env = {**api_env, "REGISTRATION_PHONE_SIGNUP_ENABLED": "true"}
         seed_env = api_env
-        if suite == "assisted":
+        if suite in {"assisted", "intake-roles", "intake-identity"}:
             # Forward only the validated attestation and a fixed private path;
             # neither is inherited from callers or exposed to API/Web/browser.
             seed_env = {
@@ -558,12 +690,19 @@ def main():
                     except Failed:
                         report_failed_test_locations(runtime / "playwright-results.json", spec, project)
                         raise
-                    if suite == "assisted":
+                    if suite == "intake-identity":
+                        phase = f"{suite}/{project}/{spec}/verify-complete-report"
+                        verify_identity_report(runtime / "playwright-results.json", spec, project)
+                    if suite in {"assisted", "intake-roles", "intake-identity"}:
                         phase = f"{suite}/{project}/{spec}/verify-financial-baseline"
                         checked(
                             [python, "-m", "app.cli.seed_assisted_personnel_e2e", "--verify-financial-baseline"],
                             cwd=root / "apps/api", env=seed_env, log=runtime / "seed.log",
                         )
+                    if suite in {"intake-roles", "intake-identity"}:
+                        phase = f"{suite}/{project}/{spec}/stage-synthetic-screenshots"
+                        stage_intake_screenshots(runtime / "results", project, runtime / "approved-crops")
+                    if suite == "assisted":
                         phase = f"{suite}/{project}/{spec}/verify-protected-claims"
                         checked(
                             [python, "-m", "app.cli.seed_assisted_personnel_e2e", "--verify-protected-claims"],
@@ -576,11 +715,19 @@ def main():
                         )
                     completed += 1
                     print(f"Assisted E2E passed: phase={phase} count={completed}", flush=True)
+            if suite == "intake-roles":
+                phase = suite + "/publish-synthetic-screenshots"
+                publish_intake_screenshots(runtime / "approved-crops")
         finally:
             # Signals may not interrupt cleanup; kill/wait only our own sessions.
             for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
                 signal.signal(sig, signal.SIG_IGN)
             stop_children()
+        if suite == "intake-identity":
+            phase = suite + "/publish-synthetic-screenshots"
+            publish_intake_screenshots(runtime / "approved-crops")
+    if suite == "intake-identity":
+        print("Intake identity E2E accepted: complete desktop/mobile matrix; financial baseline unchanged; owned runtime cleaned", flush=True)
     return 0
 
 
@@ -594,8 +741,26 @@ except Refused as exc:
 except Interrupted as exc:
     print(f"Assisted E2E interrupted: phase={phase}; owned runtime cleaned", file=sys.stderr)
     sys.exit(128 + exc.signum)
-except (Failed, OSError, subprocess.SubprocessError):
+except (Failed, OSError, subprocess.SubprocessError) as exc:
     # Never print exceptions/command lines: they may contain credentials or OTPs.
+    # Typed bounded metadata only; no exception message, filename or raw traceback.
+    categories = {
+        Failed: "Failed", PermissionError: "PermissionError", FileNotFoundError: "FileNotFoundError",
+        FileExistsError: "FileExistsError", NotADirectoryError: "NotADirectoryError",
+        IsADirectoryError: "IsADirectoryError", ProcessLookupError: "ProcessLookupError",
+        ChildProcessError: "ChildProcessError", InterruptedError: "InterruptedError",
+        subprocess.CalledProcessError: "CalledProcessError", subprocess.TimeoutExpired: "TimeoutExpired",
+    }
+    category = categories.get(type(exc), "OSError" if isinstance(exc, OSError) else "SubprocessError")
+    error_number = getattr(exc, "errno", None)
+    error_number = error_number if type(error_number) is int and 0 <= error_number <= 4095 else 0
+    source_line = 0
+    frame = exc.__traceback__
+    while frame:
+        if frame.tb_frame.f_code.co_filename == __file__ and 1 <= frame.tb_lineno <= 100_000:
+            source_line = frame.tb_lineno
+        frame = frame.tb_next
+    print(f"Assisted E2E exception metadata: class={category} errno={error_number} python_line={source_line}", file=sys.stderr)
     print(f"Assisted E2E failed: phase={phase}; private output discarded", file=sys.stderr)
     sys.exit(1)
 PY

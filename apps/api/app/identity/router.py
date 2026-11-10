@@ -146,12 +146,11 @@ class PersonResponse(BaseModel):
 class PersonDetailResponse(PersonResponse):
     student_number: str | None = None
     student_status: Literal["draft", "active", "inactive"] | None = None
-    staff_type: (
-        Literal["coach", "life_teacher", "customer_service", "administration", "other"] | None
-    ) = None
+    staff_type: StaffType | None = None
     visit_reason: str | None = None
     linked_student_id: UUID | None = None
     account_management_allowed: bool = False
+    activation_roles_available: bool = False
 
 
 class PersonPage(BaseModel):
@@ -218,6 +217,7 @@ def _detail_response(
     value: PersonDetail,
     *,
     account_management_allowed: bool = False,
+    activation_roles_available: bool = False,
 ) -> PersonDetailResponse:
     data = value.model_dump()
     data["identity_number"] = data.pop("masked_identity")
@@ -225,6 +225,7 @@ def _detail_response(
     return PersonDetailResponse(
         **data,
         account_management_allowed=account_management_allowed,
+        activation_roles_available=activation_roles_available,
     )
 
 
@@ -474,6 +475,8 @@ def get_person(
     db: Annotated[Session, Depends(get_db)],
     service: Annotated[IdentityService, Depends(get_identity_service)],
 ) -> PersonDetailResponse:
+    from app.personnel_intake.role_grants import activation_roles_available
+
     tokens = _person_tokens(context, db, person_id)
     _require_permission(context, db, "people.read", tokens)
     try:
@@ -489,6 +492,7 @@ def get_person(
         return _detail_response(
             service.get_person(person_id, actor=context),
             account_management_allowed=account_management_allowed,
+            activation_roles_available=activation_roles_available(db, context, person_id),
         )
     except ValueError as exc:
         _raise_identity_error(exc)
@@ -503,11 +507,13 @@ def update_person(
     db: Annotated[Session, Depends(get_db)],
     service: Annotated[IdentityService, Depends(get_identity_service)],
 ) -> PersonDetailResponse:
+    from app.personnel_intake.role_grants import activation_roles_available
+
     tokens = _person_tokens(context, db, person_id)
     _require_permission(context, db, "people.update", tokens)
+    _require_permission(context, db, "people.read", tokens)
     if input.model_fields_set & {"nickname", "profile_notes"}:
         _require_permission(context, db, "people.update", {"global"})
-        _require_permission(context, db, "people.read", tokens)
     try:
         account_management_allowed = (
             RbacService(db)
@@ -526,6 +532,7 @@ def update_person(
                 request_id=str(request.state.request_id),
             ),
             account_management_allowed=account_management_allowed,
+            activation_roles_available=activation_roles_available(db, context, person_id),
         )
     except AuditMetadataRejected as exc:
         raise ProblemError(
@@ -555,6 +562,12 @@ def add_guardian(
         context,
         db,
         "people.update",
+        _person_tokens(context, db, input.guardian_id),
+    )
+    _require_permission(
+        context,
+        db,
+        "people.read",
         _person_tokens(context, db, input.guardian_id),
     )
     try:

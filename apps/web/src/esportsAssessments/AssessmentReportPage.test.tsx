@@ -6,6 +6,14 @@ import { AssessmentReportPage } from './AssessmentReportPage'
 import { renderAssessmentPage, studentFixture } from './testSupport/renderAssessmentPage'
 import { jsonResponse, privateResponse, reportFixture, PREVIOUS_ID, REPORT_ID } from './reportTestFixtures'
 import { assessmentKeys } from './keys'
+import { fixtureV4Config, fixtureV4SuiteConfig } from './testSupport/fixturesV4'
+import { fixtureV5Config } from './testSupport/fixturesV5'
+import catalogV5 from './testSupport/catalog-v5.json'
+import { suiteConfigSchema } from './contracts'
+import { fixtureMobaV4Config } from './testSupport/fixturesMobaV4'
+import laneCatalog from './testSupport/catalog-moba-v4.json'
+import towerCatalog from './testSupport/catalog-moba-v5.json'
+import { fixtureMobaV5Config } from './testSupport/fixturesMobaV5'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 function setup(handler: (url: string) => Response | Promise<Response>, id = REPORT_ID) {
@@ -18,6 +26,61 @@ function rankingFixture() {
     overall_rank: 1, participant_count: 3,
     items: ['precision', 'tracking', 'switching', 'recognition'].map((test_id, index) => ({ test_id, score: 80 + index, rank: index === 0 ? 3 : 1 })) }
 }
+it.each([4, 5])('renders saved v%s ranged lane, frozen denominator, hero metrics and its own top three', async version => {
+  const old = reportFixture()
+  const config = version === 4 ? fixtureMobaV4Config('ranged') : fixtureMobaV5Config('ranged')
+  const suite = suiteConfigSchema.parse({ ...(version === 4 ? laneCatalog : towerCatalog), tasks: { 'last-hit': config } })
+  const report = { ...old, suite_id: 'pc-moba', suite, comparisons: [], results: [{ ...old.results[0], test_id: 'last-hit', config,
+    scored: { ...old.results[0].scored, metrics: { last_hits: 20, enemy_deaths: 40, missed: 20, unresolved: version === 4 ? 10 : 35, last_hit_rate: .5, opportunity_completion: version === 4 ? .4 : 20 / 75, last_hits_per_minute: 4, attacks: 80, cancelled_attacks: 3, minute_1_last_hits: 1, minute_2_last_hits: 2, minute_3_last_hits: 4, minute_4_last_hits: 5, minute_5_last_hits: 8, ...(version === 5 ? { hero_deaths: 2, hero_damage_taken: 2360 } : {}) } } }] }
+  const ranking = { ...rankingFixture(), overall_score: 40, overall_rank: 2, top_scores: [{ rank: 1, score: 50, gap: 10 }, { rank: 2, score: 40, gap: 0 }], items: [{ test_id: 'last-hit', score: 40, rank: 2, top_scores: [{ rank: 1, score: 50, gap: 10 }, { rank: 2, score: 40, gap: 0 }] }] }
+  setup(url => jsonResponse(url.endsWith('/ranking') ? ranking : report))
+  expect(await screen.findByRole('heading', { name: '五分钟兵线补刀 · 远程' })).toBeVisible()
+  expect(screen.getByText(version === 4 ? /补刀率.*已死亡敌兵.*总机会完成率.*50/ : /补刀率.*已死亡敌兵.*总机会完成率.*75/)).toBeVisible()
+  expect(screen.getByText(/未结算.*不记为漏刀/)).toBeVisible()
+  expect(screen.getByText('第 5 分钟补刀')).toBeVisible()
+  expect(screen.getByText(version === 4 ? '40%' : '26.67%')).toBeVisible()
+  if (version === 5) {
+    expect(screen.getByText('人物死亡次数')).toBeVisible()
+    expect(screen.getByText('承受防御塔伤害')).toBeVisible()
+    expect(screen.getByText('2360 点')).toBeVisible()
+    expect(screen.getByText(/防御塔.*不计.*补刀/)).toBeVisible()
+  } else expect(screen.queryByText('人物死亡次数')).toBeNull()
+  expect(await screen.findAllByRole('table', { name: /匿名前三/ })).toHaveLength(2)
+  expect(screen.getAllByText('+10.00 分')).toHaveLength(2)
+})
+it.each(['v4', 'v5'] as const)('renders frozen %s three-item reports with anonymous real top scores and signed gaps', async version => {
+  const old = reportFixture()
+  const suite = version === 'v4' ? fixtureV4SuiteConfig() : suiteConfigSchema.parse(catalogV5['pc-fps'])
+  const report = { ...old, suite, results: suite.test_ids.map((test_id, index) => ({ ...old.results[index], test_id, config: version === 'v4' ? fixtureV4Config('pc-fps', test_id) : fixtureV5Config(test_id as 'gridshot' | 'sixshot' | 'spheretrack90'), scored: { ...old.results[index].scored, metrics: test_id === 'spheretrack90' ? { coverage_ms: 30000 } : { hits_per_second: 2.5, successful_average_interval_ms: 400 } } })) }
+  const ranking = { ...rankingFixture(), overall_score: 80, participant_count: 2, overall_rank: 2, top_scores: [{ rank: 1, score: 90, gap: 10 }, { rank: 2, score: 80, gap: 0 }], items: suite.test_ids.map(test_id => ({ test_id, score: 80, rank: 2, top_scores: [{ rank: 1, score: 90, gap: 10 }, { rank: 2, score: 80, gap: 0 }] })) }
+  setup(url => jsonResponse(url.endsWith('/ranking') ? ranking : report))
+  expect(await screen.findByRole('heading', { name: '网格射击' })).toBeVisible()
+  expect(screen.getAllByText('50 分')).toHaveLength(3)
+  expect(await screen.findByText(/同组真实参与者不足 3 人/)).toBeVisible()
+  expect(screen.getAllByRole('table', { name: /匿名前三/ })).toHaveLength(4)
+  expect(screen.getAllByText('+10.00 分')).toHaveLength(4)
+  expect(screen.getAllByText('2.5 次/秒')).toHaveLength(2)
+  expect(screen.getByText(/ERP 暂定场景规则/)).toBeVisible()
+  expect(screen.getByText(/新旧版本记录并存/)).toBeVisible()
+})
+it('scopes current lane life metrics independently from duplicate current and prior comparison metrics', async () => {
+  const old = reportFixture()
+  const config = fixtureMobaV5Config('ranged')
+  const suite = suiteConfigSchema.parse({ ...towerCatalog, tasks: { 'last-hit': config } })
+  const current = { ...old, suite_id: 'pc-moba', suite, comparisons: [{ test_id: 'last-hit', previous_report_id: PREVIOUS_ID, score_delta: null, non_comparable_reasons: ['settings_changed'] }], results: [{ ...old.results[0], test_id: 'last-hit', config, scored: { ...old.results[0].scored, metrics: { hero_deaths: 2, hero_damage_taken: 2360 } } }] }
+  const previous = { ...current, id: PREVIOUS_ID, comparisons: [], results: [{ ...current.results[0], scored: { ...current.results[0].scored, metrics: { hero_deaths: 4, hero_damage_taken: 4180 } } }] }
+  setup(url => jsonResponse(url.endsWith('/ranking') ? { ...rankingFixture(), items: [{ test_id: 'last-hit', score: 50, rank: 1 }] } : url.endsWith(PREVIOUS_ID) ? previous : current))
+  await waitFor(() => expect(screen.getAllByText('人物死亡次数')).toHaveLength(3))
+  // Reproduce the native harness's ambiguous global query, then prove the
+  // public current-result region/direct metric list is unambiguous.
+  expect(() => screen.getByText('人物死亡次数', { exact: true })).toThrow(/multiple elements/)
+  const result = screen.getByRole('region', { name: '五分钟兵线补刀 · 远程' })
+  const metrics = result.querySelector<HTMLElement>(':scope > dl.assessmentReportsMetrics')!
+  expect(within(metrics).getByText('人物死亡次数')).toBeVisible()
+  expect(within(metrics).getByText('2 次')).toBeVisible()
+  expect(within(metrics).getByText('2360 点')).toBeVisible()
+  expect(within(metrics).queryByText('4 次')).toBeNull()
+})
 it('shows selected best-round internal ranking separately from saved scores', async () => {
   setup(url => jsonResponse(url.endsWith('/ranking') ? rankingFixture() : reportFixture()))
   const ranking = await screen.findByRole('region', { name: '内部训练排名' })

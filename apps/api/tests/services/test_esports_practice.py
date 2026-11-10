@@ -29,7 +29,7 @@ NOW = datetime(2026, 9, 22, 2, tzinfo=UTC)
 
 def practice_request(
     suite_id: str = "pc-fps",
-    test_id: str = "precision",
+    test_id: str = "gridshot",
     *,
     difficulty: int = 3,
     key=None,
@@ -53,7 +53,7 @@ def test_practice_submit_persists_only_practice_metrics_and_replays(db) -> None:
     run = service.start(actor, create, NOW)
     submit = result_request(
         "pc-fps",
-        "precision",
+        "gridshot",
         seed=run.seed,
         catalog_version=run.config.catalog_version,
     )
@@ -104,14 +104,14 @@ def test_practice_and_formal_share_one_running_account_occupancy(db) -> None:
     formal_service.start_attempt(
         actor,
         session.id,
-        attempt_request("pc-fps", "precision"),
+        attempt_request("pc-fps", "gridshot"),
         NOW,
     )
 
     with pytest.raises(AssessmentConflict) as error:
         PracticeAssessmentService(db).start(
             actor,
-            practice_request("pc-moba", "last-hit"),
+            practice_request("pc-moba", "last-hit").model_copy(update={"attack_mode": "melee"}),
             NOW + timedelta(seconds=1),
         )
 
@@ -133,7 +133,7 @@ def test_practice_invalid_cross_suite_payload_does_not_claim_submission_key(db) 
 
     valid = result_request(
         "pc-fps",
-        "precision",
+        "gridshot",
         seed=run.seed,
         key=key,
         catalog_version=run.config.catalog_version,
@@ -151,7 +151,7 @@ def test_practice_expired_submit_is_durable_and_interrupt_projects_expired(db) -
     after_deadline = run.submit_until
     submit = result_request(
         "pc-fps",
-        "precision",
+        "gridshot",
         seed=run.seed,
         catalog_version=run.config.catalog_version,
     )

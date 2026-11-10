@@ -4,8 +4,9 @@ import { useAuth } from '../auth/AuthProvider'
 import { AssessmentRankingPanel } from '../assessmentRankings/AssessmentRankingPanel'
 import { assessmentApi } from './api'
 import { gradeLabels, type AssessmentReportView, type ReportComparison, type ReportResult } from './contracts'
+import { isPcFpsTriadCatalog, isPcMobaLaneCatalog } from './versionRules'
 import { assessmentKeys } from './keys'
-import { chinaDate, FrozenSetup, hasReportPermission, isUuid, Metrics, QualityNotice, reasonLabels, ReportError, reportTaskLabel, suiteLabels, TrackingNote } from './reportPresentation'
+import { chinaDate, FrozenSetup, hasReportPermission, isUuid, LaneReportNote, Metrics, QualityNotice, reasonLabels, ReportError, reportTaskLabel, suiteLabels, TrackingNote } from './reportPresentation'
 import './reports.css'
 
 function PriorResult({ account, current, testId, id }: { account: string; current: AssessmentReportView; testId: ReportResult['test_id']; id: string }) {
@@ -66,6 +67,7 @@ export function AssessmentReportPage() {
         <p>{saved.person.display_name}</p>
         <time dateTime={saved.completed_at}>{chinaDate(saved.completed_at)}</time>
         <p>仅描述本次场景及操作条件下的表现。</p>
+        {isPcFpsTriadCatalog(saved.suite_id, saved.suite.catalog_version) && <><p>ERP 暂定场景规则，不等同官方分数或职业能力结论。</p><p>新旧版本记录并存，规则不同不直接比较、不混合排名。</p></>}
       </header>
       <AssessmentRankingPanel
         key={`${user.account_id}:${reportId}`}
@@ -75,6 +77,7 @@ export function AssessmentReportPage() {
         items={saved.results.map(result => ({ id: result.test_id, name: reportTaskLabel(result.config) }))}
         reportPath="/esports-assessments/reports"
         hasQualityWarnings={saved.results.some(result => result.scored.quality_flags.length > 0)}
+        showTopScores={isPcFpsTriadCatalog(saved.suite_id, saved.suite.catalog_version) || isPcMobaLaneCatalog(saved.suite_id, saved.suite.catalog_version)}
       />
       {saved.results.map(result => {
         const comparison = saved.comparisons.find(item => item.test_id === result.test_id)
@@ -89,6 +92,7 @@ export function AssessmentReportPage() {
             <QualityNotice flags={result.scored.quality_flags} />
             <Metrics metrics={result.scored.metrics} emptyLabel={result.config.report_version === `${result.config.suite_id}-v2` ? '—' : undefined} />
             <TrackingNote testId={result.test_id} />
+            <LaneReportNote config={result.config} />
             <FrozenSetup result={result} />
             {comparison ? <Comparison account={user.account_id} report={saved} result={result} comparison={comparison} /> : null}
           </section>

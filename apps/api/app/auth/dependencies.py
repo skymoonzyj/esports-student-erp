@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import base64
+from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, Request, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.models import AuthSession, UserAccount
 from app.auth.service import (
     AuthContext,
     AuthService,
@@ -16,6 +19,7 @@ from app.auth.service import (
 from app.core.config import Settings
 from app.core.database import get_db
 from app.core.errors import ProblemError
+from app.identity.models import Person
 from app.security.encryption import EnvelopeCipher, LookupDigest
 from app.security.passwords import PasswordService
 
@@ -100,6 +104,9 @@ def require_session(
             code="invalid_session",
             detail="登录已失效，请重新登录",
         ) from exc
+    # Only a successfully authenticated session establishes attribution. Do this
+    # before CSRF and later account-policy checks so their denials retain the actor.
+    request.state.operations_authenticated_account_id = context.account.id
     assert token is not None
     # Cookie paths are absent from the Cookie request header. Only the explicit
     # initial restore may migrate a legacy root cookie to /api; normal responses
@@ -133,3 +140,36 @@ def require_standard_account(
             detail="请先修改临时密码",
         )
     return context
+
+
+def require_current_standard_account(db: Session, context: AuthContext) -> AuthContext:
+    """Revalidate a request at its final write/private-data return boundary.
+
+    Use fresh READ COMMITTED state without acquiring identity locks after a
+    resource lock: re-entering authenticate here would invert the lock order.
+    Keep the original identity binding while refreshing all three ORM objects.
+    """
+    account_id, session_id, person_id = context.account.id, context.session.id, context.person.id
+    row = db.execute(
+        select(UserAccount, AuthSession, Person)
+        .join(AuthSession, AuthSession.user_id == UserAccount.id)
+        .join(Person, Person.id == UserAccount.person_id)
+        .where(
+            UserAccount.id == account_id,
+            AuthSession.id == session_id,
+            Person.id == person_id,
+        )
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    now = datetime.now(UTC)
+    if row is None:
+        raise ProblemError(status=401, code="invalid_session", detail="登录已失效，请重新登录")
+    account, session, person = row
+    if (
+        account.status != "active"
+        or person.deleted_at is not None
+        or session.revoked_at is not None
+        or session.expires_at <= now
+    ):
+        raise ProblemError(status=401, code="invalid_session", detail="登录已失效，请重新登录")
+    return require_standard_account(AuthContext(account=account, session=session, person=person))

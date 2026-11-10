@@ -51,7 +51,7 @@
 .systemEvaluationReviewPanel,
 .systemEvaluationState {
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: var(--ui-radius-lg, 12px);
   background: var(--color-surface, #fff);
   box-shadow: 0 8px 24px rgb(16 24 40 / 6%);
 }
@@ -200,7 +200,7 @@
 
 .systemEvaluationTableWrap th,
 .systemEvaluationTableWrap td {
-  padding: 12px;
+  padding: var(--ui-table-cell-y, 12px) 12px;
   border-bottom: 1px solid var(--color-border-soft);
   text-align: left;
   vertical-align: top;
@@ -337,7 +337,7 @@
   max-height: min(88dvh, 900px);
   overflow-y: auto;
   padding: 20px;
-  border-radius: 14px;
+  border-radius: var(--ui-radius-lg, 14px);
   background: #fff;
   box-shadow: 0 24px 80px rgb(16 24 40 / 24%);
 }
@@ -408,3 +408,79 @@
     border-radius: 0;
   }
 }
+
+.systemEvaluationDashboard :is(button, a, input, select, textarea):focus-visible,
+.systemEvaluationTasksPage :is(button, a, input, select, textarea):focus-visible,
+.systemEvaluationTaskDetailPage :is(button, a, input, select, textarea):focus-visible,
+.systemEvaluationDialog :is(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid var(--ui-focus-ring, #87baac);
+  outline-offset: 2px;
+}
+
+.systemEvaluationMetric > strong,
+.systemEvaluationScoreSummary {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-strong);
+}
+
+.systemEvaluationTableWrap th {
+  color: var(--color-text-muted);
+  background: var(--color-canvas);
+}
+
+.systemEvaluationMetric a,
+.systemEvaluationTasksPage a,
+.systemEvaluationTaskDetailPage a,
+.publishedEvaluationList a {
+  color: var(--color-accent-800);
+  text-underline-offset: 3px;
+  font-weight: 650;
+}
+
+.systemEvaluationMetric a { justify-self: start; }
+
+:is(.systemEvaluationTasksPage, .systemEvaluationTaskDetailPage, .systemEvaluationState, .systemEvaluationDialog, .adapterCertificationsPanel) button:not(.systemEvaluationDialogClose):not(.primaryButton) {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ui-radius-sm, 7px);
+  color: var(--color-text);
+  background: var(--color-surface);
+  font-weight: 650;
+}
+
+.systemEvaluationReviewPanel button[type="submit"],
+.systemEvaluationDialog button[type="submit"],
+.adapterCertificationsPanel button[type="submit"] {
+  color: white !important;
+  background: var(--color-accent-600) !important;
+  border-color: var(--color-accent-600) !important;
+}
+
+.systemEvaluationDialog :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  max-width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ui-radius-sm, 7px);
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+html[data-ui-theme="command"] .systemEvaluationDashboard { gap: 14px; }
+html[data-ui-theme="command"] .systemEvaluationMetricGrid {
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ui-radius-lg, 10px);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+html[data-ui-theme="command"] .systemEvaluationMetric {
+  padding: 14px 18px;
+  border: 0;
+  border-inline-end: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  box-shadow: none;
+  gap: 6px;
+}
+html[data-ui-theme="command"] :is(.systemEvaluationPreview, .systemEvaluationResult, .systemEvaluationHistory, .systemEvaluationReviewPanel, .systemEvaluationTaskCards article) { padding: 16px; gap: 14px; box-shadow: none; }

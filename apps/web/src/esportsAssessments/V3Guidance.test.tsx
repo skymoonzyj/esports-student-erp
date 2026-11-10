@@ -7,6 +7,7 @@ import { MobaInstructions } from './MobaInstructions'
 import type { AssessmentSessionController } from './useAssessmentSession'
 import type { GameFactory } from './engineRuntime/types'
 import { fixtureAttempt, fixtureSettings, fixtureV3Config } from './testSupport/fixtures'
+import { fixtureV4Config } from './testSupport/fixturesV4'
 import { mobileFpsFactory } from './suites/mobileFps'
 import { pcFpsFactory } from './suites/pcFps'
 import { pcMobaFactory } from './suites/pcMoba'
@@ -40,6 +41,26 @@ it('explains the two-target v3 switching sequence instead of generic repeated ai
   render(<AssessmentHost config={config} factory={pcFpsFactory} session={controller(config)} onBack={vi.fn()} />)
   expect(screen.getByText(/首次命中后第二靶出现/)).toBeVisible()
   expect(screen.getByText(/第二靶.*从首次命中时刻开始/)).toBeVisible()
+})
+it.each(['gridshot', 'sixshot'])('explains individual clicks and retained targets for %s', test => {
+  const config = fixtureV4Config('pc-fps', test)
+  render(<AssessmentHost config={config} factory={pcFpsFactory} session={controller(config)} onBack={vi.fn()} />)
+  expect(screen.getByText(/每次左键按下只打一枪/)).toBeVisible()
+  expect(screen.getByText(/长按不连发/)).toBeVisible()
+  expect(screen.getByText(/其余目标保留/)).toBeVisible()
+})
+it('does not ask the no-fire spheretrack90 participant to shoot', () => {
+  const config = fixtureV4Config('pc-fps', 'spheretrack90')
+  render(<AssessmentHost config={config} factory={pcFpsFactory} session={controller(config)} onBack={vi.fn()} />)
+  expect(screen.getByText(/无需开火.*准星覆盖目标/)).toBeVisible()
+  expect(screen.queryByText(/移动鼠标瞄准，左键射击/)).toBeNull()
+})
+it('keeps the provisional ERP disclaimer visible after a v4 result is saved', () => {
+  const config = fixtureV4Config('pc-fps', 'gridshot')
+  const session = controller(config)
+  session.saved = { mode: 'practice', result_id: '55555555-5555-4555-8555-555555555555', scored: { metrics: { hits: 20 }, score: null, grade: null, quality_flags: [] }, session: null }
+  render(<AssessmentHost config={config} factory={pcFpsFactory} session={session} mode="practice" onBack={vi.fn()} />)
+  expect(screen.getByText(/ERP 暂定场景规则/)).toBeVisible()
 })
 
 it('states the registered duration and half-speed threshold for v3 moving hits', () => {

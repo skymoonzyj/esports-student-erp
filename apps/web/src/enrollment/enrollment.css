@@ -581,3 +581,49 @@
     font-weight: 700;
   }
 }
+
+.enrollmentPageHeader h1 { font-size: clamp(24px, 2.5vw, 30px); font-weight: 680; letter-spacing: -.025em; }
+.enrollmentPageHeader > div,
+.enrollmentProgramSection,
+.enrollmentPaymentSection,
+.enrollmentHistory { min-width: 0; }
+.enrollmentSelectionBand { padding: 20px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); }
+.enrollmentProgramGrid { gap: 16px; }
+.enrollmentProgramGrid article { padding: 22px; border-color: var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); }
+.enrollmentProgramGrid article.selected { border-color: var(--color-accent-500); box-shadow: 0 0 0 2px var(--color-accent-soft); }
+.enrollmentProgramGrid footer button,
+.enrollmentHistoryActions button,
+.enrollmentDialog > header button { min-height: 44px; }
+.enrollmentProgramGrid footer button,
+.enrollmentSelectionBand select,
+.enrollmentHistoryActions button,
+.enrollmentSubmitBand button,
+.enrollmentDialog > header button { border-radius: var(--ui-radius-sm, 8px); }
+.enrollmentDialog > header button { width: 44px; flex: 0 0 44px; }
+.enrollmentCatalogCount { border-radius: var(--ui-radius-sm, 8px); background: var(--color-surface); }
+.enrollmentSubmitBand { padding: 20px; border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); }
+.enrollmentSubmitBand button { box-shadow: var(--ui-shadow-button, none); }
+.enrollmentApplicationHeader { background: var(--ui-header-bg, var(--color-canvas)); }
+.enrollmentApplicationRow { padding-block: var(--ui-table-cell-y, 14px); }
+.enrollmentDialog { border-radius: var(--ui-radius-lg, 16px); background: var(--color-surface); overscroll-behavior: contain; }
+.enrollmentPage :is(button, select, input):focus-visible,
+.enrollmentDialog button:focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }
+html[data-ui-theme="command"] .enrollmentSelectionBand { padding: 16px; }
+html[data-ui-theme="command"] .enrollmentProgramGrid { gap: 0; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 8px); overflow: clip; background: var(--color-surface); }
+html[data-ui-theme="command"] .enrollmentProgramGrid article { padding: 18px; border: 0; border-right: 1px solid var(--color-border-soft); border-bottom: 1px solid var(--color-border-soft); border-radius: 0; }
+html[data-ui-theme="command"] .enrollmentProgramGrid article.selected { box-shadow: inset 0 3px var(--color-accent-700); background: var(--color-accent-soft); }
+html[data-ui-theme="command"] .enrollmentProgramSection,
+html[data-ui-theme="command"] .enrollmentPaymentSection,
+html[data-ui-theme="command"] .enrollmentHistory { margin-top: 24px; }
+@media (max-width: 680px) {
+  .enrollmentSelectionBand,
+  .enrollmentProgramGrid article,
+  .enrollmentSubmitBand { padding: 16px; }
+  .enrollmentPageHeader { flex-wrap: wrap; }
+  .enrollmentDialog { max-height: 92dvh; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+  html[data-ui-theme="command"] .enrollmentProgramGrid { grid-template-columns: minmax(0, 1fr); gap: 10px; border: 0; overflow: visible; background: transparent; }
+  html[data-ui-theme="command"] .enrollmentProgramGrid article { border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 8px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .enrollmentProgramGrid article { transition: none; }
+}

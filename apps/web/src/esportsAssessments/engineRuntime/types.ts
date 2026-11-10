@@ -3,6 +3,7 @@ import type {
   RawResult,
   TaskConfig,
 } from '../contracts'
+import type { LaneSceneState } from '../lane/types'
 
 export interface Vector2 {
   readonly x: number
@@ -24,7 +25,7 @@ export type InputAction =
   | { readonly kind: 'look'; readonly at_ms: number; readonly dx: number; readonly dy: number }
   | { readonly kind: 'move'; readonly at_ms: number; readonly x: number; readonly y: number }
   | { readonly kind: 'fire'; readonly at_ms: number; readonly pressed: boolean }
-  | { readonly kind: 'point'; readonly at_ms: number; readonly x: number; readonly y: number; readonly button: 0 | 2 }
+  | { readonly kind: 'point'; readonly at_ms: number; readonly x: number; readonly y: number; readonly button: 0 | 2; /** Lane body pick: omitted = ground fallback; null = blocked body/force movement. */ readonly target_id?: string | null }
   | { readonly kind: 'skill'; readonly at_ms: number; readonly x: number; readonly y: number; readonly release: boolean; readonly cancel?: boolean }
 
 export type FpsTargetType = 'neutral' | 'enemy' | 'friend'
@@ -36,6 +37,8 @@ export interface FpsTargetSnapshot {
   readonly angular_diameter_deg: number
   readonly type: FpsTargetType
   readonly state: FpsTargetState
+  /** V4 sphere silhouette; omitted for frozen legacy billboard rendering. */
+  readonly shape?: 'sphere'
 }
 
 export interface FpsCheckpointSnapshot {
@@ -62,6 +65,10 @@ export interface FpsSceneSnapshot {
   readonly checkpoints: readonly FpsCheckpointSnapshot[]
   /** Present only for engines that implement the v3 movement qualification. */
   readonly movement_feedback?: FpsMovementFeedback
+  /** Observed v4 gameplay only, not a locally fabricated final score. */
+  readonly feedback?:
+    | { readonly kind: 'multi_target'; readonly shots: number; readonly hits: number }
+    | { readonly kind: 'spheretrack90'; readonly covered: boolean }
 }
 
 export type MobaTargetType = 'enemy' | 'minion' | 'main' | 'checkpoint'
@@ -145,6 +152,8 @@ export interface MobaSceneSnapshot {
   readonly feedback?: MobaFeedback
   /** Present only for engines that implement the v3 safe-circle choice. */
   readonly danger_choice?: MobaDangerChoiceSnapshot
+  /** Exclusive to the deterministic pc-moba-v4 lane simulation. */
+  readonly lane?: LaneSceneState
 }
 
 export type SceneSnapshot = FpsSceneSnapshot | MobaSceneSnapshot

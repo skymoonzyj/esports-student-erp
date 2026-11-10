@@ -1,7 +1,7 @@
 .appShell {
   min-height: 100dvh;
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
   color: var(--color-text);
   background: var(--color-canvas);
 }
@@ -14,8 +14,9 @@
   flex-direction: column;
   overflow: hidden;
   padding: 24px 18px;
-  color: var(--color-navy-100);
-  background: var(--color-navy-950);
+  color: var(--ui-sidebar-text, var(--color-text));
+  background: var(--ui-sidebar-bg, white);
+  border-right: 1px solid var(--ui-sidebar-border, var(--color-border-soft));
 }
 
 .shellBrand,
@@ -27,7 +28,7 @@
 
 .shellBrand {
   padding: 0 8px 28px;
-  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  border-bottom: 1px solid var(--ui-sidebar-border, var(--color-border-soft));
 }
 
 .shellBrandMark {
@@ -40,7 +41,7 @@
   color: white;
   background: var(--color-accent-600);
   font-weight: 800;
-  box-shadow: 0 10px 24px rgb(44 38 165 / 34%);
+  box-shadow: var(--ui-shadow-button, none);
 }
 
 .shellBrandMark.compact {
@@ -55,12 +56,12 @@
 }
 
 .shellBrandText strong {
-  color: white;
+  color: var(--ui-sidebar-text, var(--color-text-strong));
   font-size: 15px;
 }
 
 .shellBrandText small {
-  color: var(--color-navy-400);
+  color: var(--ui-sidebar-muted, var(--color-text-muted));
   font-size: 10px;
   letter-spacing: 0;
 }
@@ -70,8 +71,8 @@
   flex: 1 1 auto;
   display: grid;
   align-content: start;
-  gap: 6px;
-  margin-top: 28px;
+  gap: 5px;
+  margin-top: 0;
   padding-right: 4px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -85,7 +86,7 @@
   gap: 12px;
   padding: 0 13px;
   border-radius: 8px;
-  color: var(--color-navy-300);
+  color: var(--ui-sidebar-muted, var(--color-text-muted));
   font-size: 14px;
   font-weight: 610;
   text-decoration: none;
@@ -93,14 +94,14 @@
 }
 
 .shellNavLink:hover {
-  color: white;
-  background: rgb(255 255 255 / 5%);
+  color: var(--ui-sidebar-text, var(--color-text-strong));
+  background: var(--ui-sidebar-active, var(--color-accent-soft));
 }
 
 .shellNavLink.active {
-  color: white;
-  background: var(--color-accent-600);
-  box-shadow: 0 10px 24px rgb(35 30 132 / 22%);
+  color: var(--ui-sidebar-active-text, var(--color-accent-800));
+  background: var(--ui-sidebar-active, var(--color-accent-soft));
+  box-shadow: none;
 }
 
 .shellNavGroup {
@@ -116,7 +117,7 @@
   padding: 0 13px;
   border: 0;
   border-radius: 8px;
-  color: var(--color-navy-300);
+  color: var(--ui-sidebar-muted, var(--color-text-muted));
   font-size: 14px;
   font-weight: 610;
   text-align: left;
@@ -126,14 +127,14 @@
 }
 
 .shellNavGroupLabel:hover {
-  color: white;
-  background: rgb(255 255 255 / 5%);
+  color: var(--ui-sidebar-text, var(--color-text-strong));
+  background: var(--ui-sidebar-active, var(--color-accent-soft));
 }
 
 .shellNavGroupLabel.active {
-  color: white;
-  background: var(--color-accent-600);
-  box-shadow: 0 10px 24px rgb(35 30 132 / 22%);
+  color: var(--ui-sidebar-active-text, var(--color-accent-800));
+  background: var(--ui-sidebar-active, var(--color-accent-soft));
+  box-shadow: none;
 }
 
 .shellNavSubLinks {
@@ -141,11 +142,11 @@
   gap: 2px;
   margin-left: 17px;
   padding-left: 11px;
-  border-left: 1px solid rgb(255 255 255 / 13%);
+  border-left: 1px solid var(--ui-sidebar-border, var(--color-border-soft));
 }
 
 .shellNavSubLinks .shellNavLink {
-  min-height: 38px;
+  min-height: 44px;
   padding: 0 10px;
   font-size: 13px;
 }
@@ -195,10 +196,10 @@
   gap: 10px;
   margin-top: 16px;
   padding: 14px;
-  border: 1px solid rgb(255 255 255 / 8%);
+  border: 1px solid var(--ui-sidebar-border, var(--color-border-soft));
   border-radius: 8px;
   color: var(--color-success-300);
-  background: rgb(255 255 255 / 4%);
+  background: var(--ui-sidebar-active, var(--color-accent-soft));
 }
 
 .shellSecurityNote > span {
@@ -220,18 +221,44 @@
 }
 
 .shellSecurityNote strong {
-  color: var(--color-navy-100);
+  color: var(--ui-sidebar-text, var(--color-text-strong));
   font-size: 11px;
 }
 
 .shellSecurityNote small {
-  color: var(--color-navy-400);
+  color: var(--ui-sidebar-muted, var(--color-text-muted));
   font-size: 9px;
   line-height: 1.5;
 }
 
 .shellWorkspace {
   min-width: 0;
+}
+
+.shellNavigationCaption {
+  margin: 24px 13px 12px;
+  color: var(--ui-sidebar-muted, var(--color-text-subtle));
+  font-size: 10px;
+  letter-spacing: .12em;
+}
+
+.shellHeaderContext svg { width: 14px; height: 14px; }
+.shellHeaderContext strong { color: var(--color-text-strong); font-weight: 600; }
+.shellUserIdentity { display: grid; gap: 3px; }
+.shellUserIdentity small { color: var(--color-text-subtle); font-size: 10px; }
+.shellNavLabel { min-width: 0; overflow-wrap: anywhere; }
+.appShell :is(a, button):focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-500)); outline-offset: 3px; }
+
+html[data-ui-theme="command"] .shellRail { padding: 22px 12px; }
+html[data-ui-theme="command"] .shellPrimaryNavigation { gap: 2px; }
+html[data-ui-theme="command"] .shellRail :is(.shellNavLink, .shellNavGroupLabel).active { box-shadow: inset 3px 0 var(--color-accent-400); }
+html[data-ui-theme="command"] .shellRail :is(.shellNavLink, .shellNavGroupLabel) { border-radius: 5px; }
+html[data-ui-theme="command"] .shellBrand { padding-bottom: 22px; }
+
+@media (min-width: 1024px) {
+  html[data-ui-theme="command"] .appShell { grid-template-columns: 216px minmax(0, 1fr); }
+  html[data-ui-theme="command"] .shellHeader { height: 64px; }
+  html[data-ui-theme="command"] .shellContent { padding: 28px 30px; }
 }
 
 .shellHeader {
@@ -242,7 +269,7 @@
   gap: 24px;
   padding: 0 clamp(20px, 3.2vw, 48px);
   border-bottom: 1px solid var(--color-border-soft);
-  background: rgb(255 255 255 / 94%);
+  background: var(--ui-header-bg, white);
 }
 
 .shellMobileBrand {
@@ -256,14 +283,7 @@
   gap: 7px;
   color: var(--color-text-subtle);
   font-size: 12px;
-}
-
-.shellStatusDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--color-success-500);
-  box-shadow: 0 0 0 4px var(--color-success-soft);
+  margin-right: auto;
 }
 
 .shellUser {
@@ -315,7 +335,27 @@
 
 .shellContent {
   min-width: 0;
-  padding: clamp(24px, 4vw, 52px);
+  padding: clamp(24px, 3vw, 40px);
+}
+
+/* Calibrated hosts consume the original shell geometry, including their origin.
+   Match mounted hosts rather than assessment prefixes: catalogs/reports keep the
+   redesigned shell, and nested practice/formal hosts are covered without a
+   route/effect delay that could invalidate the first arena measurement. */
+@media (min-width: 768px) {
+  html .appShell:has(.talent-game-chrome, .assessmentHost) > .shellWorkspace > .shellContent {
+    padding: clamp(24px, 4vw, 52px);
+  }
+}
+
+@media (min-width: 1024px) {
+  html .appShell:has(.talent-game-chrome, .assessmentHost) {
+    grid-template-columns: 248px minmax(0, 1fr);
+  }
+
+  html .appShell:has(.talent-game-chrome, .assessmentHost) > .shellWorkspace > .shellHeader {
+    height: 72px;
+  }
 }
 
 .shellOnboardingTask {
@@ -533,29 +573,22 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
-  margin-top: 38px;
+  margin-top: 16px;
 }
 
 .foundationGrid article {
-  min-height: 230px;
+  min-height: 184px;
   padding: 24px;
   border: 1px solid var(--color-border-soft);
-  border-radius: 8px;
-  background: white;
+  border-radius: var(--ui-radius-lg, 12px);
+  background: var(--color-surface);
   box-shadow: var(--shadow-card-soft);
 }
 
-.foundationNumber {
-  color: var(--color-accent-500);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0;
-}
-
-.foundationGrid h2 {
-  margin: 48px 0 10px;
+.foundationGrid h3 {
+  margin: 18px 0 8px;
   color: var(--color-navy-950);
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .foundationGrid p {
@@ -564,6 +597,16 @@
   font-size: 13px;
   line-height: 1.8;
 }
+
+.dashboardOperations { margin-top: 28px; }
+.dashboardSectionHeading h2 { margin: 0; color: var(--color-text-strong); font-size: 16px; }
+.dashboardSectionHeading p { margin: 6px 0 0; color: var(--color-text-muted); font-size: 12px; }
+.dashboardEntryIcon { display: grid; place-items: center; width: 38px; height: 38px; color: var(--color-accent-700); background: var(--color-accent-soft); border-radius: var(--ui-radius-sm, 8px); }
+.dashboardEntryIcon svg { width: 20px; height: 20px; }
+.foundationGrid article > a { display: inline-flex; align-items: center; gap: 12px; min-height: 44px; margin-top: 14px; color: var(--color-accent-700); text-decoration: none; font-size: 12px; font-weight: 650; }
+.foundationGrid article > a svg { width: 15px; height: 15px; }
+html[data-ui-theme="command"] .foundationGrid { gap: 1px; border: 1px solid var(--color-border-soft); background: var(--color-border-soft); border-radius: var(--ui-radius-md, 7px); overflow: hidden; }
+html[data-ui-theme="command"] .foundationGrid article { border: 0; border-radius: 0; box-shadow: none; padding: 18px 20px; }
 
 @media (min-width: 768px) and (max-width: 1023px) {
   .appShell {
@@ -588,6 +631,7 @@
   }
 
   .shellBrandText small,
+  .shellNavigationCaption,
   .shellSecurityNote {
     display: none;
   }
@@ -614,7 +658,7 @@
     gap: 2px;
     padding: 4px 6px;
     border-radius: 8px;
-    color: var(--color-navy-300);
+    color: var(--ui-sidebar-muted, var(--color-text-muted));
     font-size: 10px;
     font-weight: 610;
     text-decoration: none;
@@ -624,8 +668,8 @@
   .shellMobileNavigation .shellNavLink.active,
   .shellMobileNavigation .shellMobileMoreButton:hover,
   .shellMobileNavigation .shellMobileMoreButton.active {
-    color: white;
-    background: rgb(255 255 255 / 8%);
+    color: var(--ui-sidebar-active-text, var(--color-accent-800));
+    background: var(--ui-sidebar-active, var(--color-accent-soft));
     box-shadow: none;
   }
 
@@ -701,6 +745,7 @@
   }
 
   .shellHeaderContext,
+  .shellUserIdentity,
   .shellUserName {
     display: none;
   }
@@ -803,7 +848,7 @@
   }
 
   .shellMobileNavigation .shellNavSubLinks .shellNavLink {
-    min-height: 42px;
+    min-height: 44px;
     flex-direction: row;
     justify-content: flex-start;
     gap: 8px;
@@ -835,7 +880,7 @@
     min-height: 176px;
   }
 
-  .foundationGrid h2 {
+  .foundationGrid h3 {
     margin-top: 28px;
   }
 }

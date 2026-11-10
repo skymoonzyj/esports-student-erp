@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -18,6 +19,7 @@ from app.admissions.errors import (
     AdmissionStudentNotFound,
     AdmissionVerifiedContactRequired,
     ArchivedCohortLocked,
+    EnrollmentChanged,
     PaymentConflictNotFound,
     PaymentConflictNotOpen,
     PaymentImportConflict,
@@ -157,6 +159,18 @@ class PaymentService:
         )
         if admission_case is None:
             raise AdmissionCaseNotFound("admission case was not found")
+        # The case may have gained its first enrollment while we waited. Never
+        # acquire newly discovered cohort/enrollment locks after the case lock:
+        # reconciliation would otherwise invert the shared lock order.
+        locked_context = set(
+            self.db.execute(
+                select(Enrollment.id, Enrollment.cohort_id).where(
+                    Enrollment.admission_case_id == admission_case_id
+                )
+            )
+        )
+        if locked_context != set(enrollment_context):
+            raise EnrollmentChanged("payment enrollment context changed; retry the operation")
         if admission_case.status == "closed":
             raise AdmissionCaseClosed("closed admission case cannot receive payments")
         return admission_case
@@ -207,6 +221,7 @@ class PaymentService:
         *,
         actor_user_id: UUID,
         request_id: str,
+        authorize_case: Callable[[AdmissionCase], None] | None = None,
     ) -> ManualPaymentResult:
         with write_transaction(self.db):
             self._lock_manual_operation("payment", actor_user_id, input.idempotency_key)
@@ -220,9 +235,13 @@ class PaymentService:
             if existing is not None:
                 if existing.request_fingerprint != fingerprint:
                     raise PaymentOperationConflict("manual payment retry changed")
-                case = self.db.get(AdmissionCase, self._case_id_for_payment(existing.id))
+                case = self.db.get(
+                    AdmissionCase, self._case_id_for_payment(existing.id), populate_existing=True,
+                )
                 if case is None:
                     raise AdmissionCaseNotFound("admission case was not found")
+                if authorize_case is not None:
+                    authorize_case(case)
                 return ManualPaymentResult(existing, case)
             if input.admission_case_id is not None:
                 admission_case = self._lock_case_context(input.admission_case_id)
@@ -245,6 +264,8 @@ class PaymentService:
                 )
                 self.db.add(admission_case)
                 self.db.flush()
+            if authorize_case is not None:
+                authorize_case(admission_case)
             payer_account_id = self.db.scalar(
                 select(UserAccount.id).where(UserAccount.person_id == student_id)
             )
@@ -306,6 +327,7 @@ class PaymentService:
         *,
         actor_user_id: UUID,
         request_id: str,
+        authorize_case: Callable[[AdmissionCase], None] | None = None,
     ) -> PaymentRefund:
         admission_case_id = self._case_id_for_payment(payment_id)
         with write_transaction(self.db):
@@ -320,14 +342,21 @@ class PaymentService:
             if existing is not None:
                 if existing.request_fingerprint != fingerprint:
                     raise PaymentOperationConflict("manual refund retry changed")
+                if authorize_case is not None:
+                    case = self.db.get(AdmissionCase, admission_case_id, populate_existing=True)
+                    if case is None:
+                        raise AdmissionCaseNotFound("admission case was not found")
+                    authorize_case(case)
                 return existing
-            self._lock_case_context(admission_case_id)
+            admission_case = self._lock_case_context(admission_case_id)
             payment = self.db.scalar(
                 select(Payment).where(Payment.id == payment_id).with_for_update()
                 .execution_options(populate_existing=True)
             )
             if payment is None:
                 raise PaymentNotFound("payment was not found")
+            if authorize_case is not None:
+                authorize_case(admission_case)
             refunded_cents = self.db.scalar(
                 select(func.coalesce(func.sum(PaymentRefund.amount_cents), 0)).where(
                     PaymentRefund.payment_id == payment_id

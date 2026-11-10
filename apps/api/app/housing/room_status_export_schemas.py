@@ -5,6 +5,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+CleaningFrequency = Literal["unspecified", "daily", "weekly", "on_demand"]
+
+HousingQuickFilter = Literal[
+    "occupied", "vacant", "assignable", "full", "problem", "pending_verification",
+    "pending_cleaning", "usable", "remaining", "single", "double", "triple", "custom",
+    "functional", "cleaning_daily", "cleaning_weekly", "cleaning_on_demand",
+]
+
 
 class HousingRoomStatusExportRequest(BaseModel):
     """Unpaged current-room snapshot filters, independent of historical exports."""
@@ -25,9 +33,11 @@ class HousingRoomStatusExportRequest(BaseModel):
     )
     current_gender: Literal["male", "female", "unspecified"] | None = None
     occupancy: Literal["occupied", "unoccupied"] | None = None
-    assignability: Literal["assignable", "unassignable"] | None = None
+    assignability: Literal["assignable", "unassignable", "full"] | None = None
+    quick_filter: HousingQuickFilter | None = None
     cleaning_statuses: list[Literal["ready", "pending"]] = Field(default_factory=list)
     daily_cleaning_enabled: bool | None = None
+    cleaning_frequencies: list[CleaningFrequency] = Field(default_factory=list, max_length=4)
 
     @model_validator(mode="after")
     def normalize_filters(self) -> Self:
@@ -38,6 +48,7 @@ class HousingRoomStatusExportRequest(BaseModel):
             "verification_statuses",
             "service_statuses",
             "cleaning_statuses",
+            "cleaning_frequencies",
         ):
             setattr(self, field, list(dict.fromkeys(getattr(self, field))))
         self.query = self.query.strip() or None if self.query is not None else None

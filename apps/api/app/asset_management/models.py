@@ -14,10 +14,18 @@ from sqlalchemy import (
     Text,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.asset_management.rental_models import (
+    RENTAL_FACTS_CONSTRAINT,
+    AssetRentalOperation,
+    AssetRentalRenewal,
+)
 from app.core.models import Base, TimestampMixin
+
+__all__ = ["Asset", "AssetAssignment", "AssetPhoto", "AssetRentalOperation", "AssetRentalRenewal"]
 
 ASSET_STATUSES = ("available", "assigned", "maintenance", "retired")
 
@@ -49,6 +57,9 @@ class Asset(TimestampMixin, Base):
             name="ck_assets_warranty_channel",
         ),
         Index("ix_assets_source_purchase", "source_purchase_id", "id"),
+        CheckConstraint(RENTAL_FACTS_CONSTRAINT, name="ck_assets_rental_facts"),
+        CheckConstraint("rental_revision >= 0", name="ck_assets_rental_revision"),
+        Index("ix_assets_rental_expiry", "ownership_type", "rental_returned_on", "rental_expires_on", "id"),
     )
 
     id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -57,11 +68,23 @@ class Asset(TimestampMixin, Base):
     category: Mapped[str | None] = mapped_column(String(80))
     brand: Mapped[str | None] = mapped_column(String(80))
     model: Mapped[str | None] = mapped_column(String(120))
+    cpu_model: Mapped[str | None] = mapped_column(String(120))
+    memory_capacity: Mapped[str | None] = mapped_column(String(80))
+    gpu_model: Mapped[str | None] = mapped_column(String(120))
+    disk_capacity: Mapped[str | None] = mapped_column(String(120))
     serial_number: Mapped[str | None] = mapped_column(String(120))
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="available", server_default="available"
     )
     location: Mapped[str | None] = mapped_column(String(160))
+    ownership_type: Mapped[str | None] = mapped_column(String(16))
+    acquisition_method: Mapped[str | None] = mapped_column(String(16))
+    acquisition_channel: Mapped[str | None] = mapped_column(String(16))
+    acquisition_note: Mapped[str | None] = mapped_column(String(500))
+    rental_started_on: Mapped[date | None] = mapped_column(Date)
+    rental_expires_on: Mapped[date | None] = mapped_column(Date)
+    rental_returned_on: Mapped[date | None] = mapped_column(Date)
+    rental_revision: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
     purchase_date: Mapped[date | None] = mapped_column(Date)
     warranty_expires_on: Mapped[date | None] = mapped_column(Date)
     warranty_channel: Mapped[str | None] = mapped_column(String(20))
@@ -87,6 +110,21 @@ class Asset(TimestampMixin, Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
+
+
+class AssetBatchOperation(TimestampMixin, Base):
+    __tablename__ = "asset_batch_operations"
+    __table_args__ = (
+        CheckConstraint("payload_hash ~ '^[0-9a-f]{64}$'", name="ck_asset_batch_hash"),
+        CheckConstraint("quantity BETWEEN 1 AND 100", name="ck_asset_batch_quantity"),
+        CheckConstraint("jsonb_typeof(asset_ids) = 'array' AND jsonb_array_length(asset_ids) = quantity", name="ck_asset_batch_result"),
+    )
+
+    actor_user_id: Mapped[UUID] = mapped_column(ForeignKey("user_accounts.id", ondelete="RESTRICT"), primary_key=True)
+    operation_key: Mapped[UUID] = mapped_column(primary_key=True)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    quantity: Mapped[int] = mapped_column(nullable=False)
+    asset_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
 
 
 class AssetPhoto(TimestampMixin, Base):

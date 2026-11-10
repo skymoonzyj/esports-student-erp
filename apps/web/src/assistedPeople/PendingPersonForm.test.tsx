@@ -11,6 +11,59 @@ function show(initialValue?: PendingIntakeInput) {
   return { onSubmit, ...render(<PendingPersonForm initialValue={initialValue} submitting={false} onSubmit={onSubmit} />) }
 }
 
+it("submits pending return permits with nullable facts and a complete adult guardian", async () => {
+  const guardian = { full_name: "合成监护", document_type: "hk_mo_permit" as const, identity_number: "m8765432103", phone: "13800000000", email: null,
+    relationship: "母亲", sex: "female" as const, date_of_birth: "1990-01-02", is_primary: true }
+  const { onSubmit } = show({ ...passport, document_type: "hk_mo_permit", identity_number: "h1234567801", guardians: [guardian] })
+  fireEvent.change(screen.getByLabelText("监护人回乡证号码"), { target: { value: "m8765432104" } })
+  expect(screen.getByLabelText("监护人出生日期")).toHaveValue("1990-01-02")
+  fireEvent.click(screen.getByRole("button", { name: "建立待补档案" }))
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledExactlyOnceWith({ ...passport, document_type: "hk_mo_permit", identity_number: "H12345678", guardians: [{ ...guardian, identity_number: "M87654321" }] }))
+  fireEvent.change(screen.getByLabelText("出生日期"), { target: { value: "1990-01-02" } })
+  fireEvent.change(screen.getByLabelText("性别"), { target: { value: "female" } })
+  fireEvent.change(screen.getByLabelText("回乡证号码"), { target: { value: "H1234 5678" } })
+  expect(screen.getByLabelText("出生日期")).toHaveValue("1990-01-02")
+  expect(screen.getByLabelText("性别")).toHaveValue("female")
+  fireEvent.click(screen.getByRole("button", { name: "建立待补档案" }))
+  expect(screen.getByLabelText("回乡证号码")).toHaveAttribute("aria-invalid", "true")
+  expect(onSubmit).toHaveBeenCalledTimes(1)
+})
+
+it("accepts pending HKID with unknown demographics, then shows age for a manually entered birthday", async () => {
+  const { onSubmit } = show(passport)
+  fireEvent.change(screen.getByLabelText("证件类型"), { target: { value: "hk_id" } })
+  fireEvent.change(screen.getByLabelText("香港身份证号码"), { target: { value: "a1234563" } })
+  expect(screen.getByLabelText("出生日期")).toHaveValue("")
+  expect(screen.getByLabelText("性别")).toHaveValue("")
+  fireEvent.click(screen.getByRole("button", { name: "建立待补档案" }))
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledExactlyOnceWith({ ...passport, document_type: "hk_id", identity_number: "A1234563" }))
+  fireEvent.change(screen.getByLabelText("出生日期"), { target: { value: "1990-01-02" } })
+  expect(screen.getByText(/年龄：\d+ 周岁/)).toBeVisible()
+})
+
+it("removes CN-derived pending facts when the document number becomes invalid", () => {
+  show()
+  fireEvent.change(screen.getByLabelText("身份证"), { target: { value: "110105201201020029" } })
+  fireEvent.change(screen.getByLabelText("身份证"), { target: { value: "110105201201020020" } })
+  expect(screen.getByLabelText("性别")).toHaveValue("")
+  expect(screen.getByLabelText("出生日期")).toHaveValue("")
+})
+
+it("does not broaden mainland contact validation for a pending HK document", async () => {
+  const { onSubmit } = show({ ...passport, document_type: "hk_id", identity_number: "A1234563", phone: "not-a-phone" })
+  fireEvent.click(screen.getByRole("button", { name: "建立待补档案" }))
+  expect(screen.getByLabelText("联系电话（可暂缺）")).toHaveAttribute("aria-invalid", "true")
+  expect(onSubmit).not.toHaveBeenCalled()
+})
+
+it("submits manually completed HK guardians with strict adult and phone checks in pending mode", async () => {
+  const guardian = { full_name: "合成监护", document_type: "hk_id" as const, identity_number: "AB123456(9)", phone: "13800000000", email: null,
+    relationship: "母亲", sex: "female" as const, date_of_birth: "1990-01-02", is_primary: true }
+  const { onSubmit } = show({ ...passport, guardians: [guardian] })
+  fireEvent.click(screen.getByRole("button", { name: "建立待补档案" }))
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledExactlyOnceWith({ ...passport, guardians: [{ ...guardian, identity_number: "AB1234569" }] }))
+})
+
 it("requires real name and typed document rather than creating a placeholder person", async () => {
   const { onSubmit } = show()
   fireEvent.click(screen.getByRole("button", { name: "建立待补档案" }))

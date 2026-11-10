@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { z } from "zod"
 import { apiFetch } from "../api/client"
 import { useAuth } from "../auth/AuthProvider"
+import { identityDocumentTypes, personDocumentTypes } from "../assistedPeople/documentFacts"
 
 export const claimStatusSchema = z.enum(["pending", "rejected", "expired", "invalidated", "approved", "revoked", "completed"])
 const itemFields = {
@@ -12,6 +13,7 @@ const itemFields = {
 const itemSchema = z.strictObject(itemFields)
 const guardianView = z.strictObject({
   full_name: z.string(), identity_number: z.string(), phone: z.string(), email: z.string().nullable(),
+  document_type: z.enum(identityDocumentTypes).optional(), document_issuing_country: z.string().nullable().optional(),
   relationship: z.string(), sex: z.enum(["male", "female"]), date_of_birth: z.iso.date(), is_primary: z.boolean(),
 })
 const completionView = z.strictObject({
@@ -23,7 +25,7 @@ const detailSchema = z.strictObject({ ...itemFields,
   person_id: z.uuid().nullable(), applicant_masked_name: z.string(), applicant_masked_identity: z.string(), applicant_email: z.email(),
   profile_masked_name: z.string().nullable(), profile_masked_identity: z.string().nullable(), profile_masked_email: z.string().nullable(),
   private_match_reason: z.string().nullable(), same_target_pending_count: z.number().int().nonnegative(), can_approve: z.boolean(),
-  applicant_document_type: z.enum(["cn_id", "passport"]).optional(), applicant_issuing_country: z.string().nullable().optional(),
+  applicant_document_type: z.enum(personDocumentTypes).optional(), applicant_issuing_country: z.string().nullable().optional(),
   applicant_completion: completionView.nullable().optional(), profile_completion: completionView.nullable().optional(),
 })
 const pageSchema = z.strictObject({ items: z.array(itemSchema), total: z.number().int().nonnegative(), pending_count: z.number().int().nonnegative(), page: z.number().int().positive(), page_size: z.number().int().min(1).max(100) })

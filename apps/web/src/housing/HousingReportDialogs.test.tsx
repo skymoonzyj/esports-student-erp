@@ -14,6 +14,30 @@ const REPORT_OPTIONS = {
   cohorts: [{ id: "cohort-1", name: "英雄联盟一期" }],
 }
 
+it("submits all eleven personnel categories including team staff", async () => {
+  const user = userEvent.setup()
+  let submitted: unknown
+  render(
+    <GenerateHousingReportDialog
+      options={REPORT_OPTIONS}
+      pending={false}
+      error={null}
+      onClose={() => undefined}
+      onSubmit={async (input) => { submitted = input }}
+    />,
+  )
+  const dialog = screen.getByRole("dialog", { name: "导出实名名单" })
+  for (const label of ["学员", "队员", "学员兼队员", "战队经理", "教练", "助教", "生活老师", "客服", "行政", "其他工作人员", "临时访客"]) {
+    await user.click(within(dialog).getByLabelText(label, { exact: true }))
+  }
+  await user.type(within(dialog).getByLabelText("导出用途（必填）"), "工作人员住宿核对")
+  await user.click(within(dialog).getByRole("button", { name: "确认导出" }))
+
+  await waitFor(() => expect(submitted).toEqual(expect.objectContaining({
+    person_types: ["student", "player", "student_player", "team_manager", "coach", "assistant_coach", "life_teacher", "customer_service", "administration", "other", "visitor"],
+  })))
+})
+
 it("uses an explicit all-person option and clears specific person filters", async () => {
   const user = userEvent.setup()
   const submit = vi.fn().mockResolvedValue(undefined)

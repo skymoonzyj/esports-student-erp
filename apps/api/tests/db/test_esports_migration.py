@@ -9,6 +9,10 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine, inspect, text
 
+# 0090 retains later defaults on rollback; isolate these pre-0061 regressions
+# with the existing exact-grant remove/restore fixture, not weaker live guards.
+from tests.db.test_team_management_migration import prepare_historical_team_grants  # noqa: F401
+
 API_ROOT = Path(__file__).resolve().parents[2]
 NEW_HEAD = "0060_esports_assessments"
 PREVIOUS_HEAD = "0059_talent_dynamic_vision"

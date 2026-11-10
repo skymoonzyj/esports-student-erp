@@ -14,8 +14,9 @@ from app.rbac.policy import PolicyRule
 from app.rbac.service import RbacService
 from app.teaching.models import GameProject, ProfessionalTeam
 from app.team_management.errors import TeamAccessDenied, TeamNotFound
-from app.team_management.models import TeamManagerAssignment, TeamMembership
+from app.team_management.models import TeamManagerAssignment, TeamMembership, TeamStaffAssignment
 from app.team_management.schemas import TeamAction, TeamContext
+from app.team_management.staff_service import active_staff_team_ids
 
 _ACTION_PERMISSION: dict[TeamAction, str] = {
     "read": "team_memberships.read",
@@ -96,8 +97,13 @@ class TeamAccessService:
     ) -> Select[tuple[UUID]]:
         roles = self._actor_roles(actor)
         permission = _ACTION_PERMISSION[action]
-        has_superadmin = "super_admin" in roles
+        is_global_actor = bool(roles.intersection({"administration", "super_admin"}))
         has_manager = "team_manager" in roles and action in {"read", "manage"}
+        staff_ids = (
+            active_staff_team_ids(self.db, actor.account.id, role_keys=roles)
+            if action == "read"
+            else set()
+        )
         has_roster_history = exists(
             select(TeamMembership.id).where(
                 TeamMembership.team_id == ProfessionalTeam.id,
@@ -108,16 +114,29 @@ class TeamAccessService:
                 TeamManagerAssignment.team_id == ProfessionalTeam.id,
             )
         )
+        has_staff_history = exists(
+            select(TeamStaffAssignment.id).where(TeamStaffAssignment.team_id == ProfessionalTeam.id)
+        )
         base = (
             select(ProfessionalTeam.id)
             .join(GameProject, GameProject.id == ProfessionalTeam.project_id)
             .where(
-                or_(GameProject.is_team_division.is_(True), has_roster_history, has_manager_history)
+                or_(
+                    GameProject.is_team_division.is_(True),
+                    has_roster_history,
+                    has_manager_history,
+                    has_staff_history,
+                )
             )
         )
-        if not has_superadmin and not has_manager:
+        if not is_global_actor and not has_manager and not staff_ids:
             return base.where(false())
         role_rules, overrides = self.rbac._rules(actor.account.id)
+        # Share the same live rule snapshot with the SQL permission filter.
+        # A generic assigned_team grant still needs actual assignment scope.
+        has_global_actor = is_global_actor and self.rbac.policy.decide(
+            permission, {"global"}, role_rules, overrides
+        ).allowed
         assignment_exists = exists(
             select(TeamManagerAssignment.id).where(
                 TeamManagerAssignment.account_id == actor.account.id,
@@ -125,7 +144,13 @@ class TeamAccessService:
                 TeamManagerAssignment.ended_at.is_(None),
             )
         )
-        actor_scope = true() if has_superadmin else assignment_exists
+        actor_scope = (
+            true()
+            if has_global_actor
+            else or_(
+                assignment_exists if has_manager else false(), ProfessionalTeam.id.in_(staff_ids)
+            )
+        )
         return base.where(actor_scope, self._permission_filter(permission, role_rules, overrides))
 
     def require_team(
@@ -135,10 +160,18 @@ class TeamAccessService:
         action: TeamAction,
     ) -> ProfessionalTeam:
         roles = self._actor_roles(actor)
-        if "super_admin" not in roles:
-            if action not in {"read", "manage"} or "team_manager" not in roles:
+        if not roles.intersection({"administration", "super_admin"}):
+            staff_ids = (
+                active_staff_team_ids(self.db, actor.account.id, role_keys=roles)
+                if action == "read"
+                else set()
+            )
+            if action not in {"read", "manage"} or ("team_manager" not in roles and not staff_ids):
                 raise TeamAccessDenied()
-            if not self._has_any_assignment(actor.account.id):
+            if (
+                not ("team_manager" in roles and self._has_any_assignment(actor.account.id))
+                and not staff_ids
+            ):
                 raise TeamAccessDenied()
         team = self.db.scalar(
             select(ProfessionalTeam).where(
@@ -187,11 +220,13 @@ class TeamAccessService:
         if not requested:
             return set()
         roles = self._actor_roles(actor)
-        if not roles.intersection({"team_member", "super_admin"}):
+        if not roles.intersection({"team_member", "administration", "super_admin"}):
             return set()
         decision = self.rbac.decision_context(actor.account.id)
         visible: set[UUID] = set()
-        if "super_admin" in roles and decision.decide("team_memberships.read", {"global"}).allowed:
+        if roles.intersection({"administration", "super_admin"}) and decision.decide(
+            "team_memberships.read", {"global"}
+        ).allowed:
             visible = requested.copy()
         if actor.person.id in requested:
             own_tokens = {"global", f"self:{actor.person.id}"}
@@ -205,23 +240,24 @@ class TeamAccessService:
     def context(self, actor: AuthContext) -> TeamContext:
         roles = self._actor_roles(actor)
         is_superadmin = "super_admin" in roles
+        is_global_actor = bool(roles.intersection({"administration", "super_admin"}))
         decision = self.rbac.decision_context(actor.account.id) if roles else None
         global_tokens = {"global"}
         can_manage_catalog = (
-            is_superadmin
+            is_global_actor
             and decision is not None
-            and any(
-                decision.decide(permission, global_tokens).allowed
-                for permission in ("projects.manage", "professional_teams.manage")
+            and (
+                decision.decide("professional_teams.manage", global_tokens).allowed
+                or (is_superadmin and decision.decide("projects.manage", global_tokens).allowed)
             )
         )
         can_transfer = (
-            is_superadmin
+            is_global_actor
             and decision is not None
             and decision.decide("team_memberships.transfer", global_tokens).allowed
         )
         can_assign_managers = (
-            is_superadmin
+            is_global_actor
             and decision is not None
             and decision.decide("team_manager_assignments.manage", global_tokens).allowed
         )
@@ -231,8 +267,10 @@ class TeamAccessService:
                 "team_memberships.read", {"global", f"self:{actor.person.id}"}
             ).allowed
         has_roster = False
-        if is_superadmin or (
-            "team_manager" in roles and self._has_any_assignment(actor.account.id)
+        if (
+            is_global_actor
+            or active_staff_team_ids(self.db, actor.account.id, role_keys=roles)
+            or ("team_manager" in roles and self._has_any_assignment(actor.account.id))
         ):
             has_roster = any(self.db.scalars(self.visible_team_ids(actor, "read").limit(1)))
             if not has_roster:

@@ -4,6 +4,8 @@ const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH
 const outputDir = process.env.PLAYWRIGHT_OUTPUT_DIR
 const htmlReportDir = process.env.PLAYWRIGHT_HTML_REPORT_DIR
 const esportsTestFiles = /esports-(?:pc|touch|recovery|capabilities)\.spec\.ts/
+const reactionxTestFile = /reactionx-integration\.spec\.ts/
+const privateTestFiles = [esportsTestFiles, reactionxTestFile]
 const chromiumLaunchOptions = executablePath ? { launchOptions: { executablePath } } : {}
 const privateEsportsArtifacts = {
   trace: "off" as const,
@@ -31,32 +33,43 @@ export default defineConfig({
   projects: [
     {
       name: "desktop-1440",
-      testIgnore: esportsTestFiles,
+      testIgnore: privateTestFiles,
       use: { ...chromiumLaunchOptions, viewport: { width: 1440, height: 900 } },
     },
     {
       name: "desktop-1024",
-      testIgnore: esportsTestFiles,
+      testIgnore: privateTestFiles,
       use: { ...chromiumLaunchOptions, viewport: { width: 1024, height: 768 } },
     },
     {
       name: "tablet-768",
-      testIgnore: esportsTestFiles,
+      testIgnore: privateTestFiles,
       use: { ...chromiumLaunchOptions, viewport: { width: 768, height: 1024 } },
     },
     {
       name: "mobile-360",
-      testIgnore: esportsTestFiles,
+      testIgnore: privateTestFiles,
       use: { ...chromiumLaunchOptions, viewport: { width: 360, height: 800 } },
     },
     {
       name: "touch-mobile-390",
-      testIgnore: esportsTestFiles,
+      testIgnore: privateTestFiles,
       use: {
         ...chromiumLaunchOptions,
         hasTouch: true,
         isMobile: true,
         viewport: { width: 390, height: 844 },
+      },
+    },
+    {
+      name: "reactionx-desktop-1440",
+      testMatch: reactionxTestFile,
+      use: {
+        ...chromiumLaunchOptions,
+        ...privateEsportsArtifacts,
+        viewport: { width: 1440, height: 900 },
+        // UI simulation only; not Windows/Chrome/Edge or real-light acceptance.
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36",
       },
     },
     {

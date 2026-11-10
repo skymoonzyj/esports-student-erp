@@ -22,11 +22,12 @@ runtime/
 secrets/
 *.log
 
-# Local runtime and verification data are excluded from this source snapshot.
+# Publication snapshot excludes local runtime and verification artifacts.
 outputs/
 .superpowers/
 .worktrees/
 .nas-release-sync/
+.release-metadata
 .env
 .env.*
 !.env.example

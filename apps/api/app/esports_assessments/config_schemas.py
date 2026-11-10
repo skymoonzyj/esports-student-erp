@@ -37,7 +37,11 @@ Count = Annotated[StrictInt, Field(ge=0)]
 Difficulty = Annotated[StrictInt, Field(ge=1, le=5)]
 Seed = Annotated[StrictInt, Field(ge=0, le=0xFFFFFFFF)]
 SuiteId = Literal["pc-fps", "mobile-fps", "pc-moba", "mobile-moba"]
+AttackMode = Literal["melee", "ranged"]
 TestId = Literal[
+    "gridshot",
+    "sixshot",
+    "spheretrack90",
     "precision",
     "tracking",
     "switching",
@@ -57,6 +61,9 @@ MEMBERS: dict[str, tuple[str, ...]] = {
     "mobile-moba": ("dodge", "skill-aim", "move-attack", "map-awareness"),
 }
 KINDS = {
+    "gridshot": "multi_target",
+    "sixshot": "multi_target",
+    "spheretrack90": "spheretrack90",
     "precision": "aim",
     "switching": "aim",
     "tracking": "tracking",
@@ -100,6 +107,27 @@ class TrackingParams(FpsParams):
     target_diameter_deg: Positive
     speed_deg_s: Positive
     horizontal_bound_deg: Positive = 30
+    vertical_bound_deg: Positive = 15
+    direction_interval_ms: Positive = 2000
+    turn_ms: Positive = 200
+
+
+class MultiTargetParams(FpsParams):
+    kind: Literal["multi_target"] = "multi_target"
+    fire_interval_ms: Positive = 50
+    target_count: Annotated[StrictInt, Field(gt=0)]
+    target_diameter_deg: Positive
+    grid_columns: Annotated[StrictInt, Field(gt=0)]
+    grid_rows: Annotated[StrictInt, Field(gt=0)]
+    grid_spacing_deg: Positive
+    reference_hits: Annotated[StrictInt, Field(gt=0)]
+
+
+class Spheretrack90Params(FpsParams):
+    kind: Literal["spheretrack90"] = "spheretrack90"
+    target_diameter_deg: Positive
+    speed_deg_s: Positive
+    horizontal_bound_deg: Positive = 40
     vertical_bound_deg: Positive = 15
     direction_interval_ms: Positive = 2000
     turn_ms: Positive = 200
@@ -160,6 +188,49 @@ class LastHitParams(MobaParams):
     attack_damage: Positive = 10
     last_hit_window_ms: Positive = 500
     window_starts_ms: tuple[Positive, ...] = (2000, 2250, 2500, 2750, 3000)
+
+
+class LaneLastHitParams(MobaParams):
+    kind: Literal["lane_last_hit"] = "lane_last_hit"
+    attack_mode: AttackMode
+    wave_interval_ms: Positive = 30000
+    wave_count: StrictInt = 10
+    melee_per_wave: StrictInt = 3
+    ranged_per_wave: StrictInt = 2
+    player_speed: Positive = 250
+    attack_windup_ms: Positive
+    attack_interval_ms: Positive
+    attack_damage: Positive
+    projectile_speed: NonNegative
+
+
+class LaneTowerPosition(StrictModel):
+    id: Literal["ally-rear", "ally-front", "enemy-front", "enemy-rear"]
+    team: Literal["ally", "enemy"]
+    x: NonNegative
+    y: NonNegative
+
+
+class LaneTowerLastHitParams(MobaParams):
+    kind: Literal["lane_last_hit_towers"] = "lane_last_hit_towers"
+    attack_mode: AttackMode
+    wave_interval_ms: Positive = 20000
+    wave_count: StrictInt = 15
+    melee_per_wave: StrictInt = 3
+    ranged_per_wave: StrictInt = 2
+    player_speed: Positive = 250
+    attack_windup_ms: Positive
+    attack_interval_ms: Positive
+    attack_damage: Positive
+    projectile_speed: NonNegative
+    hero_health: Positive = 1000
+    respawn_ms: Positive = 5000
+    tower_damage: Positive = 180
+    tower_interval_ms: Positive = 1200
+    tower_windup_ms: Positive = 300
+    tower_range: Positive = 240
+    tower_projectile_speed: Positive = 650
+    tower_positions: tuple[LaneTowerPosition, ...]
 
 
 class RhythmParams(MobaParams):
@@ -223,11 +294,15 @@ class MapParams(MobaParams):
 
 Params = Annotated[
     AimParams
+    | MultiTargetParams
+    | Spheretrack90Params
     | TrackingParams
     | RecognitionParams
     | MoveFireParams
     | MoveFireV3Params
     | LastHitParams
+    | LaneLastHitParams
+    | LaneTowerLastHitParams
     | RhythmParams
     | DodgeParams
     | DodgeChoiceParams
@@ -243,11 +318,40 @@ def registered_catalog_version(suite_id: str, version: str | None = None) -> str
         raise ValueError("unknown suite")
     legacy = f"{suite_id}-v1"
     previous = f"{suite_id}-v2"
-    current = f"{suite_id}-v3"
+    current = (
+        "pc-fps-v5"
+        if suite_id == "pc-fps"
+        else "pc-moba-v5"
+        if suite_id == "pc-moba"
+        else f"{suite_id}-v3"
+    )
     resolved = current if version is None else version
-    if resolved not in (legacy, previous, current):
+    supported: tuple[str, ...] = (legacy, previous, f"{suite_id}-v3", current)
+    if suite_id == "pc-fps":
+        supported += ("pc-fps-v4",)
+    if suite_id == "pc-moba":
+        supported += ("pc-moba-v4",)
+    if resolved not in supported:
         raise ValueError("unknown catalog version")
     return resolved
+
+
+def members_for_catalog(suite_id: str, catalog_version: str | None = None) -> tuple[str, ...]:
+    """Exact registered members; MEMBERS remains the immutable historical map."""
+    version = registered_catalog_version(suite_id, catalog_version)
+    if version in ("pc-fps-v4", "pc-fps-v5"):
+        return ("gridshot", "sixshot", "spheretrack90")
+    if version in ("pc-moba-v4", "pc-moba-v5"):
+        return ("last-hit",)
+    return MEMBERS[suite_id]
+
+
+def is_supported_suite_test(suite_id: str, test_id: str) -> bool:
+    """Versionless recovery only: union of every supported frozen catalog."""
+    return suite_id in MEMBERS and (
+        test_id in MEMBERS[suite_id]
+        or (suite_id == "pc-fps" and test_id in members_for_catalog("pc-fps", "pc-fps-v4"))
+    )
 
 
 class TaskConfig(StrictModel):
@@ -257,7 +361,7 @@ class TaskConfig(StrictModel):
     engine_version: str
     scoring_version: str
     report_version: str
-    duration_ms: Annotated[StrictInt, Field(ge=60000, le=60000)] = 60000
+    duration_ms: Annotated[StrictInt, Field(ge=60000, le=300000)] = 60000
     difficulty: Difficulty = 3
     params: Params
 
@@ -266,7 +370,7 @@ class TaskConfig(StrictModel):
         from .catalog import _registered_params
         from .rule_versions import registered_rule
 
-        if self.test_id not in MEMBERS[self.suite_id]:
+        if self.test_id not in members_for_catalog(self.suite_id, self.catalog_version):
             raise ValueError("task does not belong to suite or engine")
         registered_catalog_version(self.suite_id, self.catalog_version)
         identity = registered_rule(self.suite_id, self.test_id, self.catalog_version)
@@ -278,12 +382,19 @@ class TaskConfig(StrictModel):
         ):
             raise ValueError("unknown rule version")
         p = self.params
+        if self.duration_ms != (
+            300000 if self.catalog_version in ("pc-moba-v4", "pc-moba-v5") else 60000
+        ):
+            raise ValueError("duration differs from registered rule version")
         expected: Params = TypeAdapter(Params).validate_python(
             _registered_params(
                 self.suite_id,
                 self.test_id,
                 self.difficulty,
                 self.catalog_version,
+                attack_mode=p.attack_mode
+                if isinstance(p, (LaneLastHitParams, LaneTowerLastHitParams))
+                else None,
             )
         )
         if p != expected:
@@ -328,12 +439,14 @@ class TaskConfig(StrictModel):
 class SuiteConfig(StrictModel):
     suite_id: SuiteId
     catalog_version: str
-    test_ids: tuple[TestId, TestId, TestId, TestId]
+    test_ids: Annotated[tuple[TestId, ...], Field(min_length=1, max_length=4)]
     tasks: Mapping[TestId, TaskConfig]
 
     @model_validator(mode="after")
     def freeze_tasks(self) -> Self:
-        if self.test_ids != MEMBERS[self.suite_id] or set(self.tasks) != set(self.test_ids):
+        if self.test_ids != members_for_catalog(self.suite_id, self.catalog_version) or set(
+            self.tasks
+        ) != set(self.test_ids):
             raise ValueError("suite members do not match the frozen catalog")
         registered_catalog_version(self.suite_id, self.catalog_version)
         if any(

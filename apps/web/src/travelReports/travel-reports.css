@@ -46,18 +46,18 @@
 .travelReportsActions button,
 .travelReportsPagination button,
 .travelReportsState button {
-  min-height: 38px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   padding: 0 13px;
   border: 1px solid var(--color-border);
-  border-radius: 7px;
+  border-radius: var(--ui-radius-sm, 8px);
   color: var(--color-text-strong);
   background: white;
   font: inherit;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -86,8 +86,7 @@
   display: grid;
   grid-template-columns: 0.65fr 1.35fr 1.25fr 0.65fr;
   margin-top: 20px;
-  border-block: 1px solid var(--color-border-soft);
-  background: white;
+  gap: 16px;
 }
 
 .travelReportsSummary > div {
@@ -96,13 +95,15 @@
   display: grid;
   align-content: center;
   gap: 5px;
-  padding: 15px 18px;
-  border-right: 1px solid var(--color-border-soft);
+  padding: 20px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--ui-radius-lg, 14px);
+  background: var(--color-surface);
 }
 
-.travelReportsSummary > div:last-child { border-right: 0; }
+.travelReportsSummary > div:last-child { border-right: 1px solid var(--color-border-soft); }
 .travelReportsSummary span,
-.travelReportsSummary small { color: var(--color-text-subtle); font-size: 10px; }
+.travelReportsSummary small { color: var(--color-text-muted); font-size: 12px; }
 .travelReportsSummary strong {
   overflow-wrap: anywhere;
   color: var(--color-text-strong);
@@ -148,26 +149,28 @@
   align-items: end;
   gap: 12px;
   margin-bottom: 12px;
-  padding: 12px 0;
-  border-block: 1px solid var(--color-border-soft);
+  padding: 16px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--ui-radius-md, 12px);
+  background: var(--color-surface);
 }
 .travelReportsFilters label {
   min-width: 230px;
   display: grid;
   gap: 6px;
   color: var(--color-text-subtle);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 .travelReportsFilters select,
 .travelReportsFilters button {
-  min-height: 38px;
+  min-height: 44px;
   border: 1px solid var(--color-border);
   border-radius: 7px;
   color: var(--color-text-strong);
   background: white;
   font: inherit;
-  font-size: 11px;
+  font-size: 13px;
 }
 .travelReportsFilters select { min-width: 0; padding: 0 34px 0 11px; }
 .travelReportsFilters button {
@@ -254,7 +257,7 @@
 .travelReportsWarnings li + li { margin-top: 5px; }
 
 .travelReportsActions { display: grid; gap: 6px; }
-.travelReportsActions button { min-height: 32px; width: 100%; padding-inline: 9px; }
+.travelReportsActions button { min-height: 44px; width: 100%; padding-inline: 9px; }
 .travelReportsMuted { color: var(--color-text-subtle); font-size: 10px; }
 .travelReportsState {
   min-height: 170px;
@@ -279,14 +282,14 @@
   color: var(--color-text-subtle);
   font-size: 10px;
 }
-.travelReportsPagination button { min-height: 32px; }
+.travelReportsPagination button { min-height: 44px; }
 .travelReportsPage .isSpinning { animation: travelReportsSpin 800ms linear infinite; }
 
 @keyframes travelReportsSpin { to { transform: rotate(360deg); } }
 
 @media (max-width: 900px) {
   .travelReportsSummary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .travelReportsSummary > div:nth-child(2) { border-right: 0; }
+  .travelReportsSummary > div:nth-child(2) { border-right: 1px solid var(--color-border-soft); }
   .travelReportsSummary > div:nth-child(-n + 2) { border-bottom: 1px solid var(--color-border-soft); }
 }
 
@@ -297,11 +300,43 @@
   .travelReportsSummary { grid-template-columns: 1fr; }
   .travelReportsSummary > div {
     min-height: 78px;
-    border-right: 0;
+    border-right: 1px solid var(--color-border-soft);
     border-bottom: 1px solid var(--color-border-soft);
   }
-  .travelReportsSummary > div:last-child { border-bottom: 0; }
+  .travelReportsSummary > div:last-child { border-bottom: 1px solid var(--color-border-soft); }
   .travelReportsFilters { align-items: stretch; flex-direction: column; }
   .travelReportsFilters label { min-width: 0; }
   .travelReportsFilters > small { margin-left: 0; padding-bottom: 0; text-align: right; }
 }
+
+.travelReportsPage { min-width: 0; overflow-wrap: anywhere; }
+.travelReportsHeader h1 { font-size: clamp(24px, 2.3vw, 30px); }
+.travelReportsHeader p { font-size: 13px; line-height: 1.7; }
+.travelReportsSectionHeading span,
+.travelReportsFilters > small,
+.travelReportsMuted,
+.travelReportsPagination { font-size: 12px; }
+.travelReportsNotice { font-size: 13px; line-height: 1.6; }
+.travelReportsTableWrap { min-width: 0; max-width: 100%; border-radius: var(--ui-radius-md, 12px); }
+.travelReportsTable th { padding: 14px 16px; font-size: 12px; background: var(--ui-header-bg, var(--color-canvas)); }
+.travelReportsTable td { padding: var(--ui-table-cell-y, 16px) 16px; font-size: 13px; }
+.travelReportsTable small { font-size: 11px; }
+.travelReportsTable tbody tr:hover { background: var(--color-canvas); }
+.travelReportsWarnings summary { min-height: 44px; }
+.travelReportsState { border: 1px dashed var(--color-border); border-radius: var(--ui-radius-md, 12px); font-size: 13px; }
+.travelReportsPage :is(button, select, summary):focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-soft)); outline-offset: 3px; }
+html[data-ui-theme="command"] .travelReportsSummary { gap: 0; overflow: hidden; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 8px); background: var(--color-surface); }
+html[data-ui-theme="command"] .travelReportsSummary > div { min-height: 88px; padding: 16px 18px; border: 0; border-radius: 0; background: transparent; }
+html[data-ui-theme="command"] .travelReportsSummary > div + div { border-left: 1px solid var(--color-border-soft); }
+html[data-ui-theme="command"] .travelReportsFilters { padding: 12px 16px; border-radius: var(--ui-radius-sm, 6px); }
+@media (max-width: 900px) and (min-width: 601px) {
+  html[data-ui-theme="command"] .travelReportsSummary > div:nth-child(3) { border-left: 0; }
+  html[data-ui-theme="command"] .travelReportsSummary > div:nth-child(n+3) { border-top: 1px solid var(--color-border-soft); }
+}
+@media (max-width: 600px) {
+  html[data-ui-theme="command"] .travelReportsSummary > div + div { border-left: 0; border-top: 1px solid var(--color-border-soft); }
+  .travelReportsSectionHeading { align-items: flex-start; flex-wrap: wrap; }
+  .travelReportsSectionHeading > div { flex-wrap: wrap; }
+  .travelReportsPagination { flex-wrap: wrap; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) { .travelReportsPage .isSpinning { animation: none; } }

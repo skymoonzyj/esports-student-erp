@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -62,9 +63,11 @@ def test_ordinary_admin_cannot_manage_super_admin_account(
         db.commit()
     original_status = target.status
     original_password = _password_fingerprint(target)
-    original_sessions = list(db.execute(
-        select(AuthSession.id, AuthSession.revoked_at).where(AuthSession.user_id == target.id)
-    ))
+    original_sessions = list(
+        db.execute(
+            select(AuthSession.id, AuthSession.revoked_at).where(AuthSession.user_id == target.id)
+        )
+    )
     csrf = _sign_in(db_client, platform_users, "customer_service")
 
     response = _mutation(db_client, csrf, target, action)
@@ -79,9 +82,16 @@ def test_ordinary_admin_cannot_manage_super_admin_account(
     assert target.status == original_status
     assert _password_fingerprint(target) == original_password
     assert person.deleted_at is None
-    assert list(db.execute(
-        select(AuthSession.id, AuthSession.revoked_at).where(AuthSession.user_id == target.id)
-    )) == original_sessions
+    assert (
+        list(
+            db.execute(
+                select(AuthSession.id, AuthSession.revoked_at).where(
+                    AuthSession.user_id == target.id
+                )
+            )
+        )
+        == original_sessions
+    )
 
 
 def test_ordinary_admin_keeps_normal_account_management(
@@ -93,6 +103,68 @@ def test_ordinary_admin_keeps_normal_account_management(
     for action in ("reset-password", "disable", "enable", "delete"):
         response = _mutation(db_client, csrf, target, action)
         assert response.status_code == (200 if action == "reset-password" else 204)
+
+
+@pytest.mark.parametrize(
+    "financial_source", ["finance", "admin", "override", "future_override", "denied_override"]
+)
+@pytest.mark.parametrize("action", ["reset-password", "disable", "enable", "delete"])
+def test_ordinary_manager_cannot_mutate_structurally_financial_target(
+    db_client: TestClient, platform_users, db: Session, financial_source: str, action: str
+) -> None:
+    _ordinary_admin(db, platform_users)
+    target = platform_users["accounts"]["self_student"]
+    if financial_source in {"finance", "admin"}:
+        db.add(UserRole(user_id=target.id, role_id=ROLES[financial_source].id))
+    else:
+        db.add(
+            UserPermissionOverride(
+                user_id=target.id,
+                permission_id=PERMISSIONS["payments.read"].id,
+                effect="allow",
+                scope_kind="global",
+                valid_from=datetime.now(UTC) + timedelta(days=1)
+                if financial_source == "future_override"
+                else None,
+            )
+        )
+        if financial_source == "denied_override":
+            db.add(
+                UserPermissionOverride(
+                    user_id=target.id,
+                    permission_id=PERMISSIONS["payments.read"].id,
+                    effect="deny",
+                    scope_kind="global",
+                )
+            )
+    if action == "enable":
+        target.status = "disabled"
+    db.commit()
+    original_status = target.status
+    original_password = _password_fingerprint(target)
+    original_sessions = list(
+        db.execute(
+            select(AuthSession.id, AuthSession.revoked_at).where(AuthSession.user_id == target.id)
+        )
+    )
+    csrf = _sign_in(db_client, platform_users, "customer_service")
+    response = _mutation(db_client, csrf, target, action)
+    assert response.status_code == 403
+    assert "temporary_password" not in response.json()
+    db.refresh(target)
+    assert target.status == original_status
+    assert _password_fingerprint(target) == original_password
+    assert db.get(Person, target.person_id).deleted_at is None
+    assert (
+        list(
+            db.execute(
+                select(AuthSession.id, AuthSession.revoked_at).where(
+                    AuthSession.user_id == target.id
+                )
+            )
+        )
+        == original_sessions
+    )
 
 
 @pytest.mark.parametrize("action", ["reset-password", "disable", "enable", "delete"])
@@ -120,15 +192,17 @@ def test_last_effective_super_admin_cannot_be_deleted(
     if ineffective_other_admin:
         other = platform_users["accounts"]["customer_service"]
         db.add(UserRole(user_id=other.id, role_id=ROLES["super_admin"].id))
-        db.add_all([
-            UserPermissionOverride(
-                user_id=other.id,
-                permission_id=PERMISSIONS[key].id,
-                effect="deny",
-                scope_kind="global",
-            )
-            for key in ("accounts.manage", "permissions.manage")
-        ])
+        db.add_all(
+            [
+                UserPermissionOverride(
+                    user_id=other.id,
+                    permission_id=PERMISSIONS[key].id,
+                    effect="deny",
+                    scope_kind="global",
+                )
+                for key in ("accounts.manage", "permissions.manage")
+            ]
+        )
         db.commit()
     csrf = _sign_in(db_client, platform_users, "admin")
 

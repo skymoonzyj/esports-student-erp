@@ -77,6 +77,13 @@ function setup(path = "/settings/registrations/claims") {
 async function openDetail() { await userEvent.click(await screen.findByRole("button", { name: "查看认领详情" })); await screen.findByText("test@example.test") }
 const decisionRequests = () => requests.filter(({ url }) => /\/(approve|reject|revoke)$/.test(url))
 
+it.each([["hk_id", "香港身份证"], ["hk_mo_permit", "回乡证（港澳居民来往内地通行证）"]] as const)("renders %s claim type without mislabelling it as mainland identity", async (documentType, label) => {
+  detail = { ...initial, applicant_document_type: documentType }
+  setup(); await openDetail()
+  expect(screen.getByText(label)).toBeVisible()
+  expect(screen.queryByText("中国居民身份证")).not.toBeInTheDocument()
+})
+
 it("separates submitted passport facts from authorized old facts without treating unavailable old facts as missing", async () => {
   detail = { ...initial, applicant_document_type: "passport", applicant_issuing_country: "US",
     applicant_completion: { phone: "19990000001", sex: "female", date_of_birth: "2001-02-03", issuing_country: null, guardians: [] },

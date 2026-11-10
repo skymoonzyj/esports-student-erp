@@ -7,9 +7,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
+from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_standard_account
 from app.auth.service import AuthContext
+from app.core.database import get_db
 from app.core.errors import ProblemError
 from app.team_management.access import TeamAccessService
 from app.team_management.assignment_service import TeamAssignmentService
@@ -21,23 +23,29 @@ from app.team_management.dependencies import (
 )
 from app.team_management.errors import TeamServiceError
 from app.team_management.membership_service import TeamMembershipService
+from app.team_management.person_staff_router import build_person_staff_router
 from app.team_management.query_service import TeamQueryService
 from app.team_management.schemas import (
     AssignManagerInput,
+    AssignStaffInput,
     JoinTeamInput,
     LeaveTeamInput,
     ManagerCandidatePage,
     MyTeamResponse,
+    StaffRole,
     TeamAssignmentView,
     TeamCandidatePage,
     TeamContext,
     TeamMemberView,
     TeamMutationResult,
     TeamPage,
+    TeamStaffAssignmentView,
     TeamSummary,
     TransferTeamInput,
     UnassignManagerInput,
+    UnassignStaffInput,
 )
+from app.team_management.staff_service import TeamStaffService
 
 
 class PrivateTeamRoute(APIRoute):
@@ -81,6 +89,13 @@ PageNumber = Annotated[int, Query(ge=1)]
 PageSize = Annotated[int, Query(ge=1, le=100)]
 CandidateSize = Annotated[int, Query(ge=1, le=20)]
 SearchQuery = Annotated[str, Query(min_length=1, max_length=120)]
+
+
+def get_team_staff(db: Annotated[Session, Depends(get_db)]) -> TeamStaffService:
+    return TeamStaffService(db)
+
+
+StaffAssignments = Annotated[TeamStaffService, Depends(get_team_staff)]
 
 
 @router.get("/context", response_model=TeamContext)
@@ -189,3 +204,56 @@ def unassign(
     assignment_id: UUID, input: UnassignManagerInput, actor: Actor, service: Assignments
 ) -> TeamMutationResult:
     return service.unassign(actor, assignment_id, input)
+
+
+@router.get("/teams/{team_id}/staff-candidates", response_model=ManagerCandidatePage)
+def staff_candidates(
+    team_id: UUID,
+    actor: Actor,
+    service: Queries,
+    staff_role: StaffRole,
+    query: SearchQuery,
+    cursor: str | None = None,
+    page_size: CandidateSize = 20,
+) -> ManagerCandidatePage:
+    page = service.candidates(
+        actor,
+        team_id,
+        kind="staff",
+        staff_role=staff_role,
+        query=query,
+        cursor=cursor,
+        page_size=page_size,
+    )
+    return ManagerCandidatePage.model_validate(page.model_dump())
+
+
+@router.get("/teams/{team_id}/staff-assignments", response_model=TeamPage[TeamStaffAssignmentView])
+def staff_assignments(
+    team_id: UUID,
+    actor: Actor,
+    service: Queries,
+    status: Literal["current", "ended"] = "current",
+    page: PageNumber = 1,
+    page_size: PageSize = 20,
+) -> TeamPage[TeamStaffAssignmentView]:
+    return service.list_staff_assignments(
+        actor, team_id, status=status, page=page, page_size=page_size
+    )
+
+
+@router.post("/teams/{team_id}/staff-assignments", response_model=TeamMutationResult)
+def assign_staff(
+    team_id: UUID, input: AssignStaffInput, actor: Actor, service: StaffAssignments
+) -> TeamMutationResult:
+    return service.assign(actor, team_id, input)
+
+
+@router.post("/staff-assignments/{assignment_id}/end", response_model=TeamMutationResult)
+def unassign_staff(
+    assignment_id: UUID, input: UnassignStaffInput, actor: Actor, service: StaffAssignments
+) -> TeamMutationResult:
+    return service.unassign(actor, assignment_id, input)
+
+
+router.include_router(build_person_staff_router(PrivateTeamRoute))

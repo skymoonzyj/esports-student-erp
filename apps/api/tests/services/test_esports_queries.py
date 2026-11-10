@@ -26,8 +26,18 @@ def legacy_suite(suite_id: str):
     return get_suite(suite_id, catalog_version=f"{suite_id}-v2")
 
 
-def session_row(db, actor, *, at=NOW, status="completed", suite_id="pc-fps", key=None, flags=False):
-    suite = legacy_suite(suite_id)
+def session_row(
+    db,
+    actor,
+    *,
+    at=NOW,
+    status="completed",
+    suite_id="pc-fps",
+    key=None,
+    flags=False,
+    catalog_version=None,
+):
+    suite = get_suite(suite_id, catalog_version=catalog_version or f"{suite_id}-v2")
     row = AssessmentSession(
         person_id=actor.person.id,
         created_by_user_id=actor.account.id,
@@ -46,7 +56,7 @@ def session_row(db, actor, *, at=NOW, status="completed", suite_id="pc-fps", key
     db.flush()
     if status != "completed":
         return row, None
-    results = report_results(suite_id)
+    results = report_results(suite_id, catalog_version=catalog_version)
     for index, value in enumerate(results):
         if flags:
             value = value.model_copy(
@@ -454,7 +464,7 @@ def test_context_recovery_catalog_and_detail_validate_wire_invariants():
         SessionView,
     )
 
-    suite = get_suite("pc-fps")
+    suite = get_suite("pc-fps", catalog_version="pc-fps-v3")
     session = SessionView(
         id=uuid4(),
         suite_id="pc-fps",

@@ -41,7 +41,13 @@ def test_request_rejects_invalid_audit_context_and_pagination(payload):
 
 
 @pytest.mark.parametrize("format", ["csv", "xlsx"])
-def test_renderer_fixed_columns_empty_fields_china_date_and_formula_safety(format):
+@pytest.mark.parametrize(
+    "person_type,label",
+    [("coach", "教练"), ("team_manager", "战队经理"), ("assistant_coach", "助教")],
+)
+def test_renderer_fixed_columns_empty_fields_china_date_and_formula_safety(
+    format, person_type, label
+):
     now = datetime(2026, 10, 22, 16, 5, tzinfo=UTC)
     row = RoomStatusExportRow(
         building_name="一号楼",
@@ -62,7 +68,7 @@ def test_renderer_fixed_columns_empty_fields_china_date_and_formula_safety(forma
         phone="+123",
         actual_check_in_at=now,
         planned_check_out_at=None,
-        person_type="coach",
+        person_type=person_type,
         account_status="active",
         profile_source="approved_profile",
     )
@@ -100,7 +106,7 @@ def test_renderer_fixed_columns_empty_fields_china_date_and_formula_safety(forma
         "核对状态",
         "服务状态",
         "是否可入住",
-        "每日保洁",
+        "保洁频率",
         "保洁状态",
         "入住人",
         "性别",
@@ -114,7 +120,7 @@ def test_renderer_fixed_columns_empty_fields_china_date_and_formula_safety(forma
     ]
     assert data[1][3] == "双人间"
     assert list(data[1][11:17]) == [
-        "待保洁",
+        "退房待保洁",
         "'=公式",
         "男",
         "00123",
@@ -122,6 +128,7 @@ def test_renderer_fixed_columns_empty_fields_china_date_and_formula_safety(forma
         "2026-10-23",
     ]
     assert data[1][17] in ("", None)
+    assert data[1][18] == label
     assert all(cell in ("", None) for cell in data[2][12:])
     assert data[2][9] == "否"
     assert data[2][11] == "保洁就绪"

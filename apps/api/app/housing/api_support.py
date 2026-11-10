@@ -19,6 +19,7 @@ from app.auth.service import AuthContext
 from app.core.errors import ProblemError
 from app.core.privacy import contains_phone_or_identity
 from app.housing.errors import (
+    HousingBatchConflict,
     HousingExportIncomplete,
     HousingPersistenceFailure,
     HousingReportEmpty,
@@ -38,6 +39,7 @@ _KNOWN_HOUSING_CONFLICT_CODES = frozenset(
         "housing_invalid_room_configuration",
         "housing_issue_workflow_required",
         "housing_stale_version",
+        "housing_batch_conflict",
         "housing_account_required",
         "housing_profile_incomplete",
         "minor_guardian_required",
@@ -280,6 +282,13 @@ def _permission_denied() -> NoReturn:
 
 
 def _raise_housing_error(exc: HousingServiceError) -> NoReturn:
+    if isinstance(exc, HousingBatchConflict):
+        raise ProblemError(
+            status=409,
+            code=exc.code,
+            detail="批量修改未执行，请处理以下房间后重试",
+            errors=exc.errors,
+        ) from exc
     if isinstance(exc, HousingVoidReasonInvalid):
         raise ProblemError(status=422, code=exc.code, detail="作废原因不可包含完整证件号码") from None
     if isinstance(exc, HousingResourceNotFound):

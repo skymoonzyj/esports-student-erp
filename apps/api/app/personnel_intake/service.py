@@ -11,12 +11,12 @@ from app.audit.service import AuditService
 from app.auth.models import UserAccount
 from app.auth.service import AuthContext
 from app.core.transactions import atomic_write_transaction
-from app.identity.document_identity import document_identity_keys, normalize_document_identity
 from app.identity.models import Person
 from app.identity.schemas import Page
 from app.personnel_intake.access import IntakeAccessSnapshot, PersonnelIntakeAccess
 from app.personnel_intake.codec import decode_payload, normalize_payload
 from app.personnel_intake.errors import PersonnelIntakeError
+from app.personnel_intake.guardian_records import payload_identity_keys
 from app.personnel_intake.locks import CredentialReservationPolicy, lock_personnel_credentials
 from app.personnel_intake.models import (
     AssistedPersonProfile,
@@ -251,17 +251,7 @@ class PersonnelIntakeService:
     def _digests(
         self, payload: IntakePayloadView | PendingIntakePayloadView
     ) -> tuple[str, str | None]:
-        identity_digest = self.lookup.digest(payload.identity_number)
-        if isinstance(payload, PendingIntakePayloadView):
-            document = normalize_document_identity(
-                payload.document_type,
-                payload.identity_number,
-                issuing_country=payload.document_issuing_country,
-                sex=payload.sex,
-                date_of_birth=payload.date_of_birth,
-                allow_pending=True,
-            )
-            identity_digest = document_identity_keys(document, self.lookup).identity_digest
+        identity_digest = payload_identity_keys(payload, self.lookup).identity_digest
         return identity_digest, (
             registration_identifier_digest(
                 self.lookup, normalize_registration_identifier("email", payload.email)
@@ -274,12 +264,14 @@ class PersonnelIntakeService:
         lock_personnel_credentials(
             self.db,
             emails={p.email for p in payloads if p.email is not None},
-            identity_digests={self.lookup.digest(p.identity_number) for p in payloads},
+            identity_digests={
+                payload_identity_keys(p, self.lookup).identity_digest for p in payloads
+            },
             lookup=self.lookup,
         )
 
     def _lock_people(self, actor: AuthContext, payload: IntakePayloadView) -> UUID | None:
-        digest = self.lookup.digest(payload.identity_number)
+        digest = payload_identity_keys(payload, self.lookup).identity_digest
         candidate_id = self.db.scalar(select(Person.id).where(Person.identity_digest == digest))
         if candidate_id is not None and not self.access.allowed(
             actor,
@@ -289,7 +281,9 @@ class PersonnelIntakeService:
             target_person_id=candidate_id,
         ):
             raise self._error()
-        guardian_digests = {self.lookup.digest(g.identity_number) for g in payload.guardians}
+        guardian_digests = {
+            payload_identity_keys(g, self.lookup).identity_digest for g in payload.guardians
+        }
         ids = set(
             self.db.scalars(select(Person.id).where(Person.identity_digest.in_(guardian_digests)))
         ) | {actor.account.person_id}
@@ -403,6 +397,7 @@ class PersonnelIntakeService:
                 self.access.require_submit(actor, payload)
                 self.policy.require_available(
                     identity=payload.identity_number,
+                    identity_keys=payload_identity_keys(payload, self.lookup),
                     email=payload.email,
                     person_id=person_id,
                     request_id=None,
@@ -448,6 +443,7 @@ class PersonnelIntakeService:
                 self.access.require_submit(actor, payload)
                 self.policy.require_available(
                     identity=payload.identity_number,
+                    identity_keys=payload_identity_keys(payload, self.lookup),
                     email=payload.email,
                     person_id=person_id,
                     request_id=row.id,

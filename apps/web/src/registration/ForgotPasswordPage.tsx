@@ -10,6 +10,7 @@ import {
 } from "./api"
 import type { RegistrationChallenge } from "./api"
 import "./registration.css"
+import { PublicEntryAside } from "./PublicEntryAside"
 
 function recoveryError(error: unknown): string {
   if (error instanceof ProblemDetailsError) {
@@ -82,6 +83,7 @@ export function ForgotPasswordPage() {
 
   return (
     <main className="registrationPage">
+      <PublicEntryAside />
       <section className="registrationCard" aria-labelledby="forgot-password-title">
         <div className="registrationBrand" aria-hidden="true">竞</div>
         <p className="registrationEyebrow">ACCOUNT RECOVERY</p>

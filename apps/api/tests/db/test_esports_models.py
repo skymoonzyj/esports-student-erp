@@ -84,7 +84,7 @@ def _insert_attempt(
     *,
     session_id: UUID,
     account_id: UUID,
-    test_id: str = "precision",
+    test_id: str = "gridshot",
     state: str = "running",
     sequence_no: int = 1,
 ) -> UUID:
@@ -127,7 +127,7 @@ def _insert_result(
     attempt_id: UUID,
     session_id: UUID,
     account_id: UUID,
-    test_id: str = "precision",
+    test_id: str = "gridshot",
     submission_key: UUID | None = None,
 ) -> UUID:
     result_id = uuid4()
@@ -239,13 +239,18 @@ def test_session_partial_unique_is_per_person_and_suite(db: Session) -> None:
     ) == 1
 
 
-def test_result_uniqueness_and_attempt_ownership_are_database_enforced(db: Session) -> None:
+@pytest.mark.parametrize("test_id", ["precision", "gridshot", "sixshot", "spheretrack90"])
+def test_result_uniqueness_and_attempt_ownership_are_database_enforced(
+    db: Session,
+    test_id: str,
+) -> None:
     person_id, account_id = _insert_person_and_account(db)
     session_id = _insert_session(db, person_id=person_id, account_id=account_id)
     attempt_id = _insert_attempt(
         db,
         session_id=session_id,
         account_id=account_id,
+        test_id=test_id,
         state="submitted",
     )
     submission_key = uuid4()
@@ -254,6 +259,7 @@ def test_result_uniqueness_and_attempt_ownership_are_database_enforced(db: Sessi
         attempt_id=attempt_id,
         session_id=session_id,
         account_id=account_id,
+        test_id=test_id,
         submission_key=submission_key,
     )
 
@@ -261,6 +267,7 @@ def test_result_uniqueness_and_attempt_ownership_are_database_enforced(db: Sessi
         db,
         session_id=session_id,
         account_id=account_id,
+        test_id=test_id,
         state="interrupted",
         sequence_no=2,
     )
@@ -270,6 +277,7 @@ def test_result_uniqueness_and_attempt_ownership_are_database_enforced(db: Sessi
             attempt_id=second_attempt,
             session_id=session_id,
             account_id=account_id,
+            test_id=test_id,
         )
 
     other_session = _insert_session(
@@ -324,7 +332,7 @@ def test_running_attempt_index_does_not_block_a_different_project_after_lease(
         db,
         session_id=session_id,
         account_id=account_id,
-        test_id="switching",
+        test_id="sixshot",
     )
     assert db.scalar(
         text("SELECT count(*) FROM esports_assessment_attempts WHERE id = :id"),

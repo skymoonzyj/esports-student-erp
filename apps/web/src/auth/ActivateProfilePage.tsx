@@ -3,6 +3,7 @@ import type { FormEvent } from "react"
 import { Link, useNavigate } from "react-router-dom"
 
 import { ProblemDetailsError } from "../api/client"
+import { PublicEntryAside } from "../registration/PublicEntryAside"
 import { PasswordInput } from "./PasswordInput"
 import { completeProfileActivation, startProfileActivation, verifyProfileActivation } from "./activationApi"
 import type { ActivationPreview } from "./activationApi"
@@ -17,6 +18,7 @@ function errorMessage(error: unknown): string {
     if (error.problem.status === 429) return "请求过于频繁，请稍后重试"
     if (error.problem.code === "verification_invalid_or_expired") return "验证码无效或已过期，请重新请求验证码"
     if (error.problem.code === "password_policy_failed") return PASSWORD_HINT
+    if (error.problem.code === "activation_roles_invalidated") return "激活角色授权已失效，请联系管理员重新确认"
   }
   return "暂时无法完成操作，请稍后重试"
 }
@@ -139,6 +141,7 @@ export function ActivateProfilePage() {
 
   return (
     <main className="registrationPage">
+      <PublicEntryAside />
       <section className="registrationCard" aria-labelledby="activate-profile-title">
         <div className="registrationBrand" aria-hidden="true">竞</div>
         <p className="registrationEyebrow">PROFILE ACTIVATION</p>
@@ -160,7 +163,7 @@ export function ActivateProfilePage() {
             <div className="registrationStatus">
               <strong>{preview.masked_name}</strong>
               <span>{KIND_LABELS[preview.kind]}</span>
-              <p>预览不代表账号已激活；完成密码设置后仍需正常登录。档案身份不等于系统角色或管理权限。</p>
+              <p>预览不代表账号已激活；完成密码设置后仍需正常登录。档案身份不等于系统角色或管理权限；已批准的额外角色仅在激活时通过授权复核后生效，不自动建立监护、教练或队伍关系。</p>
             </div>
             <div className="registrationFieldGroup">
               <label htmlFor="activation-password">新密码</label>

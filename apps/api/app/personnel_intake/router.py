@@ -1,11 +1,11 @@
 from collections.abc import Callable, Coroutine
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, StringConstraints, model_validator
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_standard_account
@@ -22,14 +22,27 @@ from app.personnel_intake.dependencies import (
     get_intake_service,
 )
 from app.personnel_intake.editor_context import AssistedEditorContextQuery
+from app.personnel_intake.identity_selection import ManagedIdentityInput, StaffTeamSelection
+from app.personnel_intake.identity_service import resolve_management_identity
 from app.personnel_intake.queries import ManagedPeopleQuery
 from app.personnel_intake.readiness import AssistedReadiness, AssistedReadinessPolicy
+from app.personnel_intake.role_intents import (
+    RoleIntentApproval,
+    RoleIntentPage,
+    RoleIntentService,
+    RoleIntentView,
+)
 from app.personnel_intake.schemas import (
+    ActivationRoleOptions,
+    ActivationRoleUpdate,
+    ActivationRoleView,
     ApprovalResult,
     AssistedContext,
     AssistedEditorContext,
+    AssistedPersonFields,
     AssistedProfileCorrection,
     CoachResponsibilityInput,
+    DirectPersonInput,
     IntakeInput,
     IntakeListItem,
     IntakeQueueView,
@@ -38,6 +51,7 @@ from app.personnel_intake.schemas import (
     ManagedPeopleFilters,
     ManagedPeoplePage,
     PendingIntakeInput,
+    PendingPersonFields,
     PendingProfileCorrection,
     PersonKind,
 )
@@ -87,12 +101,86 @@ class ReturnInput(ExpectedVersion):
     reason: str = Field(min_length=1, max_length=500)
 
 
-class DirectCreateInput(IntakeInput):
+class ManagedIdentityFields(BaseModel):
+    kind: PersonKind | None = None
+    coach_person_ids: list[UUID] = Field(default_factory=list)
+    team_id: UUID | None = None
     idempotency_key: UUID
+    activation_role_keys: list[StrictStr] = Field(default_factory=list)
+    identity_selection: ManagedIdentityInput | None = None
+    staff_teams: list[StaffTeamSelection] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def resolve_identity(self) -> "ManagedIdentityFields":
+        resolved, groups, _ = resolve_management_identity(
+            kind=self.kind, identity=self.identity_selection,
+            role_keys=self.activation_role_keys if "activation_role_keys" in self.model_fields_set else None,
+            staff_teams=self.staff_teams,
+        )
+        if resolved is not None:
+            self.kind = resolved.kind
+        self.staff_teams = groups
+        if groups and getattr(self, "team_allocation_status", None) == "not_required":
+            raise ValueError("已有工作人员归属不能选择无需分队")
+        return self
 
 
-class DirectCreatePendingInput(PendingIntakeInput):
-    idempotency_key: UUID
+class DirectCreateInput(AssistedPersonFields, ManagedIdentityFields):
+    pass
+
+
+class DirectCreatePendingInput(PendingPersonFields, ManagedIdentityFields):
+    team_allocation_status: Literal["pending", "not_required"] = "pending"
+
+
+@router.get("/management-identity-context")
+def management_identity_context(actor: Actor, service: ApprovalService) -> dict[str, Any]:
+    from app.personnel_intake.role_grants import ActivationRoleService
+    from app.team_management.person_staff_query import PersonStaffQuery
+
+    roles = ActivationRoleService(service.db, lookup=service.lookup).options(actor, for_intake=True)
+    teams = PersonStaffQuery(service.db, lookup=service.lookup).staff_team_options(actor, for_intake=True)
+    return {"role_options": roles.items, "can_assign_staff_teams": teams.can_assign,
+            "staff_team_reason": teams.reason, "staff_team_options": teams.items}
+
+
+@router.get("/role-intents", response_model=RoleIntentPage)
+def role_intents(actor: Actor, service: ApprovalService,
+                 page: int = Query(default=1, ge=1), page_size: int = Query(default=20, ge=1, le=100)) -> RoleIntentPage:
+    return RoleIntentService(service.db, lookup=service.lookup).list(actor, page=page, page_size=page_size)
+
+
+@router.get("/people/{person_id}/role-intent", response_model=RoleIntentView | None)
+def role_intent(person_id: UUID, actor: Actor, service: ApprovalService) -> RoleIntentView | None:
+    return RoleIntentService(service.db, lookup=service.lookup).get(actor, person_id)
+
+
+@router.post("/people/{person_id}/role-intent/approve", response_model=RoleIntentView)
+def approve_role_intent(person_id: UUID, actor: Actor, service: ApprovalService, input: RoleIntentApproval) -> RoleIntentView:
+    return RoleIntentService(service.db, lookup=service.lookup).approve(actor, person_id, input)
+
+
+@router.get("/activation-role-options", response_model=ActivationRoleOptions)
+def activation_role_options(actor: Actor, service: ApprovalService) -> ActivationRoleOptions:
+    from app.personnel_intake.role_grants import ActivationRoleService
+
+    return ActivationRoleService(service.db, lookup=service.lookup).options(actor)
+
+
+@router.get("/people/{person_id}/activation-roles", response_model=ActivationRoleView)
+def activation_roles(person_id: UUID, actor: Actor, service: ApprovalService) -> ActivationRoleView:
+    from app.personnel_intake.role_grants import ActivationRoleService
+
+    return ActivationRoleService(service.db, lookup=service.lookup).get(actor, person_id)
+
+
+@router.put("/people/{person_id}/activation-roles", response_model=ActivationRoleView)
+def update_activation_roles(
+    person_id: UUID, actor: Actor, service: ApprovalService, input: ActivationRoleUpdate
+) -> ActivationRoleView:
+    from app.personnel_intake.role_grants import ActivationRoleService
+
+    return ActivationRoleService(service.db, lookup=service.lookup).update(actor, person_id, input)
 
 
 @router.post("/direct-create-pending", response_model=ApprovalResult, status_code=201)
@@ -103,6 +191,8 @@ def direct_create_pending(
         actor,
         PendingIntakeInput(**{key: getattr(input, key) for key in PendingIntakeInput.model_fields}),
         input.idempotency_key,
+        activation_role_keys=input.activation_role_keys if "activation_role_keys" in input.model_fields_set else None,
+        identity_selection=input.identity_selection, staff_teams=input.staff_teams,
     )
 
 
@@ -133,8 +223,10 @@ def direct_create(
 ) -> ApprovalResult:
     return service.direct_create(
         actor,
-        IntakeInput(**{key: getattr(input, key) for key in IntakeInput.model_fields}),
+        DirectPersonInput(**{key: getattr(input, key) for key in DirectPersonInput.model_fields}),
         input.idempotency_key,
+        activation_role_keys=input.activation_role_keys if "activation_role_keys" in input.model_fields_set else None,
+        identity_selection=input.identity_selection, staff_teams=input.staff_teams,
     )
 
 

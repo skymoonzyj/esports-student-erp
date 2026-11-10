@@ -162,6 +162,7 @@ class RoomOccupancyProjection:
     open_issue: RoomIssueSummary | None
     future_stays: tuple[StaySummary, ...] = ()
     photo_count: int = 0
+    current_resident_nicknames: tuple[str, ...] = ()
 
     @property
     def current_gender(self) -> Sex | None:
@@ -1847,6 +1848,7 @@ class HousingOccupancyService:
             select(
                 HousingStay,
                 Person.full_name,
+                Person.nickname,
                 Person.sex,
                 StudentProfile.person_id,
                 StaffProfile.staff_type,
@@ -1868,9 +1870,11 @@ class HousingOccupancyService:
             room_id: [] for room_id in unique_room_ids
         }
         future_by_room: dict[UUID, list[StaySummary]] = {room_id: [] for room_id in unique_room_ids}
+        nicknames_by_room: dict[UUID, list[str]] = {room_id: [] for room_id in unique_room_ids}
         for (
             stay,
             person_name,
+            nickname,
             sex,
             student_person_id,
             staff_type,
@@ -1888,6 +1892,8 @@ class HousingOccupancyService:
             )
             target = current_by_room if stay.status in _CURRENT_STATUSES else future_by_room
             target[stay.room_id].append(summary)
+            if stay.status in _CURRENT_STATUSES and nickname:
+                nicknames_by_room[stay.room_id].append(nickname)
         issues_by_room = {
             issue.room_id: RoomIssueSummary.model_validate(issue)
             for issue in self.db.scalars(
@@ -1912,6 +1918,7 @@ class HousingOccupancyService:
                 open_issue=issues_by_room.get(room_id),
                 future_stays=tuple(future_by_room[room_id]),
                 photo_count=photo_counts.get(room_id, 0),
+                current_resident_nicknames=tuple(nicknames_by_room[room_id]),
             )
             for room_id in unique_room_ids
         }

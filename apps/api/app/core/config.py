@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.client_ip import trusted_proxy_networks
@@ -35,8 +35,7 @@ def _runtime_root_from_config_path(config_path: Path) -> Path:
 _REPOSITORY_ROOT = _runtime_root_from_config_path(Path(__file__))
 _IGNORED_RUNTIME_ROOT = (_REPOSITORY_ROOT / "runtime").resolve()
 _FORBIDDEN_MEDIA_ROOTS = tuple(
-    (_REPOSITORY_ROOT / relative).resolve()
-    for relative in ("apps/web", "static", "public")
+    (_REPOSITORY_ROOT / relative).resolve() for relative in ("apps/web", "static", "public")
 )
 
 
@@ -78,6 +77,30 @@ class Settings(BaseSettings):
     evaluation_tool_web_service_token: SecretStr
     evaluation_tool_worker_service_token: SecretStr
     erp_web_base_url: str = "http://127.0.0.1:5173"
+    reactionx_public_origin: str = Field(default="https://skymoonzyj.l.cd:18080", max_length=255)
+    reactionx_synthetic_formal_enabled: bool = False
+
+    @model_validator(mode="after")
+    def _reactionx_synthetic_environment(self) -> Settings:
+        if self.reactionx_synthetic_formal_enabled and self.app_env != "test":
+            raise ValueError("ReactionX synthetic formal policy requires APP_ENV=test")
+        return self
+
+    @field_validator("reactionx_public_origin")
+    @classmethod
+    def _reactionx_origin(cls, value: str) -> str:
+        match = re.fullmatch(r"https://([a-z0-9.-]+)(?::([0-9]{1,5}))?", value)
+        if match is None or any(
+            re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label) is None
+            for label in match[1].split(".")
+        ):
+            raise ValueError("ReactionX requires an explicit canonical HTTPS origin")
+        if match[2] is not None and (
+            not 1 <= int(match[2]) <= 65535 or str(int(match[2])) != match[2]
+        ):
+            raise ValueError("ReactionX origin port is invalid")
+        return value
+
     evaluation_tool_standalone_base_url: str = "http://localhost:8010"
     evaluation_tool_embedded_path: str = "/evaluation-tool"
     evaluation_login_request_ttl_seconds: int = Field(default=300, ge=60, le=900)
@@ -138,8 +161,7 @@ class Settings(BaseSettings):
 
     def validate_runtime_secrets(self) -> None:
         if self.app_env == "production" and any(
-            network.prefixlen == 0
-            for network in trusted_proxy_networks(self.trusted_proxy_cidrs)
+            network.prefixlen == 0 for network in trusted_proxy_networks(self.trusted_proxy_cidrs)
         ):
             raise ValueError("production forbids catch-all trusted proxy CIDRs")
         registration_fields = (
@@ -194,12 +216,8 @@ class Settings(BaseSettings):
                 if isinstance(service_secret, SecretStr)
                 else str(service_secret)
             )
-            if len(service_token) < 32 or any(
-                character.isspace() for character in service_token
-            ):
-                raise ValueError(
-                    f"{field_name} must be at least 32 non-whitespace characters"
-                )
+            if len(service_token) < 32 or any(character.isspace() for character in service_token):
+                raise ValueError(f"{field_name} must be at least 32 non-whitespace characters")
             service_tokens[field_name] = service_token
         if len(set(service_tokens.values())) != len(service_tokens):
             raise ValueError("evaluation service tokens must be distinct")
@@ -235,9 +253,7 @@ class Settings(BaseSettings):
                 root == forbidden or root.is_relative_to(forbidden)
                 for forbidden in _FORBIDDEN_MEDIA_ROOTS
             ):
-                raise ValueError(
-                    "evaluation media roots must use private application storage"
-                )
+                raise ValueError("evaluation media roots must use private application storage")
             resolved.append(root)
 
         media_root, quarantine_root = resolved

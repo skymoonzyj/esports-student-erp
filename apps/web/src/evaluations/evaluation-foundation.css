@@ -99,10 +99,10 @@
 .foundationForm select,
 .foundationForm textarea {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   padding: 9px 11px;
   border: 1px solid var(--color-border);
-  border-radius: 7px;
+  border-radius: var(--ui-radius-sm, 7px);
   color: var(--color-text-strong);
   background: white;
 }
@@ -125,7 +125,7 @@
 
 .foundationTable th,
 .foundationTable td {
-  padding: 12px 10px;
+  padding: var(--ui-table-cell-y, 12px) 10px;
   border-bottom: 1px solid var(--color-border-soft);
   text-align: left;
   vertical-align: middle;
@@ -134,7 +134,7 @@
 
 .foundationTable th {
   color: var(--color-text-muted);
-  background: #fafbfe;
+  background: var(--color-canvas);
   font-size: 11px;
   font-weight: 700;
 }
@@ -144,7 +144,7 @@
 }
 
 .foundationIconTextButton {
-  min-height: 34px;
+  min-height: 44px;
   padding: 0 9px;
   font-size: 12px;
 }
@@ -200,7 +200,7 @@
 
 .foundationPanelActions button,
 .foundationRoleStrip button {
-  min-height: 38px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -239,7 +239,7 @@
 }
 
 .foundationRoleStrip button {
-  min-height: 28px;
+  min-height: 44px;
   padding: 0 8px;
 }
 
@@ -299,7 +299,7 @@
 
 .foundationSearch input {
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 10px;
   border: 1px solid var(--color-border);
   border-radius: 7px;
@@ -309,7 +309,7 @@
 .matchingDetailHeader button,
 .matchingSectionHeader button,
 .matchingRowActions button {
-  min-height: 40px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -541,7 +541,7 @@
 }
 
 .matchingRowActions button {
-  min-height: 32px;
+  min-height: 44px;
   padding: 0 8px;
   font-size: 12px;
 }
@@ -583,8 +583,9 @@
 }
 
 .foundationDialog > header button {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
   display: grid;
   place-items: center;
   padding: 0;
@@ -775,4 +776,50 @@
   .profileVersionList dl {
     grid-template-columns: 1fr;
   }
+}
+
+.foundationPage,
+.personEvaluationFoundation,
+.foundationDialog {
+  overflow-wrap: anywhere;
+}
+
+.foundationPage :is(button, a, input, select, textarea):focus-visible,
+.personEvaluationFoundation :is(button, a, input, select, textarea):focus-visible,
+.foundationDialog :is(button, input, select, textarea):focus-visible {
+  outline: 3px solid var(--ui-focus-ring, #87baac);
+  outline-offset: 2px;
+}
+
+.foundationToolbar,
+.foundationChecks,
+.matchingDirectory,
+.matchingDetail,
+.profileVersionList article {
+  border-radius: var(--ui-radius-md, 10px);
+}
+
+.foundationToolbar {
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+html[data-ui-theme="command"] .foundationPage { gap: 16px; }
+html[data-ui-theme="command"] .foundationToolbar { padding: 12px 16px; background: var(--color-canvas); }
+html[data-ui-theme="command"] .foundationTabs { gap: 0; padding-bottom: 0; }
+html[data-ui-theme="command"] .foundationTabs button { border-radius: 0; border-bottom: 2px solid transparent; }
+html[data-ui-theme="command"] .foundationTabs button[aria-selected="true"] { border-bottom-color: var(--color-accent-600); }
+html[data-ui-theme="command"] .profileVersionList article { box-shadow: none; }
+
+@media (max-width: 600px) {
+  .foundationPageHeader,
+  .foundationPanelHeader,
+  .foundationToolbar {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .foundationToolbar label { min-width: 0; flex: 1 1 100%; }
+  .foundationToolbar :is(input, select) { min-width: 0; max-width: 100%; }
 }

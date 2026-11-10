@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 
 TARGETS = ("/app/runtime/evaluation-media", "/app/runtime/evaluation-quarantine")
 DATABASE_TARGET = "/var/lib/postgresql/data"
+REACTIONX_TARGET = "/app/runtime/reactionx-release"
 FILES = (
     "compose.yaml",
     "compose.prod.yaml",
@@ -91,7 +92,33 @@ def validate_database_defaults(cfg):
     )
 
 
-def validate_config(cfg):
+def validate_reactionx_mount(cfg, root=None):
+    """Old release configs may omit this optional feature; new ones cannot drift."""
+    api = cfg["services"]["api"]
+    enabled = "REACTIONX_RELEASE_ROOT" in api.get("environment", {})
+    for service, value in cfg["services"].items():
+        mounts = [v for v in value.get("volumes", []) if v["target"] == REACTIONX_TARGET]
+        require(not mounts or (enabled and service == "api"), "Release bundle must be API-only")
+    if not enabled:
+        return
+    require(api["environment"]["REACTIONX_RELEASE_ROOT"] == REACTIONX_TARGET,
+            "Release bundle root must be fixed")
+    mount = configured_mount(cfg, "api", REACTIONX_TARGET)
+    bind = mount.get("bind")
+    # Compose's normalized JSON omits create_host_path when it is false.
+    require(mount["type"] == "bind" and mount.get("read_only") is True
+            and isinstance(bind, dict) and bind.get("create_host_path", False) is False,
+            "Release bundle must be a read-only existing host bind")
+    if root is not None:
+        # Resolve the legitimate release root (current may be its stable link),
+        # but NOT its runtime suffix: resolving both sides would approve a
+        # runtime-directory symlink escaping the candidate.
+        require(Path(mount["source"]).resolve() == root.resolve() / "runtime/reactionx-release",
+                "Release bundle source must belong to the candidate")
+
+
+def validate_config(cfg, root=None):
+    validate_reactionx_mount(cfg, root)
     validate_database_defaults(cfg)
     database = configured_mount(cfg, "db", DATABASE_TARGET)
     require(
@@ -237,6 +264,13 @@ def runtime(cfg, app, project):
             left["Source"] == right["Source"], "API/scheduler physical storage differs"
         )
     check_mount(cfg, "api", by_service["api"], "/app/var")
+    if "REACTIONX_RELEASE_ROOT" in cfg["services"]["api"].get("environment", {}):
+        check_mount(cfg, "api", by_service["api"], REACTIONX_TARGET)
+        for service, container in by_service.items():
+            if service != "api":
+                require(not any(v["Destination"] == REACTIONX_TARGET
+                                for v in container.get("Mounts", [])),
+                        "Release bundle unexpectedly mounted outside API")
 
 
 def atomic_text(path, value):
@@ -348,7 +382,7 @@ def main():
                 "Prior release schema identity differs from database baseline",
             )
         cfg = config(release, project)
-        validate_config(cfg)
+        validate_config(cfg, release)
         if command == "authority":
             existing_api, existing_db = json.loads(
                 docker("inspect", f"{project}-api-1", f"{project}-db-1")

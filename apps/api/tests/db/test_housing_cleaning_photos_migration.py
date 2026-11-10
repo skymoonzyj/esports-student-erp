@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.housing import models
 from app.housing.schemas import HousingAllowedActions, RoomCreate, RoomResponse, RoomUpdate
 from tests.db.test_housing_history_void_migration import cleanup, seed
-from tests.db.test_migrations import _alembic_config
+from tests.db.test_migrations import CURRENT_HEAD, _alembic_config
 
 HEAD = "0071_housing_room_care"
 PREVIOUS = "0070_housing_history_void"
@@ -21,7 +21,7 @@ PREVIOUS = "0070_housing_history_void"
 
 def require_revision(engine):
     config = _alembic_config(engine)
-    assert ScriptDirectory.from_config(config).get_heads() == [HEAD], (
+    assert ScriptDirectory.from_config(config).get_heads() == [CURRENT_HEAD], (
         "room care migration is missing"
     )
     return config
@@ -29,11 +29,13 @@ def require_revision(engine):
 
 @pytest.fixture
 def care_data(postgres_engine):
-    require_revision(postgres_engine)
+    config = require_revision(postgres_engine)
+    command.upgrade(config, CURRENT_HEAD)
     data = seed(postgres_engine)
     try:
         yield data
     finally:
+        command.upgrade(config, CURRENT_HEAD)
         cleanup(postgres_engine, data)
 
 
@@ -95,14 +97,22 @@ def test_upgrade_preserves_existing_room_and_stays(postgres_engine, care_data):
             for table, (query, identifier) in queries.items():
                 assert conn.execute(query, {"id": identifier}).all() == before[table]
         with Session(postgres_engine) as db:
-            upgraded = db.get(models.HousingRoom, room)
+            # Assert the historical migration's fields without selecting later
+            # columns from the current ORM model (0081 adds cleaning_frequency).
+            upgraded = db.execute(select(
+                models.HousingRoom.daily_cleaning_enabled,
+                models.HousingRoom.cleaning_status,
+                models.HousingRoom.cleaning_pending_at,
+                models.HousingRoom.cleaning_completed_at,
+                models.HousingRoom.cleaning_completed_by_user_id,
+            ).where(models.HousingRoom.id == room)).one()
             assert upgraded.daily_cleaning_enabled is False
             assert upgraded.cleaning_status == "ready"
             assert upgraded.cleaning_pending_at is upgraded.cleaning_completed_at is None
             assert upgraded.cleaning_completed_by_user_id is None
             assert db.scalar(select(models.HousingRoomPhoto.id)) is None
     finally:
-        command.upgrade(config, HEAD)
+        command.upgrade(config, CURRENT_HEAD)
 
 
 def test_room_photo_slot_constraints(postgres_engine, care_data):
@@ -194,7 +204,7 @@ def test_downgrade_rejects_existing_care_facts_or_photos(postgres_engine, care_d
     ):
         command.downgrade(config, PREVIOUS)
     with postgres_engine.connect() as conn:
-        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == HEAD
+        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == CURRENT_HEAD
         assert "housing_room_photos" in inspect(conn).get_table_names()
         room_data = (
             conn.execute(text("SELECT * FROM housing_rooms WHERE id=:id"), {"id": room})

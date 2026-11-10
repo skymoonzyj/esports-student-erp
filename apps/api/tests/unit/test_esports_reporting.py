@@ -64,8 +64,9 @@ def report_results(
     *,
     scores: tuple[int, int, int, int] = (95, 75, 55, 25),
     flagged_index: int | None = None,
+    catalog_version: str | None = None,
 ) -> list[ReportResult]:
-    suite = get_suite(suite_id, catalog_version=f"{suite_id}-v2")
+    suite = get_suite(suite_id, catalog_version=catalog_version or f"{suite_id}-v2")
     results: list[ReportResult] = []
     for index, test_id in enumerate(suite.test_ids):
         score = scores[index]

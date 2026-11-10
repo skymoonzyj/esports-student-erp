@@ -59,8 +59,8 @@ from app.teaching.models import CoachAssignment, Cohort, TeachingClass
 
 TEST_KEY = SecretStr("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
 SUITE_TESTS = {
-    "pc-fps": ("precision", "tracking", "switching", "recognition"),
-    "pc-moba": ("last-hit", "orb-walk", "dodge", "map-awareness"),
+    "pc-fps": ("gridshot", "sixshot", "spheretrack90"),
+    "pc-moba": ("last-hit",),
     "mobile-fps": ("precision", "tracking", "switching", "move-fire"),
     "mobile-moba": ("dodge", "skill-aim", "move-attack", "map-awareness"),
 }
@@ -303,10 +303,10 @@ def _valid_evidence(mode: str) -> dict[str, list[SimpleNamespace]]:
         operation_number += 1
         return _uuid(operation_number)
 
-    def suite_snapshot(suite_id: str) -> dict[str, object]:
+    def suite_snapshot(suite_id: str) -> dict[str, Any]:
         return get_suite(
             suite_id,
-            catalog_version=f"{suite_id}-v3",
+            catalog_version=f"{suite_id}-v{5 if suite_id in {'pc-fps', 'pc-moba'} else 3}",
         ).model_dump(mode="json")
 
     session_specs: tuple[tuple[str, str], ...]
@@ -362,7 +362,7 @@ def _valid_evidence(mode: str) -> dict[str, list[SimpleNamespace]]:
         if mode in {"pc", "touch"}:
             test_states = tuple((test_id, "submitted") for test_id in SUITE_TESTS[suite_id])
         else:
-            test_states = (("precision", "submitted"), ("tracking", "interrupted"))
+            test_states = (("gridshot", "submitted"), ("sixshot", "interrupted"))
         final_submission_key: UUID | None = None
         for test_index, (test_id, attempt_state) in enumerate(test_states, start=1):
             attempt_id = _uuid(session_index * 100 + test_index)
@@ -426,7 +426,7 @@ def _valid_evidence(mode: str) -> dict[str, list[SimpleNamespace]]:
                         "scoring_version": frozen_suite["tasks"][SUITE_TESTS[suite_id][0]][
                             "scoring_version"
                         ],
-                        "result_count": 4,
+                        "result_count": len(SUITE_TESTS[suite_id]),
                         "report_id": str(report_id),
                     },
                 )
@@ -434,15 +434,15 @@ def _valid_evidence(mode: str) -> dict[str, list[SimpleNamespace]]:
 
     practice_specs = {
         "pc": (
-            ("pc-fps", "precision", "submitted"),
+            ("pc-fps", "gridshot", "submitted"),
             ("pc-moba", "last-hit", "submitted"),
         ),
         "touch": (
             ("mobile-fps", "precision", "submitted"),
             ("mobile-moba", "dodge", "submitted"),
         ),
-        "recovery": (("pc-fps", "precision", "submitted"),),
-        "capabilities-desktop": (("pc-fps", "precision", "interrupted"),),
+        "recovery": (("pc-fps", "gridshot", "submitted"),),
+        "capabilities-desktop": (("pc-fps", "gridshot", "interrupted"),),
         "capabilities-touch": (("mobile-fps", "move-fire", "interrupted"),),
         "capabilities-webkit": (),
     }[mode]
@@ -466,7 +466,7 @@ def _valid_evidence(mode: str) -> dict[str, list[SimpleNamespace]]:
 @pytest.mark.parametrize(
     ("mode", "counts"),
     [
-        ("pc", (2, 8, 8, 2, 2, 4)),
+        ("pc", (2, 4, 4, 2, 2, 4)),
         ("touch", (2, 8, 8, 2, 2, 4)),
         ("recovery", (1, 2, 1, 0, 1, 1)),
         ("capabilities-desktop", (0, 0, 0, 0, 1, 0)),
@@ -608,6 +608,49 @@ def test_verifier_rejects_stale_frozen_v2_configuration_identity(
         validate_esports_assessments_e2e_evidence(mode="pc", **rows)
 
 
+@pytest.mark.parametrize("attack_mode", ["melee", "ranged"])
+def test_verifier_pins_both_lane_modes_to_their_entire_registered_snapshot(attack_mode: str) -> None:
+    task = get_suite("pc-moba", attack_mode=attack_mode).model_dump(mode="json")["tasks"]["last-hit"]
+    assert seed_module._frozen_task(task, suite_id="pc-moba", test_id="last-hit", reason="lane_identity") == task
+    task["params"]["attack_damage"] += 1
+    with pytest.raises(EsportsAssessmentE2EEvidenceError, match="lane_identity"):
+        seed_module._frozen_task(task, suite_id="pc-moba", test_id="last-hit", reason="lane_identity")
+
+
+def test_current_acceptance_rejects_frozen_no_tower_lane_snapshot() -> None:
+    legacy = get_suite("pc-moba", catalog_version="pc-moba-v4", attack_mode="melee")
+    with pytest.raises(EsportsAssessmentE2EEvidenceError, match="lane_identity"):
+        seed_module._frozen_task(
+            legacy.model_dump(mode="json")["tasks"]["last-hit"],
+            suite_id="pc-moba",
+            test_id="last-hit",
+            reason="lane_identity",
+        )
+
+
+@pytest.mark.parametrize("attack_mode", ["melee", "ranged"])
+def test_current_acceptance_requires_75_opportunity_tower_lane(attack_mode: str) -> None:
+    task = get_suite("pc-moba", catalog_version="pc-moba-v5", attack_mode=attack_mode).model_dump(mode="json")["tasks"]["last-hit"]
+    assert seed_module._frozen_task(task, suite_id="pc-moba", test_id="last-hit", reason="lane_identity") == task
+    assert task["params"]["wave_count"] == 15
+    assert task["params"]["wave_interval_ms"] == 20000
+    assert task["params"]["kind"] == "lane_last_hit_towers"
+    task["params"]["tower_damage"] = 1
+    with pytest.raises(EsportsAssessmentE2EEvidenceError, match="lane_identity"):
+        seed_module._frozen_task(task, suite_id="pc-moba", test_id="last-hit", reason="lane_identity")
+
+
+def test_verifier_rejects_complete_old_four_member_moba_snapshot_in_current_pc_run() -> None:
+    rows = _valid_evidence("pc")
+    session = next(row for row in rows["sessions"] if row.suite_id == "pc-moba")
+    legacy = get_suite("pc-moba", catalog_version="pc-moba-v3").model_dump(mode="json")
+    session.catalog_snapshot = legacy
+    session.scoring_snapshot = deepcopy(legacy)
+    session.report_rules_snapshot = deepcopy(legacy)
+    with pytest.raises(EsportsAssessmentE2EEvidenceError, match="session_config_identity"):
+        validate_esports_assessments_e2e_evidence(mode="pc", **rows)
+
+
 def test_verifier_rejects_stale_v2_raw_kind_behind_v3_identity() -> None:
     rows = _valid_evidence("touch")
     practice = next(row for row in rows["practices"] if row.suite_id == "mobile-moba")
@@ -629,6 +672,71 @@ def test_verifier_rejects_registered_parameter_drift_behind_v3_identity() -> Non
             mode="capabilities-touch",
             **rows,
         )
+
+
+@pytest.mark.parametrize(
+    "field", ["catalog_version", "engine_version", "scoring_version", "report_version"]
+)
+def test_verifier_rejects_v5_task_version_drift(field: str) -> None:
+    rows = _valid_evidence("capabilities-desktop")
+    rows["practices"][0].config_snapshot[field] = "pc-fps-v3"
+
+    with pytest.raises(EsportsAssessmentE2EEvidenceError, match="practice_config_identity"):
+        validate_esports_assessments_e2e_evidence(mode="capabilities-desktop", **rows)
+
+
+@pytest.mark.parametrize(
+    ("test_id", "field", "value"),
+    [
+        ("gridshot", "target_count", 4),
+        ("sixshot", "reference_hits", 300),
+        ("spheretrack90", "kind", "tracking"),
+    ],
+)
+def test_verifier_rejects_registered_v5_parameter_drift(
+    test_id: str,
+    field: str,
+    value: object,
+) -> None:
+    rows = _valid_evidence("pc")
+    attempt = next(row for row in rows["attempts"] if row.test_id == test_id)
+    attempt.config_snapshot["params"][field] = value
+
+    with pytest.raises(EsportsAssessmentE2EEvidenceError, match="attempt_config_identity"):
+        validate_esports_assessments_e2e_evidence(mode="pc", **rows)
+
+
+def test_verifier_rejects_legacy_four_count_audit_for_three_item_pc_fps() -> None:
+    rows = _valid_evidence("pc")
+    completed = next(row for row in rows["audits"] if row.action.endswith("completed"))
+    completed.event_metadata["result_count"] = 4
+
+    with pytest.raises(EsportsAssessmentE2EEvidenceError, match="audit_identity"):
+        validate_esports_assessments_e2e_evidence(mode="pc", **rows)
+
+
+def test_verifier_rejects_complete_legacy_snapshot_in_current_pc_run() -> None:
+    rows = _valid_evidence("pc")
+    legacy = get_suite("pc-fps", catalog_version="pc-fps-v3").model_dump(mode="json")
+    session = rows["sessions"][0]
+    session.catalog_snapshot = deepcopy(legacy)
+    session.scoring_snapshot = deepcopy(legacy)
+    session.report_rules_snapshot = deepcopy(legacy)
+
+    with pytest.raises(EsportsAssessmentE2EEvidenceError, match="session_config_identity"):
+        validate_esports_assessments_e2e_evidence(mode="pc", **rows)
+
+
+def test_verifier_rejects_complete_v4_snapshot_in_current_fixed_board_run() -> None:
+    rows = _valid_evidence("pc")
+    legacy = get_suite("pc-fps", catalog_version="pc-fps-v4").model_dump(mode="json")
+    session = rows["sessions"][0]
+    session.catalog_snapshot = deepcopy(legacy)
+    session.scoring_snapshot = deepcopy(legacy)
+    session.report_rules_snapshot = deepcopy(legacy)
+
+    with pytest.raises(EsportsAssessmentE2EEvidenceError, match="session_config_identity"):
+        validate_esports_assessments_e2e_evidence(mode="pc", **rows)
 
 
 def test_verifier_rejects_report_result_configuration_not_frozen_by_session() -> None:
@@ -764,8 +872,8 @@ def test_main_prints_only_mode_and_aggregate_counts(
     summary = EsportsAssessmentE2EEvidenceSummary(
         mode="pc",
         session_count=2,
-        attempt_count=8,
-        result_count=8,
+        attempt_count=4,
+        result_count=4,
         report_count=2,
         practice_count=2,
         audit_count=4,
@@ -792,7 +900,7 @@ def test_main_prints_only_mode_and_aggregate_counts(
     output = capsys.readouterr().out.strip()
     assert output == (
         "Esports assessment E2E evidence verified: mode=pc sessions=2 "
-        "attempts=8 results=8 reports=2 practices=2 audits=4"
+        "attempts=4 results=4 reports=2 practices=2 audits=4"
     )
     assert str(E2E_SELF_STUDENT_PERSON_ID) not in output
 

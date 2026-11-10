@@ -6,18 +6,24 @@ import { AssessmentSessionPage } from './AssessmentSessionPage'
 import { renderAssessmentPage, studentFixture } from './testSupport/renderAssessmentPage'
 import catalog from './testSupport/catalog-v1.json'
 import currentCatalog from './testSupport/catalog-v2.json'
+import catalogV3 from './testSupport/catalog-v3.json'
+import catalogV5 from './testSupport/catalog-v5.json'
+import laneV4 from './testSupport/catalog-moba-v4.json'
+import laneV5 from './testSupport/catalog-moba-v5.json'
+import { fixtureV4SuiteConfig } from './testSupport/fixturesV4'
 import { fixtureAttempt, fixturePending, fixtureRaw, fixtureSuiteConfig } from './testSupport/fixtures'
 import { loadPending, savePending } from './pending'
-import type { SessionView } from './contracts'
+import { suiteConfigSchema, type SessionView } from './contracts'
 import { pcFpsFactory } from './suites/pcFps'
 import { mobileFpsFactory } from './suites/mobileFps'
+import type * as FpsStageExports from './fps/FpsStage'
 
 vi.mock('./availability', () => ({ ASSESSMENT_SUITE_AVAILABILITY: { 'pc-fps': true, 'mobile-fps': true, 'pc-moba': true, 'mobile-moba': true } }))
 vi.mock('./moba/MobaStage', () => ({ MobaStage: ({ canvasRef, onReady }: { canvasRef: React.Ref<HTMLCanvasElement>; onReady: () => void }) => {
   useEffect(() => { onReady() }, [onReady])
   return <canvas ref={canvasRef} aria-label="MOBA 测评场景" />
 } }))
-vi.mock('./fps/FpsStage', () => ({ FpsStage: ({ canvasRef, onReady }: { canvasRef: React.Ref<HTMLCanvasElement>; onReady: () => void }) => {
+vi.mock('./fps/FpsStage', async importOriginal => ({ ...await importOriginal<typeof FpsStageExports>(), FpsStage: ({ canvasRef, onReady }: { canvasRef: React.Ref<HTMLCanvasElement>; onReady: () => void }) => {
   useEffect(() => { onReady() }, [onReady])
   return <canvas ref={canvasRef} aria-label="FPS 测试场景" />
 } }))
@@ -41,6 +47,40 @@ it('allows any unsaved item first and does not increase progress on selection', 
   expect(await screen.findByRole('heading', { name: '敌我识别' })).toBeVisible()
   fireEvent.click(screen.getByText('返回项目列表'))
   expect(await screen.findByText('已保存 0 / 4')).toBeVisible()
+})
+it('shows exactly the frozen three v4 tasks and a three-item completion denominator', async () => {
+  const frozen = fixtureV4SuiteConfig()
+  mount(true, id, { ...session, suite_config: frozen, members: frozen.test_ids })
+  expect(await screen.findByText('已保存 0 / 3')).toBeVisible()
+  for (const name of ['网格射击', '六目标射击', '90°范围跟枪']) expect(screen.getByRole('button', { name })).toBeVisible()
+  expect(screen.queryByRole('button', { name: '敌我识别' })).toBeNull()
+  expect(screen.getByText(/本轮保留旧版三项规则/)).toBeVisible()
+  expect(screen.queryByText(/旧版四项/)).toBeNull()
+})
+it.each([laneV4, laneV5])('keeps $catalog_version a single five-minute lane task without a legacy four-item warning', async source => {
+  const frozen = suiteConfigSchema.parse(source)
+  mount(true, id, { ...session, suite_id: 'pc-moba', suite_config: frozen, members: frozen.test_ids })
+  expect(await screen.findByText('已保存 0 / 1')).toBeVisible()
+  expect(screen.getByRole('button', { name: '五分钟兵线补刀' })).toBeVisible()
+  expect(screen.getByText(/本轮只有一个五分钟兵线补刀/)).toBeVisible()
+  expect(screen.queryByText(/旧版四项|每项正式运行 60 秒/)).toBeNull()
+})
+it('shows the v5 fixed-board triad without a legacy four-item warning', async () => {
+  const frozen = suiteConfigSchema.parse(catalogV5['pc-fps'])
+  mount(true, id, { ...session, suite_config: frozen, members: frozen.test_ids })
+  expect(await screen.findByText('已保存 0 / 3')).toBeVisible()
+  expect(screen.queryByText(/旧版四项|旧版三项/)).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '网格射击' }))
+  expect(await screen.findByText(/目标固定在靶区内，视角到边缘会停止转动/)).toBeVisible()
+  expect(screen.queryByText(/旧版四项/)).toBeNull()
+})
+it.each(['v1', 'v2', 'v3'] as const)('explains that an old desktop %s round remains frozen rather than silently becoming the new triad', async version => {
+  const snapshot = version === 'v3' ? suiteConfigSchema.parse(catalogV3['pc-fps']) : fixtureSuiteConfig('pc-fps', version === 'v1' ? 'v1' : 'current')
+  mount(true, id, { ...session, suite_config: snapshot })
+  expect(await screen.findByText(/本轮保留旧版四项规则/)).toBeVisible()
+  expect(screen.getByText(/不会自动删除或替换已保存成绩/)).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '定位精度' }))
+  expect(await screen.findByText(/本轮保留旧版四项规则/)).toBeVisible()
 })
 it('does not offer a host after effective participation permission is revoked', async () => {
   mount(false)
@@ -192,14 +232,16 @@ it.each([
   mount(true, id, { ...session, suite_id: suite, suite_config: snapshot, members: snapshot.test_ids })
   await screen.findByRole('heading', { name: '正式评测项目' })
   const message = '本轮使用旧版目标规则。完成本轮后新建，或放弃本轮后新建，可使用屏内刷新。放弃会保留已保存项目，但本轮不再生成报告。'
-  expect(screen.queryByText(message) !== null).toBe(version === 'v1')
+  expect(screen.queryByText(message, { exact: false }) !== null).toBe(version === 'v1')
+  if (suite === 'mobile-fps' && version === 'v1') expect(screen.getByText(message)).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '定位精度' }))
   await screen.findByRole('heading', { name: '定位精度' })
-  expect(screen.queryByText(message) !== null).toBe(version === 'v1')
+  expect(screen.queryByText(message, { exact: false }) !== null).toBe(version === 'v1')
+  if (suite === 'mobile-fps' && version === 'v1') expect(screen.getByText(message)).toBeVisible()
   await enterTrial(suite)
-  expect(screen.queryByText(message)).toBeNull()
+  expect(screen.queryByText(message, { exact: false })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: '结束试练' }))
-  expect(screen.queryByText(message) !== null).toBe(version === 'v1')
+  expect(screen.queryByText(message, { exact: false }) !== null).toBe(version === 'v1')
 })
 
 it.each([

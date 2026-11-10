@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { buildDodgeChoicePlan } from './ruleSchedule'
-import { registeredRule } from './versionRules'
+import { isPcFpsTriadCatalog, isPcMobaLaneCatalog, registeredRule } from './versionRules'
 
 const finite = z.number().finite()
 const nonnegative = finite.nonnegative()
@@ -10,7 +10,7 @@ const time = nonnegative.max(60000)
 const uuid = z.uuid()
 const date = z.iso.datetime({ offset: true })
 export const suiteIdSchema = z.enum(['pc-fps', 'mobile-fps', 'pc-moba', 'mobile-moba'])
-export const testIdSchema = z.enum(['precision', 'tracking', 'switching', 'recognition', 'move-fire', 'last-hit', 'orb-walk', 'dodge', 'map-awareness', 'skill-aim', 'move-attack'])
+export const testIdSchema = z.enum(['precision', 'tracking', 'switching', 'recognition', 'move-fire', 'last-hit', 'orb-walk', 'dodge', 'map-awareness', 'skill-aim', 'move-attack', 'gridshot', 'sixshot', 'spheretrack90'])
 export const modeSchema = z.enum(['formal', 'practice'])
 export const runStateSchema = z.enum(['running', 'awaiting_submission', 'interrupted', 'expired', 'submitted'])
 export const inputKindSchema = z.enum(['mouse', 'touch', 'mixed', 'unknown'])
@@ -19,6 +19,8 @@ export type TestId = z.infer<typeof testIdSchema>
 export type Mode = z.infer<typeof modeSchema>
 export type RunState = z.infer<typeof runStateSchema>
 export type InputKind = z.infer<typeof inputKindSchema>
+export const attackModeSchema = z.enum(['melee', 'ranged'])
+export type AttackMode = z.infer<typeof attackModeSchema>
 export const suiteMembers: Readonly<Record<SuiteId, readonly TestId[]>> = {
   'pc-fps': ['precision', 'tracking', 'switching', 'recognition'],
   'mobile-fps': ['precision', 'tracking', 'switching', 'move-fire'],
@@ -26,14 +28,28 @@ export const suiteMembers: Readonly<Record<SuiteId, readonly TestId[]>> = {
   'mobile-moba': ['dodge', 'skill-aim', 'move-attack', 'map-awareness'],
 }
 const registeredCatalogVersions: Readonly<Record<SuiteId, readonly string[]>> = {
-  'pc-fps': ['pc-fps-v1', 'pc-fps-v2', 'pc-fps-v3'],
+  'pc-fps': ['pc-fps-v1', 'pc-fps-v2', 'pc-fps-v3', 'pc-fps-v4', 'pc-fps-v5'],
   'mobile-fps': ['mobile-fps-v1', 'mobile-fps-v2', 'mobile-fps-v3'],
-  'pc-moba': ['pc-moba-v1', 'pc-moba-v2', 'pc-moba-v3'],
+  'pc-moba': ['pc-moba-v1', 'pc-moba-v2', 'pc-moba-v3', 'pc-moba-v4', 'pc-moba-v5'],
   'mobile-moba': ['mobile-moba-v1', 'mobile-moba-v2', 'mobile-moba-v3'],
+}
+/** Exact frozen members. Versionless identities use the supported historical union instead. */
+export function suiteMembersForCatalog(suiteId: SuiteId, catalogVersion: string): readonly TestId[] {
+  if (!registeredCatalogVersions[suiteId].includes(catalogVersion)) throw new Error('unknown catalog version')
+  if (isPcMobaLaneCatalog(suiteId, catalogVersion)) return ['last-hit']
+  return isPcFpsTriadCatalog(suiteId, catalogVersion) ? ['gridshot', 'sixshot', 'spheretrack90'] : suiteMembers[suiteId]
+}
+export function isSupportedSuiteTest(suiteId: SuiteId, testId: TestId): boolean {
+  return suiteMembers[suiteId].includes(testId) || (suiteId === 'pc-fps' && ['gridshot', 'sixshot', 'spheretrack90'].includes(testId))
 }
 const fps = { horizontal_fov_deg: positive, pitch_limit_deg: positive, fire_interval_ms: positive }
 const moba = { logical_width: positive, logical_height: positive, player_radius: positive, player_speed: positive, attack_range: positive }
+const lane = { ...moba, attack_mode: attackModeSchema, wave_interval_ms: positive, wave_count: count, melee_per_wave: count, ranged_per_wave: count, attack_windup_ms: positive, attack_interval_ms: positive, attack_damage: positive, projectile_speed: nonnegative }
 export const paramsSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ ...lane, kind: z.literal('lane_last_hit_towers'), hero_health: positive, respawn_ms: positive, tower_damage: positive, tower_interval_ms: positive, tower_windup_ms: positive, tower_range: positive, tower_projectile_speed: positive, tower_positions: z.array(z.strictObject({ id: z.enum(['ally-rear', 'ally-front', 'enemy-front', 'enemy-rear']), team: z.enum(['ally', 'enemy']), x: nonnegative, y: nonnegative })).length(4) }),
+  z.strictObject({ ...moba, kind: z.literal('lane_last_hit'), attack_mode: attackModeSchema, wave_interval_ms: positive, wave_count: count, melee_per_wave: count, ranged_per_wave: count, attack_windup_ms: positive, attack_interval_ms: positive, attack_damage: positive, projectile_speed: nonnegative }),
+  z.strictObject({ ...fps, kind: z.literal('multi_target'), target_count: count.positive(), target_diameter_deg: positive, grid_columns: count.positive(), grid_rows: count.positive(), grid_spacing_deg: positive, reference_hits: count.positive() }),
+  z.strictObject({ ...fps, kind: z.literal('spheretrack90'), target_diameter_deg: positive, speed_deg_s: positive, horizontal_bound_deg: positive, vertical_bound_deg: positive, direction_interval_ms: positive, turn_ms: positive }),
   z.strictObject({ ...fps, kind: z.literal('aim'), opportunity_count: count.min(1).max(40), window_ms: positive, target_diameter_deg: positive, angle_distances_deg: z.array(positive).max(3), distance_repetitions: count, target_separation_deg: nonnegative, group_count: count, group_ms: nonnegative, fast_ms: positive, slow_ms: positive }),
   z.strictObject({ ...fps, kind: z.literal('tracking'), target_diameter_deg: positive, speed_deg_s: positive, horizontal_bound_deg: positive, vertical_bound_deg: positive, direction_interval_ms: positive, turn_ms: positive }),
   z.strictObject({ ...fps, kind: z.literal('recognition'), opportunity_count: count, enemy_count: count, friend_count: count, round_ms: positive, window_ms: positive, target_diameter_deg: positive, angle_distances_deg: z.array(positive).max(3), distance_repetitions: count, fast_ms: positive, slow_ms: positive }),
@@ -47,12 +63,19 @@ export const paramsSchema = z.discriminatedUnion('kind', [
   z.strictObject({ ...moba, kind: z.literal('map'), opportunity_count: count, window_ms: positive, target_radius: positive, event_count: count, event_start_ms: positive, event_interval_ms: positive, event_window_ms: positive, minimap_x: nonnegative, minimap_y: nonnegative, minimap_width: positive, minimap_height: positive }),
 ])
 /** Exact registered parameters, including practice transformations; not client overrides. */
-function registeredParams(suite: SuiteId, test: TestId, difficulty: number, catalogVersion: string): z.infer<typeof paramsSchema> {
+function registeredParams(suite: SuiteId, test: TestId, difficulty: number, catalogVersion: string, attackMode: AttackMode = 'melee'): z.infer<typeof paramsSchema> {
   const [size, speed, window, distance] = [[1.5, .6, 1.4, .7], [1.25, .8, 1.2, .85], [1, 1, 1, 1], [.85, 1.15, .85, 1.1], [.7, 1.3, .7, 1.2]][difficulty - 1]
   const mobile = suite.startsWith('mobile')
   const f = { horizontal_fov_deg: 90, pitch_limit_deg: 70, fire_interval_ms: 200 }
   const m = { logical_width: 1000, logical_height: 562.5, player_radius: 12, player_speed: 180, attack_range: 180 }
+  if (isPcMobaLaneCatalog(suite, catalogVersion)) {
+    const shared = { ...m, attack_mode: attackMode, player_speed: 250, attack_range: attackMode === 'melee' ? 55 : 210, melee_per_wave: 3, ranged_per_wave: 2, attack_windup_ms: attackMode === 'melee' ? 300 : 450, attack_interval_ms: attackMode === 'melee' ? 1100 : 1250, attack_damage: attackMode === 'melee' ? 70 : 54, projectile_speed: attackMode === 'melee' ? 0 : 500 }
+    if (catalogVersion === 'pc-moba-v4') return { ...shared, kind: 'lane_last_hit', wave_interval_ms: 30000, wave_count: 10 }
+    return { ...shared, kind: 'lane_last_hit_towers', wave_interval_ms: 20000, wave_count: 15, hero_health: 1000, respawn_ms: 5000, tower_damage: 180, tower_interval_ms: 1200, tower_windup_ms: 300, tower_range: 240, tower_projectile_speed: 650, tower_positions: [{ id: 'ally-rear', team: 'ally', x: 70, y: 162.5 }, { id: 'ally-front', team: 'ally', x: 280, y: 400 }, { id: 'enemy-front', team: 'enemy', x: 720, y: 162.5 }, { id: 'enemy-rear', team: 'enemy', x: 930, y: 400 }] }
+  }
   switch (test) {
+    case 'gridshot': case 'sixshot': return { ...f, pitch_limit_deg: catalogVersion === 'pc-fps-v5' ? (test === 'gridshot' ? 9 : 12) : 70, fire_interval_ms: 50, kind: 'multi_target', target_count: test === 'gridshot' ? 3 : 6, target_diameter_deg: (test === 'gridshot' ? 6 : 1.5) * size, grid_columns: 5, grid_rows: test === 'gridshot' ? 3 : 5, grid_spacing_deg: test === 'gridshot' ? (catalogVersion === 'pc-fps-v5' ? 9 : 10) : 6, reference_hits: test === 'gridshot' ? 300 : 150 }
+    case 'spheretrack90': return { ...f, kind: 'spheretrack90', target_diameter_deg: 3 * size, speed_deg_s: 30 * speed, horizontal_bound_deg: 40, vertical_bound_deg: 15, direction_interval_ms: 2000, turn_ms: 200 }
     case 'precision': return { ...f, kind: 'aim', opportunity_count: 30, window_ms: 2000, target_diameter_deg: (mobile ? 5 : 3) * size, angle_distances_deg: (mobile ? [8, 16, 24] : [10, 20, 30]).map(x => x * distance), distance_repetitions: 10, target_separation_deg: 0, group_count: 0, group_ms: 0, fast_ms: mobile ? 550 : 350, slow_ms: 2000 }
     case 'switching': return { ...f, kind: 'aim', opportunity_count: 40, window_ms: 1500, target_diameter_deg: (mobile ? 6 : 4) * size, angle_distances_deg: [], distance_repetitions: 0, target_separation_deg: (mobile ? 20 : 25) * distance, group_count: 20, group_ms: 3000, fast_ms: mobile ? 450 : 300, slow_ms: 1500 }
     case 'tracking': return { ...f, kind: 'tracking', target_diameter_deg: (mobile ? 6 : 4) * size, speed_deg_s: (mobile ? 20 : 30) * speed, horizontal_bound_deg: 30, vertical_bound_deg: 15, direction_interval_ms: 2000, turn_ms: 200 }
@@ -70,18 +93,19 @@ function registeredParams(suite: SuiteId, test: TestId, difficulty: number, cata
   }
 }
 export const taskConfigSchema = z.strictObject({
-  suite_id: suiteIdSchema, test_id: testIdSchema, catalog_version: z.string(), engine_version: z.string(), scoring_version: z.string(), report_version: z.string(), duration_ms: z.literal(60000), difficulty: count.min(1).max(5), params: paramsSchema,
+  suite_id: suiteIdSchema, test_id: testIdSchema, catalog_version: z.string(), engine_version: z.string(), scoring_version: z.string(), report_version: z.string(), duration_ms: z.union([z.literal(60000), z.literal(300000)]), difficulty: count.min(1).max(5), params: paramsSchema,
 }).superRefine((value, ctx) => {
   const fail = (message: string) => ctx.addIssue({ code: 'custom', message })
   let identity
   try { identity = registeredRule(value.suite_id, value.test_id, value.catalog_version) } catch { fail('unknown rule version'); return }
-  if (!suiteMembers[value.suite_id].includes(value.test_id) || identity.raw_kind !== value.params.kind) fail('task does not belong to suite or engine')
+  if (!suiteMembersForCatalog(value.suite_id, value.catalog_version).includes(value.test_id) || identity.raw_kind !== value.params.kind) fail('task does not belong to suite or engine')
   if (!registeredCatalogVersions[value.suite_id].includes(value.catalog_version)
     || value.engine_version !== value.catalog_version
     || value.scoring_version !== identity.scoring_version
     || value.report_version !== identity.report_version) fail('unknown rule version')
   const p = value.params
-  const expected = registeredParams(value.suite_id, value.test_id, value.difficulty, value.catalog_version)
+  if (value.duration_ms !== (isPcMobaLaneCatalog(value.suite_id, value.catalog_version) ? 300000 : 60000)) fail('duration differs from registered rule version')
+  const expected = registeredParams(value.suite_id, value.test_id, value.difficulty, value.catalog_version, p.kind === 'lane_last_hit' || p.kind === 'lane_last_hit_towers' ? p.attack_mode : undefined)
   if (Object.entries(expected).some(([key, expectedValue]) => JSON.stringify(Reflect.get(p, key)) !== JSON.stringify(expectedValue))) fail('parameters differ from registered rule version')
   if (p.kind === 'dodge' && p.warning_ms + p.spawn_distance / p.projectile_speed * 1000 > p.window_ms) fail('threat cannot arrive within round')
   if (p.kind === 'rhythm' && p.attack_windup_ms + p.checkpoint_distance / p.player_speed * 1000 > p.window_ms) fail('checkpoint unreachable')
@@ -94,19 +118,30 @@ export const taskConfigSchema = z.strictObject({
   }
 })
 export type TaskConfig = z.infer<typeof taskConfigSchema>
+export type LaneLastHitParams = Extract<TaskConfig['params'], { kind: 'lane_last_hit' }>
+export type LaneTowerLastHitParams = Extract<TaskConfig['params'], { kind: 'lane_last_hit_towers' }>
+export function isLaneTaskConfig(config: TaskConfig): config is TaskConfig & { params: LaneLastHitParams | LaneTowerLastHitParams } {
+  return config.suite_id === 'pc-moba' && config.test_id === 'last-hit'
+    && ((config.catalog_version === 'pc-moba-v4' && config.params.kind === 'lane_last_hit')
+      || (config.catalog_version === 'pc-moba-v5' && config.params.kind === 'lane_last_hit_towers'))
+    && taskConfigSchema.safeParse(config).success
+}
 /** Local trial preview only; retain frozen v1/v2 identity. Actual attempts use server configuration. */
-export function previewTaskConfig(base: TaskConfig, difficulty: number): TaskConfig {
+export function previewTaskConfig(base: TaskConfig, difficulty: number, attackMode?: AttackMode): TaskConfig {
   const valid = taskConfigSchema.parse(base)
   const level = z.number().int().min(1).max(5).parse(difficulty)
-  return taskConfigSchema.parse({ ...valid, difficulty: level, params: registeredParams(valid.suite_id, valid.test_id, level, valid.catalog_version) })
+  if (attackMode && !isPcMobaLaneCatalog(valid.suite_id, valid.catalog_version)) throw new Error('attack mode is only supported for lane last hit')
+  return taskConfigSchema.parse({ ...valid, difficulty: level, params: registeredParams(valid.suite_id, valid.test_id, level, valid.catalog_version, attackMode ?? (isLaneTaskConfig(valid) ? valid.params.attack_mode : undefined)) })
 }
-export const suiteConfigSchema = z.strictObject({ suite_id: suiteIdSchema, catalog_version: z.string(), test_ids: z.tuple([testIdSchema, testIdSchema, testIdSchema, testIdSchema]), tasks: z.partialRecord(testIdSchema, taskConfigSchema) }).superRefine((v, ctx) => {
-  if (!registeredCatalogVersions[v.suite_id].includes(v.catalog_version) || JSON.stringify(v.test_ids) !== JSON.stringify(suiteMembers[v.suite_id]) || Object.keys(v.tasks).length !== 4 || v.test_ids.some(id => v.tasks[id]?.suite_id !== v.suite_id || v.tasks[id]?.test_id !== id || v.tasks[id]?.difficulty !== 3 || v.tasks[id]?.catalog_version !== v.catalog_version)) ctx.addIssue({ code: 'custom', message: 'incompatible suite members' })
+export const suiteConfigSchema = z.strictObject({ suite_id: suiteIdSchema, catalog_version: z.string(), test_ids: z.array(testIdSchema).min(1).max(4), tasks: z.partialRecord(testIdSchema, taskConfigSchema) }).superRefine((v, ctx) => {
+  if (!registeredCatalogVersions[v.suite_id].includes(v.catalog_version) || JSON.stringify(v.test_ids) !== JSON.stringify(suiteMembersForCatalog(v.suite_id, v.catalog_version)) || Object.keys(v.tasks).length !== v.test_ids.length || v.test_ids.some(id => v.tasks[id]?.suite_id !== v.suite_id || v.tasks[id]?.test_id !== id || v.tasks[id]?.difficulty !== 3 || v.tasks[id]?.catalog_version !== v.catalog_version)) ctx.addIssue({ code: 'custom', message: 'incompatible suite members' })
 })
 export type SuiteConfig = z.infer<typeof suiteConfigSchema>
 
 const aimRawSchema = z.strictObject({ kind: z.literal('aim'), trials: z.array(z.strictObject({ hit: z.boolean(), latency_ms: time })).min(30).max(40), shots: count.max(300), wrong_target_shots: count.max(300) })
 const trackingRawSchema = z.strictObject({ kind: z.literal('tracking'), coverage_ms: time, loss_count: count.max(7200), reacquisition_ms: z.array(time).max(7200) }).refine(v => v.reacquisition_ms.length <= v.loss_count && v.reacquisition_ms.reduce((a, b) => a + b, 0) + v.coverage_ms <= 60000, 'inconsistent reacquisition')
+const spheretrackRawSchema = z.strictObject({ kind: z.literal('spheretrack90'), coverage_ms: time, loss_count: count.max(7200), reacquisition_ms: z.array(time).max(7200) }).refine(v => v.reacquisition_ms.length <= v.loss_count && v.reacquisition_ms.reduce((a, b) => a + b, 0) + v.coverage_ms <= 60000, 'inconsistent reacquisition')
+const multiTargetRawSchema = z.strictObject({ kind: z.literal('multi_target'), shots: z.array(z.strictObject({ at_ms: nonnegative.lt(60000), hit: z.boolean() })).max(1200) }).refine(v => v.shots.every((shot, index) => index === 0 || shot.at_ms - v.shots[index - 1].at_ms >= 50), 'invalid shot interval')
 const recognitionRawSchema = z.strictObject({ kind: z.literal('recognition'), trials: z.array(z.strictObject({ target_kind: z.enum(['enemy', 'friend']), shot: z.boolean(), hit: z.boolean(), latency_ms: time }).refine(t => !t.hit || t.shot, 'hit requires shot')).length(30) })
 const moveFireRawSchema = z.strictObject({ kind: z.literal('move_fire'), rounds: z.array(z.strictObject({ hit: z.boolean(), reached: z.boolean() })).length(20), shots: count.max(300) })
 const moveFireV3RoundSchema = z.strictObject({
@@ -137,7 +172,11 @@ const dodgeChoiceRoundSchema = z.strictObject({
 const dodgeChoiceRawSchema = z.strictObject({ kind: z.literal('dodge_choice'), rounds: z.array(dodgeChoiceRoundSchema).length(30) })
 const skillAimRawSchema = z.strictObject({ kind: z.literal('skill_aim'), trials: z.array(z.strictObject({ released: z.boolean(), hit: z.boolean(), angle_error_deg: nonnegative.max(180).nullable(), release_latency_ms: time.nullable(), hit_latency_ms: time.nullable() }).refine(t => t.released === (t.release_latency_ms !== null) && t.released === (t.angle_error_deg !== null) && t.hit === (t.hit_latency_ms !== null) && (!t.hit || (t.released && t.hit_latency_ms! >= t.release_latency_ms!)), 'inconsistent release/hit')).length(30) })
 const mapRawSchema = z.strictObject({ kind: z.literal('map'), main_hits: z.array(z.boolean()).length(30), events: z.array(z.strictObject({ response: z.enum(['correct', 'wrong', 'missed']), latency_ms: time })).length(12), unprompted_count: count.max(60000) })
-export const rawResultSchema = z.discriminatedUnion('kind', [aimRawSchema, trackingRawSchema, recognitionRawSchema, moveFireRawSchema, moveFireV3RawSchema, lastHitRawSchema, rhythmRawSchema, dodgeRawSchema, dodgeChoiceRawSchema, skillAimRawSchema, mapRawSchema])
+export const laneLastHitRawSchema = z.strictObject({ kind: z.literal('lane_last_hit'), deaths: z.array(z.strictObject({ unit_id: count.max(49), at_ms: count.lt(300000), by_player: z.boolean() })).max(50), attacks: count, cancelled_attacks: count.max(15000) }).refine(v => new Set(v.deaths.map(d => d.unit_id)).size === v.deaths.length && v.deaths.every((d, i) => d.at_ms >= Math.floor(d.unit_id / 5) * 30000 && (i === 0 || d.at_ms > v.deaths[i - 1].at_ms || (d.at_ms === v.deaths[i - 1].at_ms && d.unit_id > v.deaths[i - 1].unit_id))), 'invalid lane death sequence')
+export type LaneLastHitRaw = z.infer<typeof laneLastHitRawSchema>
+export const laneTowerLastHitRawSchema = z.strictObject({ kind: z.literal('lane_last_hit_towers'), deaths: z.array(z.strictObject({ unit_id: count.max(74), at_ms: count.lt(300000), by_player: z.boolean() })).max(75), attacks: count, cancelled_attacks: count.max(15000), hero_death_times: z.array(count.lt(300000)).max(60), hero_damage_taken: count.max(90000) }).refine(v => new Set(v.deaths.map(d => d.unit_id)).size === v.deaths.length && v.deaths.every((d, i) => d.at_ms >= Math.floor(d.unit_id / 5) * 20000 && (i === 0 || d.at_ms > v.deaths[i - 1].at_ms || (d.at_ms === v.deaths[i - 1].at_ms && d.unit_id > v.deaths[i - 1].unit_id))) && v.hero_death_times.every((t, i) => i === 0 || t - v.hero_death_times[i - 1] >= 5000) && v.hero_damage_taken >= v.hero_death_times.length * 1000 && v.hero_damage_taken < (v.hero_death_times.length + 1) * 1000, 'invalid tower lane life or death sequence')
+export type LaneTowerLastHitRaw = z.infer<typeof laneTowerLastHitRawSchema>
+export const rawResultSchema = z.discriminatedUnion('kind', [laneLastHitRawSchema, laneTowerLastHitRawSchema, aimRawSchema, trackingRawSchema, spheretrackRawSchema, multiTargetRawSchema, recognitionRawSchema, moveFireRawSchema, moveFireV3RawSchema, lastHitRawSchema, rhythmRawSchema, dodgeRawSchema, dodgeChoiceRawSchema, skillAimRawSchema, mapRawSchema])
 export type RawResult = z.infer<typeof rawResultSchema>
 
 export function validateRaw(config: TaskConfig, value: unknown): RawResult {
@@ -145,6 +184,7 @@ export function validateRaw(config: TaskConfig, value: unknown): RawResult {
   const raw = rawResultSchema.parse(value)
   if (raw.kind !== p.kind) throw new Error('raw kind does not match config')
   const require = (valid: boolean) => { if (!valid) throw new Error('inconsistent raw statistics') }
+  if ((raw.kind === 'lane_last_hit' || raw.kind === 'lane_last_hit_towers') && (p.kind === 'lane_last_hit' || p.kind === 'lane_last_hit_towers')) require(raw.attacks <= Math.ceil((config.duration_ms - p.attack_windup_ms) / p.attack_interval_ms) && raw.deaths.filter(d => d.by_player).length <= raw.attacks)
   if (raw.kind === 'aim' && p.kind === 'aim') {
     const hits = raw.trials.filter(t => t.hit).length
     require(raw.trials.length === p.opportunity_count && raw.shots >= hits && raw.wrong_target_shots <= raw.shots - hits && (config.test_id !== 'precision' || raw.wrong_target_shots === 0))
@@ -230,12 +270,12 @@ export function validateSettings(config: TaskConfig, settings: ControlSettings, 
     }
   }
 }
-export const qualityInputSchema = z.strictObject({ duration_ms: time, max_frame_gap_ms: time, long_frame_gap_total_ms: time, input_kind: inputKindSchema, hidden: z.boolean(), interrupted: z.boolean() })
+export const qualityInputSchema = z.strictObject({ duration_ms: nonnegative.max(300000), max_frame_gap_ms: nonnegative.max(300000), long_frame_gap_total_ms: nonnegative.max(300000), input_kind: inputKindSchema, hidden: z.boolean(), interrupted: z.boolean() })
 export type QualityInput = z.infer<typeof qualityInputSchema>
 export const operationRequestSchema = z.strictObject({ operation_key: uuid })
-export const sessionCreateSchema = operationRequestSchema.extend({ suite_id: suiteIdSchema })
+export const sessionCreateSchema = operationRequestSchema.extend({ suite_id: suiteIdSchema, attack_mode: attackModeSchema.optional() })
 export const attemptCreateSchema = operationRequestSchema.extend({ test_id: testIdSchema, settings: controlSettingsSchema, environment: environmentSnapshotSchema })
-export const practiceCreateSchema = attemptCreateSchema.extend({ suite_id: suiteIdSchema, difficulty: count.min(1).max(5) })
+export const practiceCreateSchema = attemptCreateSchema.extend({ suite_id: suiteIdSchema, difficulty: count.min(1).max(5), attack_mode: attackModeSchema.optional() })
 export const resultSubmitSchema = operationRequestSchema.extend({ raw: rawResultSchema, quality: qualityInputSchema })
 export type SessionCreate = z.infer<typeof sessionCreateSchema>
 export type AttemptCreate = z.infer<typeof attemptCreateSchema>
@@ -257,7 +297,7 @@ export const practiceResultSchema = z.strictObject({ metrics: metricsSchema, sco
 export type ScoredResult = z.infer<typeof scoredResultSchema>
 export type PracticeResult = z.infer<typeof practiceResultSchema>
 export const sessionResultViewSchema = z.strictObject({ result_id: uuid, test_id: testIdSchema, scored: scoredResultSchema })
-export const sessionViewSchema = z.strictObject({ id: uuid, suite_id: suiteIdSchema, suite_config: suiteConfigSchema, status: z.enum(['in_progress', 'completed', 'abandoned']), members: z.tuple([testIdSchema, testIdSchema, testIdSchema, testIdSchema]), results: z.array(sessionResultViewSchema).max(4), report_id: uuid.nullable() }).refine(v => v.suite_config.suite_id === v.suite_id && JSON.stringify(v.members) === JSON.stringify(suiteMembers[v.suite_id]) && new Set(v.results.map(r => r.test_id)).size === v.results.length && v.results.every(r => v.members.includes(r.test_id)) && (v.status !== 'completed' || (v.results.length === 4 && v.report_id !== null)), 'inconsistent session members')
+export const sessionViewSchema = z.strictObject({ id: uuid, suite_id: suiteIdSchema, suite_config: suiteConfigSchema, status: z.enum(['in_progress', 'completed', 'abandoned']), members: z.array(testIdSchema).min(1).max(4), results: z.array(sessionResultViewSchema).max(4), report_id: uuid.nullable() }).refine(v => v.suite_config.suite_id === v.suite_id && JSON.stringify(v.members) === JSON.stringify(v.suite_config.test_ids) && new Set(v.results.map(r => r.test_id)).size === v.results.length && v.results.every(r => v.members.includes(r.test_id)) && (v.status !== 'completed' || (v.results.length === v.members.length && v.report_id !== null)), 'inconsistent session members')
 export type SessionView = z.infer<typeof sessionViewSchema>
 export const resultSaveViewSchema = z.discriminatedUnion('mode', [
   z.strictObject({ mode: z.literal('formal'), result_id: uuid, scored: scoredResultSchema, session: sessionViewSchema }),
@@ -266,9 +306,9 @@ export const resultSaveViewSchema = z.discriminatedUnion('mode', [
 export type ResultSaveView = z.infer<typeof resultSaveViewSchema>
 export const reportResultSchema = z.strictObject({ result_id: uuid, test_id: testIdSchema, config: taskConfigSchema, settings: controlSettingsSchema, environment: environmentSnapshotSchema, scored: scoredResultSchema })
 export const reportComparisonSchema = z.strictObject({ test_id: testIdSchema, previous_report_id: uuid.nullable(), score_delta: z.number().int().min(-100).max(100).nullable(), non_comparable_reasons: z.array(z.string()) })
-export const assessmentReportViewSchema = z.strictObject({ id: uuid, session_id: uuid, suite_id: suiteIdSchema, suite: suiteConfigSchema, person: z.strictObject({ person_id: uuid, display_name: z.string().min(1).max(200) }), completed_at: date, results: z.tuple([reportResultSchema, reportResultSchema, reportResultSchema, reportResultSchema]), recommendations: z.array(z.string()).max(16), comparisons: z.array(reportComparisonSchema).max(4) })
+export const assessmentReportViewSchema = z.strictObject({ id: uuid, session_id: uuid, suite_id: suiteIdSchema, suite: suiteConfigSchema, person: z.strictObject({ person_id: uuid, display_name: z.string().min(1).max(200) }), completed_at: date, results: z.array(reportResultSchema).min(1).max(4), recommendations: z.array(z.string()).max(16), comparisons: z.array(reportComparisonSchema).max(4) }).refine(v => v.results.length === v.suite.test_ids.length && v.results.every((result, index) => result.test_id === v.suite.test_ids[index] && JSON.stringify(result.config) === JSON.stringify(v.suite.tasks[result.test_id])), 'inconsistent report members')
 export type AssessmentReportView = z.infer<typeof assessmentReportViewSchema>
 export type ReportResult = z.infer<typeof reportResultSchema>
 export type ReportComparison = z.infer<typeof reportComparisonSchema>
-export const pendingSubmissionSchema = resultSubmitSchema.extend({ account_id: uuid, mode: modeSchema, suite_id: suiteIdSchema, test_id: testIdSchema, attempt_id: uuid, session_id: uuid.nullable(), created_at: date }).refine(v => (v.mode === 'formal') === (v.session_id !== null) && suiteMembers[v.suite_id].includes(v.test_id), 'pending identity mismatch')
+export const pendingSubmissionSchema = resultSubmitSchema.extend({ account_id: uuid, mode: modeSchema, suite_id: suiteIdSchema, test_id: testIdSchema, attempt_id: uuid, session_id: uuid.nullable(), created_at: date }).refine(v => (v.mode === 'formal') === (v.session_id !== null) && isSupportedSuiteTest(v.suite_id, v.test_id), 'pending identity mismatch')
 export type PendingSubmission = z.infer<typeof pendingSubmissionSchema>

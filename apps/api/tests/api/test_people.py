@@ -57,6 +57,8 @@ def test_admin_reads_personnel_counts_by_profile(
         "guardian": 1,
         "staff": 3,
         "coach": 1,
+        "staff_team_manager": 0,
+        "assistant_coach": 0,
         "life_teacher": 0,
         "customer_service": 1,
         "administration": 1,

@@ -34,6 +34,32 @@ function fill() {
   fireEvent.change(screen.getByLabelText("本人邮箱"), { target: { value: "applicant@example.test" } })
 }
 
+it("claims a return permit with an explicit discriminator and preserves manual completion on number edit", async () => {
+  show(); fill()
+  fireEvent.change(screen.getByLabelText("证件类型"), { target: { value: "hk_mo_permit" } })
+  fireEvent.change(screen.getByLabelText("出生日期（可暂缺）"), { target: { value: "1990-01-02" } })
+  fireEvent.change(screen.getByLabelText("回乡证号码"), { target: { value: "m1234567802" } })
+  expect(screen.getByLabelText("出生日期（可暂缺）")).toHaveValue("1990-01-02")
+  expect(screen.queryByLabelText("签发国家（两位代码，可暂缺）")).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", { name: "请求邮箱验证码" }))
+  await screen.findByLabelText("验证码")
+  expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({ document_type: "hk_mo_permit", identity_number: "M12345678", completion: { sex: null, date_of_birth: "1990-01-02" } })
+})
+
+it("claims an HK identity with separate optional birthday and sex and clears completion on document switching", async () => {
+  show(); fill()
+  fireEvent.change(screen.getByLabelText("出生日期（可暂缺）"), { target: { value: "1990-01-02" } })
+  fireEvent.change(screen.getByLabelText("证件类型"), { target: { value: "hk_id" } })
+  expect(screen.getByLabelText("出生日期（可暂缺）")).toHaveValue("")
+  expect(screen.getByLabelText("性别（可暂缺）")).toHaveValue("")
+  fireEvent.change(screen.getByLabelText("香港身份证号码"), { target: { value: "a1234563" } })
+  fireEvent.change(screen.getByLabelText("出生日期（可暂缺）"), { target: { value: "1990-01-02" } })
+  expect(screen.getByText(/年龄：\d+ 周岁/)).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "请求邮箱验证码" }))
+  await screen.findByLabelText("验证码")
+  expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({ document_type: "hk_id", identity_number: "A1234563", completion: { sex: null, date_of_birth: "1990-01-02" } })
+})
+
 it("keeps the public claim form closed until initial auth restore settles", async () => {
   let finishRestore!: (response: Response) => void
   fetcher.mockImplementation(async (url) => {

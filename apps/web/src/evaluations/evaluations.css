@@ -1,4 +1,5 @@
 .evaluationPage {
+  min-width: 0;
   width: min(100%, 1220px);
   margin: 0 auto;
 }
@@ -33,7 +34,7 @@
   flex-direction: column;
   padding: 22px;
   border: 1px solid var(--color-border-soft);
-  border-radius: 8px;
+  border-radius: var(--ui-radius-lg, 12px);
   background: var(--color-surface);
   box-shadow: var(--shadow-card-soft);
 }
@@ -46,8 +47,8 @@
 }
 
 .evaluationBranch.active > svg {
-  color: #6f4a98;
-  background: #f4edfa;
+  color: var(--color-accent-800);
+  background: var(--color-accent-soft);
 }
 
 .evaluationBranch.disabled > svg {
@@ -88,7 +89,7 @@
 }
 
 .evaluationBranch > a {
-  color: #6f4a98;
+  color: var(--color-accent-800);
   text-decoration: none;
 }
 
@@ -115,7 +116,7 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  color: #6f4a98;
+  color: var(--color-accent-800);
   font-size: 13px;
   font-weight: 750;
   text-decoration: none;
@@ -343,7 +344,7 @@
   padding: 0 14px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  color: #6f4a98;
+  color: var(--color-accent-800);
   background: var(--color-surface);
   font-size: 13px;
   font-weight: 750;
@@ -442,4 +443,49 @@
     min-height: calc(100dvh - 190px);
     margin-bottom: 8px;
   }
+}
+
+.evaluationBranch,
+.evaluationConnectCard,
+.evaluationEmpty,
+.evaluationLoading,
+.evaluationFrameShell {
+  border-radius: var(--ui-radius-lg, 12px);
+  overflow-wrap: anywhere;
+}
+
+.evaluationPage :is(a, button):focus-visible,
+.systemEvaluationPage :is(a, button):focus-visible {
+  outline: 3px solid var(--ui-focus-ring, #87baac);
+  outline-offset: 3px;
+}
+
+html[data-ui-theme="command"] .evaluationBranchGrid {
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ui-radius-lg, 10px);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+html[data-ui-theme="command"] .evaluationBranch {
+  min-height: 214px;
+  padding: 18px;
+  border: 0;
+  border-inline-end: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-ui-theme="command"] .evaluationBranch > div {
+  margin-block: 16px;
+}
+
+html[data-ui-theme="command"] .evaluationBranch > .evaluationSurveyLinks {
+  margin: auto 0 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evaluationFrameShell iframe { transition: none; }
 }

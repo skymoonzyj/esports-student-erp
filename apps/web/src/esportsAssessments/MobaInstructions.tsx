@@ -8,6 +8,20 @@ function guideFor(config: TaskConfig): Guide | null {
   const click = ['pc-moba-v2', 'pc-moba-v3'].includes(config.engine_version) ? '左键或右键单击' : '右键单击'
   const guideColor = ['mobile-moba-v2', 'mobile-moba-v3'].includes(config.engine_version) ? '蓝色' : '黄色'
   switch (p.kind) {
+    case 'lane_last_hit_towers': return {
+      purpose: `五分钟真实兵线补刀；本轮人物已锁定为${p.attack_mode === 'melee' ? '近战剑盾' : '远程弓弩'}，不需要再做另一种人物。每 20 秒生成一波兵线，双方各两座防御塔。`,
+      action: '左键点敌兵持续攻击，超出距离会先靠近；左键点地面移动并取消未释放的前摇。目标死亡后停止，不会自动换目标。右键单击也可使用。防御塔不可攻击，会优先攻击范围内敌兵，没有敌兵时攻击玩家。',
+      example: '观察双方小兵交战后的真实血量，在一次普攻能够击杀时出手；远程还要留出弹道飞行时间。避开高伤害敌塔，人物没有自动回血。',
+      success: '敌兵实际死于你的普攻才算补刀；友兵和防御塔击杀不计补刀。已死亡但非你击杀算漏刀；仍存活的敌兵为未结算。人物死亡后 5 秒后满血复活，整场计时不停；死亡期间不能操作，复活后需重新下达指令。',
+      scoring: '共 15 波、75 个敌兵。总分 = 100 × 补刀数 / 75；补刀率 = 补刀 / 已死亡敌兵，总机会完成率 = 补刀 / 75。人物死亡不额外扣分，但会损失操作时间。近战、远程和旧规则分别排名。',
+    }
+    case 'lane_last_hit': return {
+      purpose: `五分钟真实兵线补刀；本轮人物已锁定为${p.attack_mode === 'melee' ? '近战剑盾' : '远程弓弩'}，不需要再做另一种人物。`,
+      action: '左键点敌兵持续攻击，超出距离会先靠近；左键点地面移动并取消未释放的前摇。目标死亡后停止，不会自动换目标。右键单击也可使用。',
+      example: '观察双方小兵交战后的真实血量，在自己的一次普攻能够击杀时出手；远程攻击还要留出弹道飞行时间。',
+      success: '敌兵实际死于你的普攻才算补刀。已死亡但非你击杀算漏刀；到时仍存活的敌兵为未结算，不记为漏刀。',
+      scoring: '共 10 波、50 个敌兵。总分 = 100 × 补刀数 / 50；补刀率 = 补刀 / 已死亡敌兵，总机会完成率 = 补刀 / 50。近战、远程和旧规则分别排名。',
+    }
     case 'last_hit': return {
       purpose: '观察血量变化，练习最后一击的出手时机。这是固定血量轨迹的时机模拟，不是完整对线。',
       action: `${click}小兵。出手后有 ${p.attack_windup_ms} 毫秒前摇，移动会取消尚未完成的攻击；攻击间隔 ${p.attack_interval_ms} 毫秒。`,
@@ -64,6 +78,6 @@ export function MobaInstructions({ config }: { config: TaskConfig }) {
     <dl><div><dt>怎么操作</dt><dd>{guide.action}</dd></div><div><dt>操作示例</dt><dd>{guide.example}</dd></div>
       <div><dt>怎样才算成功</dt><dd>{guide.success}</dd></div><div><dt>如何计分</dt><dd>{guide.scoring}</dd></div></dl>
     <p className="assessmentMobaGuideNote">先用不保存成绩的试练熟悉操作。正式测试为内部训练参考，不等同于游戏段位或职业水平；自由练习只保存原始指标。</p>
-    {config.suite_id === 'pc-moba' && config.test_id !== 'map-awareness' && <p className="assessmentMobaGuideNote">使用右键时请单击；如浏览器启用了右键拖动返回手势，可关闭该手势{['pc-moba-v2', 'pc-moba-v3'].includes(config.engine_version) ? '或改用左键操作' : ''}。</p>}
+    {config.suite_id === 'pc-moba' && config.test_id !== 'map-awareness' && <p className="assessmentMobaGuideNote">使用右键时请单击；如浏览器启用了右键拖动返回手势，可关闭该手势{['pc-moba-v2', 'pc-moba-v3', 'pc-moba-v4', 'pc-moba-v5'].includes(config.engine_version) ? '或改用左键操作' : ''}。</p>}
   </section>
 }

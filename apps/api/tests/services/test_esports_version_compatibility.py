@@ -1,4 +1,4 @@
-"""Exercise persisted v1/v2 runs through v3 defaults, including immutable reports."""
+"""Exercise persisted v1/v2 runs through current defaults, including immutable reports."""
 
 from copy import deepcopy
 from datetime import timedelta
@@ -75,7 +75,14 @@ def test_old_formal_round_can_finish_after_upgrade_without_becoming_a_v3_compari
             )
             == first_saved
         )
-    assert catalog.get_suite(suite_id).catalog_version == f"{suite_id}-v3"
+    current_suite = catalog.get_suite(suite_id)
+    assert current_suite.catalog_version == (
+        "pc-fps-v5"
+        if suite_id == "pc-fps"
+        else "pc-moba-v5"
+        if suite_id == "pc-moba"
+        else f"{suite_id}-v3"
+    )
 
     def complete(session, at, version, *, start_index=0, use_persisted_version=False):
         saved = first_saved if start_index else None
@@ -96,9 +103,10 @@ def test_old_formal_round_can_finish_after_upgrade_without_becoming_a_v3_compari
                 if use_persisted_version
                 else result_request(suite_id, test_id, seed=run.seed)
             )
-            saved = service.submit(actor, run.id, submission, started_at + timedelta(seconds=63))
+            completed_at = started_at + timedelta(milliseconds=run.config.duration_ms + 3000)
+            saved = service.submit(actor, run.id, submission, completed_at)
             assert (
-                service.submit(actor, run.id, submission, started_at + timedelta(seconds=64))
+                service.submit(actor, run.id, submission, completed_at + timedelta(seconds=1))
                 == saved
             )
         assert saved is not None
@@ -113,12 +121,15 @@ def test_old_formal_round_can_finish_after_upgrade_without_becoming_a_v3_compari
     frozen = deepcopy(db.get(AssessmentReport, old_report_id).report_snapshot)
     queries = AssessmentQueries(db, actor, NOW + timedelta(minutes=20))
     assert queries.report(old_report_id).suite.catalog_version == f"{suite_id}-v{revision}"
-    new = service.create(actor, session_request(suite_id), NOW + timedelta(minutes=10))
-    assert new.suite_config.catalog_version == f"{suite_id}-v3"
+    request = session_request(suite_id)
+    if suite_id == "pc-moba":
+        request = request.model_copy(update={"attack_mode": "melee"})
+    new = service.create(actor, request, NOW + timedelta(minutes=10))
+    assert new.suite_config.catalog_version == current_suite.catalog_version
     new_report_id = complete(
         new,
         NOW + timedelta(minutes=10),
-        f"{suite_id}-v3",
+        current_suite.catalog_version,
         use_persisted_version=True,
     )
     report = queries.report(new_report_id)
@@ -126,11 +137,13 @@ def test_old_formal_round_can_finish_after_upgrade_without_becoming_a_v3_compari
     assert [result.config for result in report.results] == [
         new.suite_config.tasks[test_id] for test_id in new.members
     ]
-    assert len(report.comparisons) == 4
+    assert len(report.comparisons) == len(new.members)
     for comparison in report.comparisons:
-        assert comparison.previous_report_id == old_report_id
+        assert comparison.previous_report_id == (None if suite_id == "pc-fps" else old_report_id)
         assert comparison.score_delta is None
-        assert comparison.non_comparable_reasons == ("config_changed",)
+        assert comparison.non_comparable_reasons == (
+            ("no_comparable_history",) if suite_id == "pc-fps" else ("config_changed",)
+        )
     assert db.get(AssessmentReport, old_report_id).report_snapshot == frozen
 
 
@@ -148,15 +161,22 @@ def test_old_practice_pending_submits_and_replays_under_its_frozen_version(
     with monkeypatch.context() as patch:
         patch.setattr(catalog, "get_task", lambda *_args: legacy)
         old = service.start(actor, request, NOW)
-    assert catalog.get_task(suite_id, test_id).catalog_version == f"{suite_id}-v3"
+    current_suite = catalog.get_suite(suite_id)
+    current_test_id = current_suite.test_ids[0]
+    assert (
+        catalog.get_task(suite_id, current_test_id).catalog_version == current_suite.catalog_version
+    )
     replay = service.start(actor, request, NOW + timedelta(seconds=1))
     assert replay.id == old.id and replay.config.catalog_version == f"{suite_id}-v{revision}"
     submission = result_request(suite_id, test_id, seed=old.seed)
     saved = service.submit(actor, old.id, submission, NOW + timedelta(seconds=63))
     assert service.submit(actor, old.id, submission, NOW + timedelta(seconds=64)) == saved
     assert saved.scored.score is None and saved.session is None
-    current = service.start(actor, practice_request(suite_id, test_id), NOW + timedelta(seconds=65))
-    assert current.config.catalog_version == f"{suite_id}-v3"
+    request = practice_request(suite_id, current_test_id)
+    if suite_id == "pc-moba":
+        request = request.model_copy(update={"attack_mode": "melee"})
+    current = service.start(actor, request, NOW + timedelta(seconds=65))
+    assert current.config.catalog_version == current_suite.catalog_version
     queries = AssessmentQueries(db, actor, NOW + timedelta(minutes=2))
     assert (
         queries.detail("practice", old.id).attempt.config.catalog_version

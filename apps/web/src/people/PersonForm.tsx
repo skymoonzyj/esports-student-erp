@@ -3,10 +3,12 @@ import { useQuery } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 import { useForm } from "react-hook-form"
 import type { DefaultValues } from "react-hook-form"
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { z } from "zod"
 
 import { ProblemDetailsError } from "../api/client"
+import { useOptionalAuth } from "../auth/AuthProvider"
+import { useAssistedPeopleContext } from "../assistedPeople/useAssistedPeopleContext"
 import { createPerson, getPerson, updatePerson } from "./api"
 import type { PersonDetail, PersonInput, PersonType, StaffType } from "./api"
 import "./people.css"
@@ -232,6 +234,8 @@ export function PersonForm({ personId }: { personId?: string }) {
         </div>
       </div>
 
+      {!isEditing ? <ManagedCreateEntry /> : null}
+
       <form className="personFormCard" onSubmit={submit} noValidate>
         <fieldset className="personTypeChooser" disabled={isEditing}>
           <legend>人员类型</legend>
@@ -349,6 +353,8 @@ export function PersonForm({ personId }: { personId?: string }) {
                 >
                   <option value="">请选择</option>
                   <option value="coach">教练</option>
+                  <option value="team_manager">战队经理</option>
+                  <option value="assistant_coach">助教</option>
                   <option value="life_teacher">生活老师</option>
                   <option value="customer_service">客服</option>
                   <option value="administration">行政管理</option>
@@ -403,4 +409,16 @@ export function PersonForm({ personId }: { personId?: string }) {
       </form>
     </div>
   )
+}
+
+function ManagedCreateEntry() {
+  const auth = useOptionalAuth()
+  if (auth?.status !== "authenticated" || !auth.user) return null
+  return <ManagedCreateEntryAccount key={auth.user.account_id} accountId={auth.user.account_id} />
+}
+
+function ManagedCreateEntryAccount({ accountId }: { accountId: string }) {
+  const context = useAssistedPeopleContext(accountId)
+  if (context.isFetching || context.isError || !context.context?.can_direct_create) return null
+  return <p className="assistedFormNotice">此页保存人员档案，不设置激活角色。如需同时批准激活角色，请使用 <Link to="/people/assisted-create">管理建档并设置激活角色</Link>。</p>
 }

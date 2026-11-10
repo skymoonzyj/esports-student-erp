@@ -19,7 +19,13 @@ from app.identity.models import Person
 from app.team_management import write_support as support
 from app.team_management.access import TeamAccessService
 from app.team_management.errors import TeamNotFound, TeamOperationConflict, TeamServiceError
-from app.team_management.models import TeamManagerAssignment, TeamMembership, TeamOperation
+from app.team_management.models import (
+    TeamManagerAssignment,
+    TeamMembership,
+    TeamOperation,
+    TeamStaffAssignment,
+)
+from app.team_management.person_staff_models import PersonTeamStaffPosition
 from app.team_management.projection import current_membership_read_filter
 from app.team_management.schemas import (
     TeamAllocationInput,
@@ -53,7 +59,18 @@ def _relationships(
         .join(UserAccount, UserAccount.id == TeamManagerAssignment.account_id)
         .where(UserAccount.person_id == person_id, TeamManagerAssignment.ended_at.is_(None))
     )
-    return member, manager
+    staff = exists(
+        select(TeamStaffAssignment.id)
+        .join(UserAccount, UserAccount.id == TeamStaffAssignment.account_id)
+        .where(UserAccount.person_id == person_id, TeamStaffAssignment.ended_at.is_(None))
+    )
+    personnel_staff = exists(
+        select(PersonTeamStaffPosition.id).where(
+            PersonTeamStaffPosition.person_id == person_id,
+            PersonTeamStaffPosition.ended_at.is_(None),
+        )
+    )
+    return member, or_(manager, staff, personnel_staff)
 
 
 def allocation_read_scope(db: Session, actor: AuthContext) -> tuple[ColumnElement[bool], bool]:
@@ -66,7 +83,8 @@ def allocation_read_scope(db: Session, actor: AuthContext) -> tuple[ColumnElemen
     roles = access._actor_roles(actor)
     decisions = access.rbac.decision_context(actor.account.id)
     global_read = (
-        "super_admin" in roles and decisions.decide("team_memberships.read", {"global"}).allowed
+        bool(roles & {"administration", "super_admin"})
+        and decisions.decide("team_memberships.read", {"global"}).allowed
     )
     own_decision = decisions.decide("team_memberships.read", {"global", f"self:{actor.person.id}"})
     own_read = bool(roles & {"super_admin", "team_member"}) and own_decision.allowed
@@ -91,7 +109,29 @@ def allocation_read_scope(db: Session, actor: AuthContext) -> tuple[ColumnElemen
             TeamManagerAssignment.team_id.in_(visible_teams),
         )
     )
-    scope = or_(member_readable, manager_readable, and_(~member, ~manager, empty_allowed))
+    staff_readable = exists(
+        select(TeamStaffAssignment.id)
+        .join(UserAccount, UserAccount.id == TeamStaffAssignment.account_id)
+        .where(
+            UserAccount.person_id == Person.id,
+            TeamStaffAssignment.ended_at.is_(None),
+            TeamStaffAssignment.team_id.in_(visible_teams),
+        )
+    )
+    personnel_staff_readable = exists(
+        select(PersonTeamStaffPosition.id).where(
+            PersonTeamStaffPosition.person_id == Person.id,
+            PersonTeamStaffPosition.ended_at.is_(None),
+            PersonTeamStaffPosition.team_id.in_(visible_teams),
+        )
+    )
+    scope = or_(
+        member_readable,
+        manager_readable,
+        staff_readable,
+        personnel_staff_readable,
+        and_(~member, ~manager, empty_allowed),
+    )
     # Self denies win across alternative entrances, just as in real team reads.
     if own_decision.reason == "explicit_deny":
         scope = and_(scope, Person.id != actor.person.id)

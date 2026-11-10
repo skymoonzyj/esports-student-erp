@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 from sqlalchemy import Engine, delete, func, or_, select, text
@@ -11,7 +12,7 @@ from app.audit.models import AuditEvent
 from app.auth.models import AuthSession, UserAccount
 from app.auth.schemas import AccountCreate
 from app.auth.service import AccountService, AuthContext
-from app.esports_assessments.catalog import get_task
+from app.esports_assessments.catalog import get_suite, get_task
 from app.esports_assessments.models import (
     AssessmentAttempt,
     AssessmentPracticeRun,
@@ -212,6 +213,28 @@ def session_request(suite_id: str = "pc-fps", key: UUID | None = None) -> Sessio
     return SessionCreate(suite_id=suite_id, operation_key=key or uuid4())
 
 
+def create_v3_session(service, actor, request, now):
+    """Explicit historical fixture: freeze only creation, never the current test catalog."""
+    frozen = get_suite(request.suite_id, catalog_version=f"{request.suite_id}-v3")
+    with patch("app.esports_assessments.catalog.get_suite", return_value=frozen):
+        return service.create(actor, request, now)
+
+
+def pin_moba_v4(monkeypatch):
+    """Keep historical v4 tests on their frozen catalog, not the current default."""
+    from app.esports_assessments import catalog
+
+    for name in ("get_suite", "get_task"):
+        original = getattr(catalog, name)
+
+        def frozen(suite_id, *args, _original=original, **kwargs):
+            if suite_id == "pc-moba" and kwargs.get("catalog_version") is None:
+                kwargs["catalog_version"] = "pc-moba-v4"
+            return _original(suite_id, *args, **kwargs)
+
+        monkeypatch.setattr(catalog, name, frozen)
+
+
 def attempt_request(
     suite_id: str,
     test_id: str,
@@ -245,11 +268,32 @@ def result_request(
     raw = sample_raw(suite_id, test_id, perfect=perfect, seed=seed)
     if config is not None and config.catalog_version == f"{suite_id}-v3":
         raw = sample_raw_v3(config, perfect=perfect, seed=seed)
+    updates = quality_updates or {}
+    if config is not None and config.params.kind in ("lane_last_hit", "lane_last_hit_towers"):
+        opportunities = config.params.wave_count * (
+            config.params.melee_per_wave + config.params.ranged_per_wave
+        )
+        raw = {
+            "kind": config.params.kind,
+            "deaths": [
+                {
+                    "unit_id": i,
+                    "at_ms": i // 5 * int(config.params.wave_interval_ms) + 1000 + i % 5,
+                    "by_player": perfect,
+                }
+                for i in range(opportunities)
+            ],
+            "attacks": opportunities,
+            "cancelled_attacks": 0,
+        }
+        if config.params.kind == "lane_last_hit_towers":
+            raw.update({"hero_death_times": [], "hero_damage_taken": 0})
+        updates = {"duration_ms": config.duration_ms, **updates}
     return ResultSubmit.model_validate(
         {
             "operation_key": key or uuid4(),
             "raw": raw,
-            "quality": quality(suite_id, **(quality_updates or {})),
+            "quality": quality(suite_id, **updates),
         }
     )
 

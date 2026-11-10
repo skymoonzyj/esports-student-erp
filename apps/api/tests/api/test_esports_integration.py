@@ -12,7 +12,7 @@ from httpx import Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.esports_assessments.config_schemas import MEMBERS
+from app.esports_assessments.config_schemas import MEMBERS, members_for_catalog
 from app.esports_assessments.formal_service import FormalAssessmentService
 from app.esports_assessments.models import (
     AssessmentAttempt,
@@ -55,9 +55,14 @@ def completed_four_suites(db: Session) -> CompletedFourSuites:
     report_ids: list[UUID] = []
     practice_ids: list[UUID] = []
 
-    for suite_index, (suite_id, members) in enumerate(MEMBERS.items()):
+    for suite_index, (suite_id, members) in enumerate(
+        (suite_id, members_for_catalog(suite_id)) for suite_id in MEMBERS
+    ):
         suite_started_at = NOW + timedelta(hours=suite_index * 2)
-        session = formal.create(actor, session_request(suite_id), suite_started_at)
+        request = session_request(suite_id)
+        if suite_id == "pc-moba":
+            request = request.model_copy(update={"attack_mode": "melee"})
+        session = formal.create(actor, request, suite_started_at)
         session_ids.append(session.id)
         saved = None
         for member_index, test_id in enumerate(members):
@@ -77,7 +82,7 @@ def completed_four_suites(db: Session) -> CompletedFourSuites:
                     seed=attempt.seed,
                     catalog_version=attempt.config.catalog_version,
                 ),
-                attempt_started_at + timedelta(seconds=63),
+                attempt_started_at + timedelta(milliseconds=attempt.config.duration_ms + 3000),
             )
         assert saved is not None
         assert saved.session.report_id is not None
@@ -87,13 +92,16 @@ def completed_four_suites(db: Session) -> CompletedFourSuites:
 
     formal_counts = assessment_counts(db, actor.person.id)
 
-    for suite_index, (suite_id, members) in enumerate(MEMBERS.items()):
+    for suite_index, (suite_id, members) in enumerate(
+        (suite_id, members_for_catalog(suite_id)) for suite_id in MEMBERS
+    ):
         practice_started_at = NOW + timedelta(hours=10 + suite_index * 2)
         test_id = members[0]
         run = practice.start(
             actor,
             PracticeCreate(
                 suite_id=suite_id,
+                attack_mode="melee" if suite_id == "pc-moba" else None,
                 test_id=test_id,
                 difficulty=3,
                 settings=settings(suite_id),
@@ -111,7 +119,7 @@ def completed_four_suites(db: Session) -> CompletedFourSuites:
                 seed=run.seed,
                 catalog_version=run.config.catalog_version,
             ),
-            practice_started_at + timedelta(seconds=63),
+            practice_started_at + timedelta(milliseconds=run.config.duration_ms + 3000),
         )
         assert saved.mode == "practice"
         assert saved.result_id == run.id
@@ -133,12 +141,12 @@ def test_formal_and_practice_counts_stay_separate(
 ) -> None:
     completed = completed_four_suites
     assert completed.formal_counts_before_practice == {
-        "formal_results": 16,
+        "formal_results": 12,
         "formal_reports": 4,
         "practice_results": 0,
     }
     assert assessment_counts(db, completed.person_id) == {
-        "formal_results": 16,
+        "formal_results": 12,
         "formal_reports": 4,
         "practice_results": 4,
     }
@@ -155,8 +163,10 @@ def test_formal_and_practice_counts_stay_separate(
     assert len(reports) == 4
     for row in reports:
         report = AssessmentReportView.model_validate(row.report_snapshot)
-        assert tuple(item.test_id for item in report.results) == MEMBERS[report.suite_id]
-        assert len(report.comparisons) == 4
+        assert tuple(item.test_id for item in report.results) == members_for_catalog(
+            report.suite_id, report.suite.catalog_version
+        )
+        assert len(report.comparisons) == len(report.suite.test_ids)
 
 
 def _login(client: TestClient, platform_users, key: str = "self_student") -> str:
@@ -250,7 +260,7 @@ def test_http_expired_unsubmitted_and_submitted_replay_are_distinct(
     session_id = created.json()["id"]
     first = db_client.post(
         f"{PREFIX}/sessions/{session_id}/attempts",
-        json=_json(attempt_request("pc-fps", "precision")),
+        json=_json(attempt_request("pc-fps", "gridshot")),
         headers=headers,
     )
     assert first.status_code == 201
@@ -258,7 +268,7 @@ def test_http_expired_unsubmitted_and_submitted_replay_are_distinct(
     assert first_attempt is not None
     first_request = result_request(
         "pc-fps",
-        "precision",
+        "gridshot",
         seed=first.json()["seed"],
         catalog_version=first.json()["config"]["catalog_version"],
     )
@@ -283,7 +293,7 @@ def test_http_expired_unsubmitted_and_submitted_replay_are_distinct(
     clock[0] += timedelta(seconds=1)
     second = db_client.post(
         f"{PREFIX}/sessions/{session_id}/attempts",
-        json=_json(attempt_request("pc-fps", "tracking")),
+        json=_json(attempt_request("pc-fps", "spheretrack90")),
         headers=headers,
     )
     assert second.status_code == 201
@@ -291,7 +301,7 @@ def test_http_expired_unsubmitted_and_submitted_replay_are_distinct(
     assert second_attempt is not None
     second_request = result_request(
         "pc-fps",
-        "tracking",
+        "spheretrack90",
         seed=second.json()["seed"],
         catalog_version=second.json()["config"]["catalog_version"],
     )

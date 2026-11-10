@@ -2,17 +2,37 @@
   min-width: 0;
   margin: 1rem 0;
   padding: clamp(.75rem, 2vw, 1.25rem);
-  border: 1px solid var(--border-color, #d1d5db);
-  border-radius: .75rem;
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: var(--ui-radius-lg, .75rem);
+  background: var(--color-surface, #fff);
+  color: var(--color-text);
+  box-shadow: var(--shadow-card-soft);
   overflow-wrap: anywhere;
 }
 .assessmentRankingSummary { display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; }
 .assessmentRankingTableWrap { max-width: 100%; overflow-x: auto; }
 .assessmentRanking table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-.assessmentRanking th, .assessmentRanking td { padding: .65rem .4rem; text-align: left; border-bottom: 1px solid var(--border-color, #d1d5db); }
+.assessmentRanking th, .assessmentRanking td { padding: var(--ui-table-cell-y, .75rem) .65rem; text-align: left; border-bottom: 1px solid var(--color-border, #d1d5db); }
+.assessmentRanking th { color: var(--color-text-muted); background: var(--color-canvas); font-size: .8rem; }
+.assessmentRanking td:first-child { color: var(--color-accent-800); font-weight: 750; font-variant-numeric: tabular-nums; }
+.assessmentRanking h2 { margin-top: 0; color: var(--color-text-strong); }
 .assessmentRanking caption { text-align: left; margin-bottom: .5rem; }
-.assessmentRanking button { min-height: 44px; padding: .5rem 1rem; }
+.assessmentRanking button { min-height: 44px; padding: .5rem 1rem; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 7px); color: var(--color-text); background: var(--color-surface); font-weight: 650; }
+.assessmentRanking a { color: var(--color-accent-800); text-underline-offset: 3px; }
+.itemRanking td > span, .itemRanking td > small, .itemRanking td > strong { display: block; }
+.itemRanking td > small { color: var(--color-text-muted); margin-top: .25rem; }
+.itemRanking table td { vertical-align: top; }
+.itemRanking .assessmentRankingSummary > p { flex: 1 1 12rem; }
+html[data-ui-theme="command"] .assessmentRanking { box-shadow: none; padding: 1rem; }
+html[data-ui-theme="command"] .assessmentRankingSummary { gap: 0; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 6px); background: var(--color-canvas); margin-bottom: 1rem; }
+html[data-ui-theme="command"] .assessmentRankingSummary > * { margin: 0; padding: .75rem 1rem; border-inline-end: 1px solid var(--color-border); }
 @media (max-width: 480px) {
   .assessmentRankingSummary { display: block; }
   .assessmentRanking th, .assessmentRanking td { padding: .5rem .25rem; font-size: .875rem; }
+  .itemRanking thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .itemRanking table, .itemRanking tbody, .itemRanking tr, .itemRanking td { display: block; width: 100%; }
+  .itemRanking caption { display: block; width: 100%; }
+  .itemRanking tr { padding: .5rem 0; border-bottom: 1px solid var(--color-border); }
+  .itemRanking td { box-sizing: border-box; border: 0; }
+  .itemRanking td::before { content: attr(data-label); display: block; color: var(--color-text-muted); font-size: .75rem; margin-bottom: .25rem; }
 }

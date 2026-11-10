@@ -9,6 +9,7 @@ import type {
   ServiceStatus,
   VerificationStatus,
 } from "./api"
+import { CLEANING_FREQUENCY_OPTIONS } from "./api"
 
 type HousingFiltersProps = {
   catalog: HousingCatalog
@@ -73,6 +74,12 @@ export function HousingFilters({
 }: HousingFiltersProps) {
   const mobile = useMobile()
   const [draft, setDraft] = useState<HousingFiltersValue>(value)
+  const draftRef = useRef(draft)
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const composingRef = useRef(false)
+  const pendingSearchRef = useRef(false)
+  const onApplyRef = useRef(onApply)
+  onApplyRef.current = onApply
   const panelRef = useRef<HTMLElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const restoreFocusRef = useRef(false)
@@ -84,8 +91,33 @@ export function HousingFilters({
   }, [onOpenChange])
 
   useEffect(() => {
-    if (!open) setDraft(value)
-  }, [open, value])
+    // A normalized server query must not replace the user's raw search text.
+    setDraft((current) => {
+      const next = { ...value, query: pendingSearchRef.current || (current.query ?? "").trim() === (value.query ?? "").trim() ? current.query : value.query }
+      draftRef.current = next
+      return next
+    })
+  }, [value])
+
+  useEffect(() => () => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+  }, [])
+
+  function update(next: HousingFiltersValue): void {
+    draftRef.current = next
+    setDraft(next)
+    onApply(pendingSearchRef.current ? { ...next, query: value.query } : next)
+  }
+
+  function scheduleSearch(): void {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    if (composingRef.current) return
+    searchTimerRef.current = setTimeout(() => {
+      searchTimerRef.current = null
+      pendingSearchRef.current = false
+      onApplyRef.current(draftRef.current)
+    }, 250)
+  }
 
   const floors = useMemo(
     () => draft.buildingId
@@ -144,14 +176,15 @@ export function HousingFilters({
     option: RoomType | VerificationStatus | ServiceStatus | CleaningStatus,
     checked: boolean,
   ): void {
-    setDraft((current) => ({
+    const current = draftRef.current
+    update({
       ...current,
       [key]: toggled(
         current[key] as Array<RoomType | VerificationStatus | ServiceStatus | CleaningStatus> | undefined,
         option,
         checked,
       ),
-    }))
+    })
   }
 
   const panel = (
@@ -167,12 +200,11 @@ export function HousingFilters({
             value={draft.buildingId ?? ""}
             onChange={(event) => {
               const buildingId = event.currentTarget.value || undefined
-              setDraft((current) => {
+              const current = draftRef.current
                 const floorValid = !current.floorId || catalog.floors.some(
                   (floor) => floor.id === current.floorId && (!buildingId || floor.building_id === buildingId),
                 )
-                return { ...current, buildingId, floorId: floorValid ? current.floorId : undefined }
-              })
+                update({ ...current, buildingId, floorId: floorValid ? current.floorId : undefined })
             }}
           >
             <option value="">全部楼栋</option>
@@ -182,17 +214,24 @@ export function HousingFilters({
         <label>楼层
           <select value={draft.floorId ?? ""} onChange={(event) => {
             const floorId = event.currentTarget.value || undefined
-            setDraft((current) => ({ ...current, floorId }))
+            update({ ...draftRef.current, floorId })
           }}>
             <option value="">全部楼层</option>
             {floors.map((floor) => <option key={floor.id} value={floor.id}>{floor.name}</option>)}
           </select>
         </label>
         <label>搜索房间
-          <input value={draft.query ?? ""} onChange={(event) => {
+          <input value={draft.query ?? ""} onCompositionStart={() => {
+            composingRef.current = true
+            if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+          }} onCompositionEnd={() => { composingRef.current = false; scheduleSearch() }} onChange={(event) => {
             const query = event.currentTarget.value
-            setDraft((current) => ({ ...current, query }))
-          }} placeholder="房号、楼栋或楼层" />
+            const next = { ...draftRef.current, query }
+            draftRef.current = next
+            setDraft(next)
+            pendingSearchRef.current = true
+            scheduleSearch()
+          }} placeholder="房号、楼栋、楼层、入住人姓名或昵称" />
         </label>
 
         <fieldset><legend>房型</legend>{ROOM_TYPES.map(([key, label]) => (
@@ -205,43 +244,42 @@ export function HousingFilters({
           <label key={key}><input type="checkbox" checked={draft.serviceStatuses?.includes(key) ?? false} onChange={(event) => updateArray("serviceStatuses", key, event.currentTarget.checked)} />{label}</label>
         ))}</fieldset>
 
-        <fieldset><legend>保洁状态</legend>{([["ready", "无待保洁"], ["pending", "待保洁"]] as const).map(([key, label]) => (
+        <fieldset><legend>保洁状态</legend>{([["ready", "无退房待保洁"], ["pending", "退房待保洁"]] as const).map(([key, label]) => (
           <label key={key}><input type="checkbox" checked={draft.cleaningStatuses?.includes(key) ?? false} onChange={(event) => updateArray("cleaningStatuses", key, event.currentTarget.checked)} />{label}</label>
         ))}</fieldset>
-        <label>每日保洁安排
-          <select value={draft.dailyCleaningEnabled === undefined ? "" : String(draft.dailyCleaningEnabled)} onChange={(event) => {
-            const value = event.currentTarget.value
-            setDraft((current) => ({ ...current, dailyCleaningEnabled: value === "" ? undefined : value === "true" }))
-          }}><option value="">全部安排</option><option value="true">需要每日保洁</option><option value="false">无需每日保洁</option></select>
+        <label>保洁频率
+          <select multiple value={draft.cleaningFrequencies ?? []} onChange={(event) => {
+            const cleaningFrequencies = Array.from(event.currentTarget.selectedOptions, (option) => option.value) as HousingFiltersValue["cleaningFrequencies"]
+            update({ ...draftRef.current, cleaningFrequencies, dailyCleaningEnabled: undefined })
+          }}>{CLEANING_FREQUENCY_OPTIONS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
         </label>
+        <p className="housingDialog__hint">保洁频率多选，不选表示全部；未设置不归入任何保洁频率。</p>
         <label>当前入住性别
           <select value={draft.currentGender ?? ""} onChange={(event) => {
             const currentGender = (event.currentTarget.value || undefined) as HousingFiltersValue["currentGender"]
-            setDraft((current) => ({ ...current, currentGender }))
+            update({ ...draftRef.current, currentGender })
           }}>
             <option value="">全部性别</option><option value="male">男住</option><option value="female">女住</option><option value="unspecified">未指定</option>
-          </select>
-        </label>
-        <label>入住状态
-          <select value={draft.occupancy ?? ""} onChange={(event) => {
-            const occupancy = (event.currentTarget.value || undefined) as HousingFiltersValue["occupancy"]
-            setDraft((current) => ({ ...current, occupancy }))
-          }}>
-            <option value="">全部入住状态</option><option value="occupied">已入住</option><option value="unoccupied">未入住</option>
           </select>
         </label>
         <label>可入住状态
           <select value={draft.assignability ?? ""} onChange={(event) => {
             const assignability = (event.currentTarget.value || undefined) as HousingFiltersValue["assignability"]
-            setDraft((current) => ({ ...current, assignability }))
+            update({ ...draftRef.current, assignability })
           }}>
-            <option value="">全部可入住状态</option><option value="assignable">可入住</option><option value="unassignable">不可入住</option>
+            <option value="">全部可入住状态</option><option value="assignable">可入住</option><option value="full">满房</option>
           </select>
         </label>
       </div>
       <footer>
-        <button type="button" className="housingFilters__apply" onClick={() => { onApply(draft); if (mobile) requestClose() }}>应用筛选</button>
-        <button type="button" onClick={() => { if (mobile) requestClose(); else setDraft({}); onReset() }}>重置筛选</button>
+        <button type="button" onClick={() => {
+          if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+          pendingSearchRef.current = false
+          draftRef.current = {}
+          setDraft({})
+          if (mobile) requestClose()
+          onReset()
+        }}>重置筛选</button>
         {mobile ? <button type="button" aria-label="关闭筛选" onClick={requestClose}><X aria-hidden="true" />关闭</button> : null}
       </footer>
     </aside>

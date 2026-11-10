@@ -8,13 +8,84 @@ import { GameHost } from "./GameHost"
 import type { CompletedGame, ResultView, RuleSnapshot, SessionView, Submission, TestRule } from "./contracts"
 import { putPending, readPending } from "./pending"
 import { useTalentSession } from "./useTalentSession"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+
+const itemRanking = {
+  status: "ranked", reason: null, group_label: "反应速度鼠标组", calculated_at: "2026-10-31T02:03:04Z", participant_count: 1,
+  metrics: [{ key: "score", label: "评分", unit: "分", better: "higher", decimals: 0 }],
+  current: { rank: 1, values: { score: 80 } }, best: { rank: 1, values: { score: 80 } },
+  top_three: [{ rank: 1, values: { score: 80 }, is_self: true, tie_count: 1, gaps: [{ key: "score", amount: 0, state: "equal" }] }],
+}
+
+it("loads rankings only after confirmed save and preserves score and next action on ranking failure", async () => {
+  const pending = pendingSubmission()
+  putPending(accountId, sessionId, pending, Date.now())
+  const urls: string[] = []
+  let rankings = 0
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async input => {
+    const url = String(input)
+    urls.push(url)
+    if (url.endsWith("/ranking")) {
+      if (++rankings === 1) return new Response("{}", { status: 503 })
+      return new Response(JSON.stringify(itemRanking))
+    }
+    const result = savedResult(pending)
+    return new Response(JSON.stringify(url.endsWith("/results") ? { result, session: session({ results: [result] }) } : session()))
+  }))
+  render(<GameHost accountId={accountId} personId={personId} sessionId={sessionId} testId="reactiontime" />)
+  await screen.findByRole("button", { name: "手动重试" })
+  expect(urls.some(url => url.endsWith("/ranking"))).toBe(false)
+  expect(screen.queryByRole("heading", { name: "当前数据库排名" })).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole("button", { name: "手动重试" }))
+  expect(await screen.findByText(/单项排名暂不可用/)).toBeVisible()
+  expect(screen.getByText("服务器成绩：80 分")).toBeVisible()
+  expect(screen.getByRole("link", { name: "继续下一项：瞄准速度" })).toBeVisible()
+  expect(urls).toContain("/api/v1/talent-tests/results/f1000000-0000-4000-8000-000000000004/ranking")
+  await userEvent.click(screen.getByRole("button", { name: "重试单项排名" }))
+  expect(await screen.findByText(/本次成绩：第 1 名/)).toBeVisible()
+})
+
+it("aborts old identity ranking and ignores its late response when switching account", async () => {
+  let resolveOld!: (response: Response) => void
+  let oldSignal: AbortSignal | undefined
+  let second = false
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input, init) => {
+    if (String(input).endsWith("/ranking")) {
+      if (second) return new Response(JSON.stringify({ ...itemRanking, group_label: "新账号比较组" }))
+      oldSignal = init?.signal as AbortSignal
+      return new Promise<Response>(resolve => { resolveOld = resolve })
+    }
+    return new Response(JSON.stringify(session({ results: [savedResult(pendingSubmission())] })))
+  }))
+  const page = render(<GameHost accountId={accountId} personId={personId} sessionId={sessionId} testId="reactiontime" />)
+  await waitFor(() => expect(resolveOld).toBeTypeOf("function"))
+  second = true
+  page.rerender(<GameHost accountId="new-account" personId={personId} sessionId={sessionId} testId="reactiontime" />)
+  expect(oldSignal?.aborted).toBe(true)
+  expect(await screen.findByText("新账号比较组")).toBeVisible()
+  await act(async () => resolveOld(new Response(JSON.stringify(itemRanking))))
+  expect(screen.queryByText("反应速度鼠标组")).not.toBeInTheDocument()
+})
+
+it("refreshes a saved item on return to foreground without polling", async () => {
+  let reads = 0
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async input => {
+    if (String(input).endsWith("/ranking")) return new Response(JSON.stringify({ ...itemRanking, group_label: `比较组刷新 ${++reads}` }))
+    return new Response(JSON.stringify(session({ results: [savedResult(pendingSubmission())] })))
+  }))
+  render(<GameHost accountId={accountId} personId={personId} sessionId={sessionId} testId="reactiontime" />)
+  expect(await screen.findByText("比较组刷新 1")).toBeVisible()
+  fireEvent(document, new Event("visibilitychange"))
+  expect(await screen.findByText("比较组刷新 2")).toBeVisible()
+})
 
 const accountId = "f1000000-0000-4000-8000-000000000001"
 const sessionId = "f1000000-0000-4000-8000-000000000002"
 const personId = "f1000000-0000-4000-8000-000000000003"
 
 function render(element: ReactElement) {
-  return renderBase(element, { wrapper: MemoryRouter })
+  const client = new QueryClient()
+  return renderBase(element, { wrapper: ({ children }) => <MemoryRouter><QueryClientProvider client={client}>{children}</QueryClientProvider></MemoryRouter> })
 }
 
 const rules: RuleSnapshot = {
@@ -191,10 +262,12 @@ it("continues to the next unsaved frozen item through a visible link", async () 
   }
   renderBase(
     <MemoryRouter initialEntries={[`/talent-tests/sessions/${sessionId}/reactiontime`]}>
+      <QueryClientProvider client={new QueryClient()}>
       <Routes>
         <Route path="/talent-tests/sessions/:sessionId/:testId" element={<CurrentGame />} />
         <Route path="/talent-tests" element={<h1>项目列表</h1>} />
       </Routes>
+      </QueryClientProvider>
     </MemoryRouter>,
   )
   await userEvent.click(await screen.findByRole("button", { name: "手动重试" }))

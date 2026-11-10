@@ -22,8 +22,18 @@ AuditOutcome = Literal["allowed", "denied", "failed"]
 
 _PUBLIC_METADATA_KEYS = frozenset(
     {
+        "old_theme",
+        "new_theme",
         "session_id",
         "operation_key",
+        "rental_period",
+        "previous_expires_on",
+        "rental_expires_on",
+        "rental_returned_on",
+        "rental_revision",
+        "previous_rental_facts",
+        "rental_facts",
+        "acquisition_note_changed",
         "allocation_old_status",
         "allocation_new_status",
         "operation_id",
@@ -42,6 +52,9 @@ _PUBLIC_METADATA_KEYS = frozenset(
         "error_code",
         "result_count",
         "role_key",
+        "old_role_keys",
+        "new_role_keys",
+        "keep_concurrent_roles",
         "permission_key",
         "effect",
         "scope_kind",
@@ -163,6 +176,14 @@ _PUBLIC_METADATA_KEYS = frozenset(
         "planned_check_out_at",
         "previous_daily_cleaning_enabled",
         "daily_cleaning_enabled",
+        "previous_cleaning_frequency",
+        "cleaning_frequency",
+        "previous_card_issued_on",
+        "card_issued_on",
+        "previous_card_expires_on",
+        "card_expires_on",
+        "housing_change_decision",
+        "housing_export_kind",
     }
 )
 _PUBLIC_FIELDS = frozenset({"phone", "identity_number"})
@@ -182,6 +203,7 @@ _PUBLIC_ERROR_CODES = frozenset(
         "housing_invalid_room_configuration",
         "housing_issue_workflow_required",
         "housing_stale_version",
+        "housing_batch_conflict",
         "housing_void_operation_conflict",
         "housing_stay_already_voided",
         "housing_void_reason_invalid",
@@ -190,6 +212,12 @@ _PUBLIC_ERROR_CODES = frozenset(
         "housing_room_not_verified",
         "housing_room_unavailable",
         "housing_room_pending_cleaning",
+        "housing_room_card_stale_version",
+        "housing_property_conflict",
+        "housing_access_changed",
+        "invalid_session",
+        "force_password_change_required",
+        "housing_room_card_stay_inactive",
         "housing_capacity_conflict",
         "housing_gender_conflict",
         "housing_person_time_conflict",
@@ -390,6 +418,36 @@ class AuditMetadataRejected(ValueError):
     pass
 
 
+def _public_rental_facts(value: object) -> dict[str, object] | None:
+    expected_keys = {
+        "ownership_type", "acquisition_method", "acquisition_channel", "rental_started_on",
+        "rental_expires_on", "rental_returned_on", "rental_revision",
+    }
+    if not isinstance(value, dict) or set(value) != expected_keys:
+        return None
+    for key, allowed in (
+        ("ownership_type", (None, "owned", "rented")),
+        ("acquisition_method", (None, "purchase", "other")),
+        ("acquisition_channel", (None, "online", "offline")),
+    ):
+        if value[key] not in allowed:
+            return None
+    if type(value["rental_revision"]) is not int or value["rental_revision"] < 0:
+        return None
+    for key in ("rental_started_on", "rental_expires_on", "rental_returned_on"):
+        item = value[key]
+        if item is None:
+            continue
+        if not isinstance(item, str) or len(item) != 10:
+            return None
+        try:
+            if date.fromisoformat(item).isoformat() != item:
+                return None
+        except ValueError:
+            return None
+    return {key: value[key] for key in expected_keys}
+
+
 def _contains_sensitive_value(value: object) -> bool:
     if isinstance(value, str):
         if _CANONICAL_UUID.fullmatch(value):
@@ -449,6 +507,53 @@ class AuditService:
         if not isinstance(metadata, dict):
             return {}
         safe: dict[str, Any] = {}
+        if metadata.get("housing_change_decision") in ("approve", "reject"):
+            safe["housing_change_decision"] = metadata["housing_change_decision"]
+        if metadata.get("housing_export_kind") in ("occupants", "problems"):
+            safe["housing_export_kind"] = metadata["housing_export_kind"]
+        for key in ("previous_cleaning_frequency", "cleaning_frequency"):
+            value = metadata.get(key)
+            if isinstance(value, str) and value in {"unspecified", "daily", "weekly", "on_demand"}:
+                safe[key] = value
+        for key in (
+            "previous_card_issued_on", "card_issued_on",
+            "previous_card_expires_on", "card_expires_on",
+        ):
+            if key not in metadata:
+                continue
+            value = metadata[key]
+            if value is None:
+                safe[key] = None
+            elif isinstance(value, str) and len(value) == 10:
+                try:
+                    parsed = date.fromisoformat(value)
+                except ValueError:
+                    continue
+                if parsed.isoformat() == value:
+                    safe[key] = value
+        for key in ("old_theme", "new_theme"):
+            if metadata.get(key) in ("clear", "command"):
+                safe[key] = metadata[key]
+        for correction_key in ("previous_rental_facts", "rental_facts"):
+            correction = _public_rental_facts(metadata.get(correction_key))
+            if correction is not None:
+                safe[correction_key] = correction
+        if type(metadata.get("acquisition_note_changed")) is bool:
+            safe["acquisition_note_changed"] = metadata["acquisition_note_changed"]
+        if metadata.get("rental_period") in ("week", "month", "quarter"):
+            safe["rental_period"] = metadata["rental_period"]
+        rental_revision = metadata.get("rental_revision")
+        if type(rental_revision) is int and rental_revision >= 0:
+            safe["rental_revision"] = rental_revision
+        for rental_key in ("previous_expires_on", "rental_expires_on", "rental_returned_on"):
+            rental_date = metadata.get(rental_key)
+            if isinstance(rental_date, str) and len(rental_date) == 10:
+                try:
+                    parsed_rental_date = date.fromisoformat(rental_date)
+                except ValueError:
+                    continue
+                if parsed_rental_date.isoformat() == rental_date:
+                    safe[rental_key] = rental_date
         changed_fields = metadata.get("changed_fields")
         if (
             isinstance(changed_fields, list)
@@ -497,12 +602,16 @@ class AuditService:
                         "pc-fps-v1",
                         "pc-fps-v2",
                         "pc-fps-v3",
+                        "pc-fps-v4",
+                        "pc-fps-v5",
                         "mobile-fps-v1",
                         "mobile-fps-v2",
                         "mobile-fps-v3",
                         "pc-moba-v1",
                         "pc-moba-v2",
                         "pc-moba-v3",
+                        "pc-moba-v4",
+                        "pc-moba-v5",
                         "mobile-moba-v1",
                         "mobile-moba-v2",
                         "mobile-moba-v3",
@@ -518,11 +627,14 @@ class AuditService:
                         "talent-score-v3",
                         "pc-fps-v1",
                         "pc-fps-v2",
+                        "pc-fps-v4",
                         "mobile-fps-v1",
                         "mobile-fps-v2",
                         "pc-moba-v1",
                         "pc-moba-v2",
                         "mobile-moba-v1",
+                        "pc-moba-v4",
+                        "pc-moba-v5",
                         "mobile-moba-v2",
                     }
                 ),
@@ -558,6 +670,15 @@ class AuditService:
         role_key = metadata.get("role_key")
         if isinstance(role_key, str) and _SAFE_IDENTIFIER.fullmatch(role_key):
             safe["role_key"] = role_key
+        for key in ("old_role_keys", "new_role_keys"):
+            role_keys = metadata.get(key)
+            if isinstance(role_keys, list) and len(role_keys) <= 100 and all(
+                isinstance(value, str) and _SAFE_IDENTIFIER.fullmatch(value) for value in role_keys
+            ):
+                safe[key] = role_keys
+        keep_roles = metadata.get("keep_concurrent_roles")
+        if isinstance(keep_roles, bool):
+            safe["keep_concurrent_roles"] = keep_roles
         permission_key = metadata.get("permission_key")
         if isinstance(permission_key, str) and _SAFE_IDENTIFIER.fullmatch(permission_key):
             safe["permission_key"] = permission_key

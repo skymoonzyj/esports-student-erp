@@ -123,6 +123,18 @@ class TalentTestSession(Base):
 class TalentTestResult(Base):
     __tablename__ = "talent_test_results"
     __table_args__ = (
+        Index(
+            "ix_talent_results_item_conditions",
+            "test_id",
+            "engine_version",
+            "locale",
+            text("(device_snapshot->>'input_kind')"),
+            text("(normalized_result->>'scoring_version')"),
+            "session_id",
+            postgresql_where=text(
+                "quality_flags = '[]'::jsonb AND background_interrupted IS FALSE"
+            ),
+        ),
         UniqueConstraint(
             "session_id",
             "test_id",

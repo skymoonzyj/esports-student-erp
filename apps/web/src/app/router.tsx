@@ -112,12 +112,15 @@ import { TravelReportsPage } from "../travelReports/TravelReportsPage"
 import { AssessmentLayout } from "../esportsAssessments/AssessmentLayout"
 import { AssistedPeopleRoutes } from "../assistedPeople/AssistedPeopleRoutes"
 import { useAssistedPeopleContext } from "../assistedPeople/useAssistedPeopleContext"
+import { RouteErrorPage } from "./RouteErrorPage"
 
 const AssessmentHome = lazy(() => import("../esportsAssessments/AssessmentHome"))
 const AssessmentSessionPage = lazy(() => import("../esportsAssessments/AssessmentSessionPage"))
 const AssessmentPracticePage = lazy(() => import("../esportsAssessments/PracticePage"))
 const AssessmentHistoryPage = lazy(() => import("../esportsAssessments/AssessmentHistoryPage"))
 const AssessmentReportPage = lazy(() => import("../esportsAssessments/AssessmentReportPage"))
+const ReactionxPage = lazy(() => import("../reactionx/ReactionxPage").then(module => ({ default: module.ReactionxPage })))
+const ReactionxReportPage = lazy(() => import("../reactionx/ReactionxReportPage").then(module => ({ default: module.ReactionxReportPage })))
 
 function LoadingScreen() {
   return (
@@ -210,6 +213,11 @@ function EvaluationConnectBoundary() {
 
 function AuthenticatedLayout() {
   const { status, user, logout } = useAuth()
+  useEffect(() => {
+    // Existing loaded ReactionX modules clear their memory without eagerly
+    // importing the independent feature on every ERP page.
+    window.dispatchEvent(new CustomEvent('reactionx-auth-boundary', { detail: status === 'authenticated' ? user?.account_id : null }))
+  }, [status, user?.account_id])
   const queryClient = useQueryClient()
   const portalContext = usePortalContext()
   const claimContext = useClaimAdminContext()
@@ -288,7 +296,13 @@ function AuthenticatedLayout() {
         ? teamContext.data : undefined}
       assistedContext={assistedContext.context}
       userName={user?.full_name}
-      onLogout={() => void logout()}
+      onLogout={() => {
+        // Bounded best effort only; server session/lease expiry remains authority.
+        // Unloaded features must never make logout wait for a chunk download.
+        const pending: Promise<void>[] = []
+        window.dispatchEvent(new CustomEvent('reactionx-before-logout', { detail: pending }))
+        void Promise.allSettled(pending).finally(() => void logout())
+      }}
     >
       <Outlet />
     </AppShell>
@@ -996,7 +1010,7 @@ function TravelReportsRoute() {
 function TeachingCatalogRoute() {
   const { user } = useAuth()
   const permissions = new Set(user?.permissions ?? [])
-  if (!permissions.has("teaching.read")) return <Navigate to="/" replace />
+  if (!permissions.has("teaching.read") && !permissions.has("professional_teams.manage")) return <Navigate to="/" replace />
   return (
     <TeachingCatalogPage
       permissions={permissions}
@@ -1121,7 +1135,7 @@ function EnrollmentsRoute({ detail = false }: { detail?: boolean }) {
   )
 }
 
-export const appRoutes: RouteObject[] = [
+const routeDefinitions: RouteObject[] = [
   { path: "/login", element: <LoginBoundary /> },
   { path: "/activate-profile", element: <ActivateProfilePage /> },
   { path: "/claim-profile", element: <ClaimProfilePage /> },
@@ -1170,6 +1184,14 @@ export const appRoutes: RouteObject[] = [
             <TalentLandingRoute />
           </AnyPermissionRoute>
         ),
+      },
+      {
+        path: "/talent-tests/reactionx",
+        element: <AnyPermissionRoute permissions={["talent_tests.take", "talent_tests.read", "reactionx.manage"]}><Suspense fallback={<p>正在加载实体灯专项…</p>}><ReactionxPage /></Suspense></AnyPermissionRoute>,
+      },
+      {
+        path: "/talent-tests/reactionx/reports/:resultId",
+        element: <PermissionRoute permission="talent_tests.read"><Suspense fallback={<p>正在加载实体灯报告…</p>}><ReactionxReportPage /></Suspense></PermissionRoute>,
       },
       {
         path: "/talent-tests/history",
@@ -1505,6 +1527,11 @@ export const appRoutes: RouteObject[] = [
   },
   { path: "*", element: <Navigate to="/" replace /> },
 ]
+
+export const appRoutes: RouteObject[] = routeDefinitions.map(route => ({
+  ...route,
+  errorElement: <RouteErrorPage />,
+}))
 
 const browserRouter = createBrowserRouter(appRoutes)
 

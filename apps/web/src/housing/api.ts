@@ -4,6 +4,18 @@ export type RoomType = "single" | "double" | "triple" | "custom" | "functional"
 export type VerificationStatus = "pending_verification" | "verified"
 export type ServiceStatus = "available" | "problem" | "maintenance" | "disabled"
 export type CleaningStatus = "ready" | "pending"
+export type CleaningFrequency = "unspecified" | "daily" | "weekly" | "on_demand"
+export const CLEANING_FREQUENCY_OPTIONS: ReadonlyArray<readonly [CleaningFrequency, string]> = [
+  ["unspecified", "未设置"], ["daily", "每日保洁"], ["weekly", "每周保洁"], ["on_demand", "按需保洁"],
+]
+
+export function roomCleaningFrequency(room?: Pick<HousingRoom, "cleaning_frequency" | "daily_cleaning_enabled">): CleaningFrequency {
+  return room?.cleaning_frequency ?? (room?.daily_cleaning_enabled ? "daily" : "unspecified")
+}
+
+export function roomCleaningFrequencyLabel(room: Pick<HousingRoom, "cleaning_frequency" | "daily_cleaning_enabled">): string {
+  return CLEANING_FREQUENCY_OPTIONS.find(([key]) => key === roomCleaningFrequency(room))?.[1] ?? "未设置"
+}
 export type CurrentGender = "male" | "female" | null
 export type HousingSex = "male" | "female"
 export type HousingStayPurpose = "permanent" | "camp" | "temporary"
@@ -13,7 +25,9 @@ export type HousingResidentPersonType =
   | "player"
   | "student_player"
   | "student"
+  | "team_manager"
   | "coach"
+  | "assistant_coach"
   | "life_teacher"
   | "customer_service"
   | "administration"
@@ -135,6 +149,7 @@ export type HousingCatalog = {
 }
 
 export type HousingRoom = {
+  cleaning_frequency?: CleaningFrequency
   daily_cleaning_enabled: boolean
   cleaning_status: CleaningStatus
   cleaning_pending_at: string | null
@@ -246,12 +261,16 @@ export type HousingTransferOptions = {
 }
 
 export type HousingSummary = {
+  daily_cleaning_rooms?: number
+  weekly_cleaning_rooms?: number
+  on_demand_cleaning_rooms?: number
   pending_cleaning_rooms: number
   total_rooms: number
   occupied_rooms: number
   unoccupied_rooms: number
   assignable_rooms: number
   unassignable_rooms: number
+  full_rooms: number
   problem_rooms: number
   pending_verification_rooms: number
   total_capacity: number
@@ -275,7 +294,10 @@ export type HousingOverview = {
   total: number
 }
 
+export type HousingQuickFilter = "occupied" | "vacant" | "assignable" | "full" | "problem" | "pending_verification" | "pending_cleaning" | "usable" | "remaining" | "single" | "double" | "triple" | "custom" | "functional" | "cleaning_daily" | "cleaning_weekly" | "cleaning_on_demand"
+
 export type HousingFiltersValue = {
+  cleaningFrequencies?: CleaningFrequency[]
   cleaningStatuses?: CleaningStatus[]
   dailyCleaningEnabled?: boolean
   buildingId?: string
@@ -286,12 +308,14 @@ export type HousingFiltersValue = {
   serviceStatuses?: ServiceStatus[]
   currentGender?: "male" | "female" | "unspecified"
   occupancy?: "occupied" | "unoccupied"
-  assignability?: "assignable" | "unassignable"
+  assignability?: "assignable" | "unassignable" | "full"
+  quickFilter?: HousingQuickFilter
   page?: number
   pageSize?: number
 }
 
 export type HousingOccupancyExportInput = {
+  cleaning_frequencies?: CleaningFrequency[]
   format: "xlsx" | "csv"
   purpose: string
   building_id?: string
@@ -302,7 +326,10 @@ export type HousingOccupancyExportInput = {
   service_statuses?: ServiceStatus[]
   current_gender?: "male" | "female" | "unspecified"
   occupancy?: "occupied" | "unoccupied"
-  assignability?: "assignable" | "unassignable"
+  assignability?: "assignable" | "unassignable" | "full"
+  quick_filter?: HousingQuickFilter
+  cleaning_statuses?: CleaningStatus[]
+  daily_cleaning_enabled?: boolean
 }
 
 export type HousingOccupancyExportDownload = { blob: Blob; filename: string }
@@ -333,6 +360,7 @@ export type HousingFloorCreate = {
 export type HousingFloorUpdate = Partial<Omit<HousingFloorCreate, "building_id">> & { is_active?: boolean }
 
 export type HousingRoomCreate = {
+  cleaning_frequency?: CleaningFrequency
   daily_cleaning_enabled?: boolean
   floor_id: string
   room_number: string
@@ -392,6 +420,7 @@ const ROOM_TYPE_ORDER: readonly RoomType[] = ["single", "double", "triple", "cus
 const VERIFICATION_STATUS_ORDER: readonly VerificationStatus[] = ["pending_verification", "verified"]
 const SERVICE_STATUS_ORDER: readonly ServiceStatus[] = ["available", "problem", "maintenance", "disabled"]
 const CLEANING_STATUS_ORDER: readonly CleaningStatus[] = ["ready", "pending"]
+const CLEANING_FREQUENCY_ORDER: readonly CleaningFrequency[] = ["unspecified", "daily", "weekly", "on_demand"]
 
 function orderedUnique<T extends string>(values: T[] | undefined, order: readonly T[]): T[] | undefined {
   if (!values?.length) return undefined
@@ -406,6 +435,7 @@ export function normalizeHousingMultiSelects(value: HousingFiltersValue): Housin
     verificationStatuses: orderedUnique(value.verificationStatuses, VERIFICATION_STATUS_ORDER),
     serviceStatuses: orderedUnique(value.serviceStatuses, SERVICE_STATUS_ORDER),
     cleaningStatuses: orderedUnique(value.cleaningStatuses, CLEANING_STATUS_ORDER),
+    cleaningFrequencies: orderedUnique(value.cleaningFrequencies, CLEANING_FREQUENCY_ORDER),
   }
 }
 
@@ -414,8 +444,8 @@ function appendValue(params: URLSearchParams, key: string, value: unknown): void
   params.append(key, String(value))
 }
 
-export function getHousingCatalog(): Promise<HousingCatalog> {
-  return apiFetch<HousingCatalog>("/housing/catalog")
+export function getHousingCatalog(signal?: AbortSignal): Promise<HousingCatalog> {
+  return apiFetch<HousingCatalog>("/housing/catalog", { signal })
 }
 
 export function listHousingOverview(filters: HousingFiltersValue = {}): Promise<HousingOverview> {
@@ -430,10 +460,12 @@ export function listHousingOverview(filters: HousingFiltersValue = {}): Promise<
   }
   for (const value of normalized.serviceStatuses ?? []) params.append("service_status", value)
   for (const value of normalized.cleaningStatuses ?? []) params.append("cleaning_statuses", value)
+  for (const value of normalized.cleaningFrequencies ?? []) params.append("cleaning_frequency", value)
   appendValue(params, "daily_cleaning_enabled", normalized.dailyCleaningEnabled)
   appendValue(params, "current_gender", normalized.currentGender)
   appendValue(params, "occupancy", normalized.occupancy)
   appendValue(params, "assignability", normalized.assignability)
+  appendValue(params, "quick_filter", normalized.quickFilter)
   appendValue(params, "page", normalized.page)
   appendValue(params, "page_size", normalized.pageSize)
   const query = params.toString()
@@ -562,6 +594,10 @@ export function verifyHousingRoom(id: string, version: number): Promise<HousingR
 
 export function verifyHousingRooms(rooms: HousingRoomVersion[]): Promise<HousingRoom[]> {
   return apiFetch<HousingRoom[]>("/housing/rooms/batch-verify", jsonRequest("POST", { rooms }))
+}
+
+export function updateHousingRoomsServiceStatus(rooms: HousingRoomVersion[], serviceStatus: "available" | "maintenance" | "disabled"): Promise<HousingRoom[]> {
+  return apiFetch<HousingRoom[]>("/housing/rooms/batch-service-status", jsonRequest("POST", { rooms, service_status: serviceStatus }))
 }
 
 export function createHousingStay(roomId: string, input: HousingStayCreate): Promise<HousingStay> {

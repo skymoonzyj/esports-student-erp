@@ -31,7 +31,7 @@
 
 .talent-page {
   display: grid;
-  gap: 1rem;
+  gap: 1.5rem;
   min-width: 0;
   width: min(100%, 72rem);
   margin-inline: auto;
@@ -63,10 +63,11 @@
 .talent-report-summary,
 .talent-rule-basis,
 .talent-dynamic-report {
-  padding: 1rem;
+  padding: clamp(1rem, 2vw, 1.5rem);
   border: 1px solid var(--color-border, #d8dee8);
-  border-radius: 0.875rem;
+  border-radius: var(--ui-radius-lg, 0.875rem);
   background: var(--color-surface, #fff);
+  box-shadow: var(--shadow-card-soft);
 }
 
 .talent-catalog-grid {
@@ -77,9 +78,10 @@
 }
 
 .talent-test-card {
-  padding: 1rem;
+  padding: 1.25rem;
   border: 1px solid var(--color-border, #d8dee8);
-  border-radius: 0.75rem;
+  border-radius: var(--ui-radius-md, 0.75rem);
+  background: var(--color-canvas);
 }
 
 .talent-test-card h2,
@@ -148,7 +150,7 @@
 
 .talent-report-table th,
 .talent-report-table td {
-  padding: 0.75rem;
+  padding: var(--ui-table-cell-y, 0.75rem) 0.75rem;
   border-bottom: 1px solid var(--color-border, #d8dee8);
   text-align: start;
   vertical-align: top;
@@ -167,8 +169,94 @@
 .talent-dialog {
   width: min(100%, 30rem);
   padding: 1.25rem;
-  border-radius: 0.875rem;
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  border-radius: var(--ui-radius-lg, 0.875rem);
   background: var(--color-surface, #fff);
+}
+
+/* Only catalog/history/report surfaces: never theme the calibrated game stage. */
+.talent-page :is(button, a),
+.talent-dialog button {
+  min-height: 44px;
+}
+
+.talent-page a {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-accent-800);
+  text-underline-offset: 3px;
+}
+
+.talent-page button:not(.primaryButton) {
+  border: 1px solid var(--color-border);
+  border-radius: var(--ui-radius-sm, 7px);
+  padding: 8px 14px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  font-weight: 650;
+}
+
+.talent-page :is(input, select) {
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ui-radius-sm, 7px);
+  padding: 8px 12px;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.talent-readable-reports form[role="search"] {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.talent-readable-reports form[role="search"] label {
+  display: grid;
+  gap: 6px;
+  flex: 1 1 15rem;
+  min-width: 0;
+  color: var(--color-text-muted);
+  font-size: .875rem;
+}
+
+.talent-page :is(button, a, input, select):focus-visible {
+  outline: 3px solid var(--ui-focus-ring, #87baac);
+  outline-offset: 2px;
+}
+
+.talent-page-heading h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  color: var(--color-text-strong);
+}
+
+.talent-report-table th {
+  color: var(--color-text-muted);
+  background: var(--color-canvas);
+}
+
+html[data-ui-theme="command"] .talent-page {
+  gap: 1rem;
+}
+
+html[data-ui-theme="command"] :is(.talent-session-panel, .talent-readable-reports, .talent-history-card, .talent-report-summary, .talent-rule-basis, .talent-dynamic-report, .talent-test-card) {
+  padding: 1rem;
+  box-shadow: none;
+}
+
+@media (max-width: 600px) {
+  .talent-page-heading,
+  .talent-progress-row,
+  .talent-actions,
+  .talent-history-card {
+    flex-wrap: wrap;
+    overflow-wrap: anywhere;
+  }
 }
 
 @media (max-width: 390px) {

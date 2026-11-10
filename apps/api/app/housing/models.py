@@ -175,6 +175,10 @@ class HousingRoom(TimestampMixin, Base):
         ),
         CheckConstraint("version >= 1", name="ck_housing_rooms_version"),
         CheckConstraint(
+            "cleaning_frequency IN ('unspecified', 'daily', 'weekly', 'on_demand')",
+            name="ck_housing_rooms_cleaning_frequency",
+        ),
+        CheckConstraint(
             "cleaning_status IN ('ready', 'pending')",
             name="ck_housing_rooms_cleaning_status",
         ),
@@ -212,6 +216,9 @@ class HousingRoom(TimestampMixin, Base):
     )
     daily_cleaning_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    cleaning_frequency: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="unspecified", server_default=text("'unspecified'")
     )
     cleaning_status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="ready", server_default=text("'ready'")

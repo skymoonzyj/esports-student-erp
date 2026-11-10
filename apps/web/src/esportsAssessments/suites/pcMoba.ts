@@ -4,12 +4,14 @@ import { createRhythmEngine } from '../moba/rhythm'
 import { createDodgeEngine } from '../moba/dodge'
 import { createDodgeChoiceEngine } from '../moba/dodgeChoice'
 import { createMapEngine } from '../moba/mapAwareness'
+import { createLaneEngine } from '../lane/engine'
 
 export const pcMobaFactory: GameFactory = {
   create(config, seed, settings, viewport) {
     // Factory callers pass CSS viewport dimensions; MOBA physics stays logical.
     void viewport
     if (config.suite_id !== 'pc-moba') throw new Error('PC MOBA 套系配置不匹配')
+    if (config.engine_version === 'pc-moba-v4' || config.engine_version === 'pc-moba-v5') return createLaneEngine(config, seed, settings)
     switch (config.test_id) {
       case 'last-hit': return createLastHitEngine(config, seed, settings)
       case 'orb-walk': return createRhythmEngine(config, seed, settings)

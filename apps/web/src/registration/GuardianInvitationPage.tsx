@@ -10,6 +10,7 @@ import {
 } from "./api"
 import type { GuardianInvitationContext } from "./api"
 import "./registration.css"
+import { PublicEntryAside } from "./PublicEntryAside"
 
 const INVITATION_PATH = "/guardian-invitation"
 
@@ -129,6 +130,7 @@ export function GuardianInvitationPage() {
 
   return (
     <main className="registrationPage">
+      <PublicEntryAside />
       <section className="registrationCard" aria-labelledby="guardian-invitation-title">
         <div className="registrationBrand" aria-hidden="true">竞</div>
         <p className="registrationEyebrow">GUARDIAN INVITATION</p>

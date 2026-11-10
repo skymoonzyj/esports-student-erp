@@ -27,7 +27,9 @@ def round_row(
     mouse_mode="raw",
     report_id=None,
 ):
-    session, report = session_row(db, actor, at=at, suite_id=suite_id, flags=flags)
+    session, report = session_row(
+        db, actor, at=at, suite_id=suite_id, flags=flags, catalog_version=f"{suite_id}-v{version}"
+    )
     suite = get_suite(suite_id, catalog_version=f"{suite_id}-v{version}")
     session.catalog_snapshot = suite.model_dump(mode="json")
     for index, test_id in enumerate(suite.test_ids):
@@ -113,7 +115,9 @@ def test_esports_suites_and_frozen_versions_are_independent(db, esports_people, 
     result = ranking(db, actors["student"], report)
     assert result.status == "ranked"
     assert (result.overall_rank, result.participant_count) == (1, 1)
-    assert [item.test_id for item in result.items] == list(get_suite(suite_id).test_ids)
+    assert [item.test_id for item in result.items] == list(
+        get_suite(suite_id, catalog_version=f"{suite_id}-v{version}").test_ids
+    )
 
 
 def test_esports_geometry_and_sensitivity_do_not_split_input_group(db, esports_people):

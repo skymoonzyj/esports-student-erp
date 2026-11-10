@@ -16,6 +16,7 @@ from app.housing.reporting_schemas import (
     VoidHousingReportRequest,
 )
 from app.housing.reporting_service import (
+    GenerateReportCommand,
     ReportBatchActions,
     ReportBatchCorrectionLink,
     ReportBatchDetail,
@@ -26,11 +27,53 @@ from app.housing.reporting_service import (
     ReportFilterOptions,
     ReportFloorOption,
 )
+from app.housing.schemas import ResidentOption
 
 START = datetime(2026, 8, 6, tzinfo=UTC)
 END = datetime(2026, 8, 7, tzinfo=UTC)
 BUILDING_ID = UUID("52000000-0000-4000-8000-000000000010")
 FLOOR_ID = UUID("52000000-0000-4000-8000-000000000001")
+
+
+def test_generate_request_accepts_all_eleven_person_filters() -> None:
+    person_types = [
+        "student", "player", "student_player", "team_manager", "coach",
+        "assistant_coach", "life_teacher", "customer_service", "administration",
+        "other", "visitor",
+    ]
+    request = GenerateHousingReportRequest(
+        range_start=START,
+        range_end=END,
+        scope_mode="authorized",
+        purpose="工作人员住宿核对",
+        person_types=person_types,
+    )
+    command = GenerateReportCommand(
+        range_start=request.range_start,
+        range_end=request.range_end,
+        scope_mode=request.scope_mode,
+        purpose=request.purpose,
+        person_types=tuple(request.person_types),
+    )
+
+    assert list(command.person_types) == person_types
+
+
+@pytest.mark.parametrize("person_type", ["team_manager", "assistant_coach"])
+def test_housing_resident_response_accepts_new_staff_classification(person_type):
+    resident = ResidentOption(
+        person_id=BUILDING_ID,
+        full_name="合成工作人员",
+        person_type=person_type,
+        sex="male",
+        account_ready=False,
+        housing_ready=False,
+        profile_ready=False,
+        guardian_ready=True,
+    )
+
+    assert resident.model_dump(mode="json")["person_type"] == person_type
+    assert resident.housing_ready is False
 
 
 def test_generate_request_normalizes_strict_scope_and_filters() -> None:

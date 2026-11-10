@@ -1,0 +1,12 @@
+.roomCardReminders { margin-top: 24px; padding: 20px; border: 1px solid var(--border-color, #dce3ea); border-radius: var(--ui-radius-lg, 16px); background: var(--surface, #fff); color: var(--text-primary, #1b2637); }
+.roomCardReminders h2 { margin: 0; font-size: 1.15rem; }
+.roomCardReminders > p, .roomCardReminders header p { color: var(--color-text-muted); font-size: .9rem; }
+.roomCardReminders__people { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; }
+.roomCardReminders__people li { padding: 16px; border: 1px solid var(--border-color, #dce3ea); border-radius: 12px; min-width: 0; overflow-wrap: anywhere; }
+.roomCardReminders h3 { margin: 0 0 8px; font-size: 1rem; }
+.roomCardReminders__people p { margin: 8px 0; }
+.roomCardReminders__expired { color: var(--color-danger-700); }
+.roomCardReminders__due { color: var(--color-warning-text); }
+.roomCardReminders nav { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.roomCardReminders button { min-height: 44px; padding: 8px 14px; border-radius: var(--ui-radius-md, 8px); border: 1px solid var(--border-color, #dce3ea); background: var(--surface, #fff); color: inherit; cursor: pointer; }
+.roomCardReminders button:disabled { opacity: .5; cursor: not-allowed; }

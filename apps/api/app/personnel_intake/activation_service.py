@@ -22,7 +22,6 @@ from app.core.transactions import atomic_write_transaction
 from app.identity.models import Person
 from app.identity.normalization import normalize_email
 from app.personnel_intake.activation_models import AssistedActivationSession
-from app.personnel_intake.activation_roles import activation_role_keys
 from app.personnel_intake.activation_schemas import (
     ActivationCompleted,
     ActivationIssued,
@@ -37,11 +36,16 @@ from app.personnel_intake.claims.binding import (
 from app.personnel_intake.claims.errors import ProfileClaimError
 from app.personnel_intake.claims.locking import lock_claim_business_context
 from app.personnel_intake.eligibility import AssistedEligibility, AssistedEligibilityPolicy
-from app.personnel_intake.errors import CredentialReservationConflict
+from app.personnel_intake.errors import CredentialReservationConflict, PersonnelIntakeError
 from app.personnel_intake.guardian_records import ApprovalEvidenceError
 from app.personnel_intake.locks import CredentialReservationPolicy
 from app.personnel_intake.models import AssistedApproval, AssistedPersonProfile
 from app.personnel_intake.readiness import AssistedReadinessPolicy
+from app.personnel_intake.role_grants import PreparedActivationRoleLocks
+from app.personnel_intake.staff_activation import (
+    PreparedStaffActivation,
+    realize_staff_positions_in_transaction,
+)
 from app.registration.delivery import VerificationSender
 from app.registration.models import ChallengePurpose, RegistrationVerificationChallenge
 from app.registration.start_limiter import RegistrationStartLimiter
@@ -157,7 +161,10 @@ class AssistedActivationService:
         )
 
     def _lock_person(
-        self, person_id: UUID, email_digest: str, *, send_keys: list[int] | None = None
+        self, person_id: UUID, email_digest: str, *, send_keys: list[int] | None = None,
+        verified_role_errors: bool = False,
+        activation_role_locks: PreparedActivationRoleLocks | None = None,
+        staff_activation: PreparedStaffActivation | None = None,
     ) -> Person:
         """Complete credential/quota prefix -> business -> claim/binding/access session.
 
@@ -186,9 +193,35 @@ class AssistedActivationService:
             ],
         )
         try:
-            lock_claim_business_context(self.db, prepared.context)
+            def check_roles() -> None:
+                if activation_role_locks is not None and PreparedActivationRoleLocks.discover(
+                    self.db, person_id
+                ) != activation_role_locks:
+                    from app.personnel_intake.role_grants import role_error
+                    raise role_error("retry", 409, "激活角色计划已更新，请重试激活")
+                if staff_activation is not None:
+                    staff_activation.assert_unchanged(self.db)
+
+            lock_claim_business_context(
+                self.db,
+                prepared.context,
+                before_directory=check_roles,
+                role_ids=set(activation_role_locks.role_ids_by_key.values()) if activation_role_locks else None,
+            )
             prepared.lock_rows(self.db, cipher=self.cipher, lookup=self.lookup)
         except ProfileClaimError as error:
+            if verified_role_errors:
+                from app.personnel_intake.role_grants import (
+                    latest_plan,
+                    plan_fingerprint,
+                    role_error,
+                )
+
+                if any(
+                    plan_fingerprint(latest_plan(self.db, identifier)) != fingerprint
+                    for identifier, fingerprint in prepared.context.role_plans.items()
+                ):
+                    raise role_error("retry", 409, "激活角色计划已更新，请重试激活") from error
             raise _invalid() from error
         person = self.db.get(Person, person_id)
         if person is None or person.deleted_at is not None:
@@ -436,10 +469,18 @@ class AssistedActivationService:
             return ActivationCompleted()
         person: Person | None = None
         row: AssistedActivationSession | None = None
+        role_locks: PreparedActivationRoleLocks | None = None
+        staff_locks: PreparedStaffActivation | None = None
 
         def prepare() -> VerificationTarget:
-            nonlocal person, row
-            person = self._lock_person(proof.person_id, proof.email_digest)
+            nonlocal person, row, role_locks, staff_locks
+            role_locks = PreparedActivationRoleLocks.discover(self.db, proof.person_id)
+            staff_locks = PreparedStaffActivation.discover(self.db, proof.person_id)
+            person = self._lock_person(
+                proof.person_id, proof.email_digest, verified_role_errors=True,
+                activation_role_locks=role_locks,
+                staff_activation=staff_locks,
+            )
             row = self._lock_proof(proof)
             if row.state == "completed":
                 raise _CompletedReplay()
@@ -448,7 +489,7 @@ class AssistedActivationService:
             return proof.target()
 
         def create_account(consumed: VerificationConsumed) -> None:
-            assert person is not None and row is not None
+            assert person is not None and row is not None and role_locks is not None and staff_locks is not None
             eligible, approval, email = self._eligible(person, proof)
             account = UserAccount(
                 person_id=person.id,
@@ -489,16 +530,21 @@ class AssistedActivationService:
                     is_primary=False,
                 )
             )
-            from app.rbac.models import Role, UserRole
+            from app.rbac.models import UserRole
 
             assert eligible.kind is not None
-            roles = activation_role_keys(eligible.kind)
-            role_ids = list(self.db.scalars(select(Role.id).where(Role.key.in_(roles))))
-            if len(role_ids) != len(roles):
-                raise RuntimeError("activation roles unavailable")
+            role_ids = role_locks.baseline_ids(eligible.kind)
             self.db.add_all(
                 UserRole(user_id=account.id, role_id=identifier) for identifier in role_ids
             )
+            self.db.flush()
+            from app.personnel_intake.role_grants import ActivationRoleService, latest_plan
+
+            ActivationRoleService(self.db, lookup=self.lookup).apply_in_transaction(
+                latest_plan(self.db, person.id), account
+            )
+            realize_staff_positions_in_transaction(self.db, prepared=staff_locks,
+                account=account, lookup=self.lookup, occurred_at=consumed.consumed_at)
             row.state, row.completed_at = "completed", consumed.consumed_at
             self._audit("completed", person.id)
             self.db.flush()
@@ -510,15 +556,25 @@ class AssistedActivationService:
             self.verification.verify_unconsumed(
                 proof.challenge_id, code.get_secret_value(), expected_target=proof.target()
             )
-            self.verification.consume_with(
-                proof.challenge_id,
-                code.get_secret_value(),
-                expected_purpose="assisted_activation",
-                prepare_target=prepare,
-                on_success=create_account,
-            )
+            with atomic_write_transaction(self.db):
+                self.verification.consume_with(
+                    proof.challenge_id,
+                    code.get_secret_value(),
+                    expected_purpose="assisted_activation",
+                    prepare_target=prepare,
+                    on_success=create_account,
+                )
         except _CompletedReplay:
             return ActivationCompleted()
+        except PersonnelIntakeError as error:
+            # A winner may create the account while this command waits for the
+            # business prefix. Only its committed, same-session completion can
+            # turn discovery drift into a successful replay; other drift fails.
+            if error.code in {"activation_staff_retry", "activation_roles_retry"}:
+                with self.db.no_autoflush:
+                    if self._proof(session_token).state == "completed":
+                        return ActivationCompleted()
+            raise
         except VerificationInvalidOrExpired:
             # A concurrent winner can consume after our unlocked snapshot but
             # before either check. Replaying its committed success has no writes.

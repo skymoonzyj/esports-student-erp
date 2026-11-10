@@ -12,9 +12,9 @@ from sqlalchemy import func, select
 from app.audit.models import AuditEvent
 from app.evaluations.media_models import EvaluationMediaAsset, EvaluationMediaBlob
 from app.evaluations.media_store import PrivateMediaStore
-from app.rbac.models import Permission, Role
+from app.rbac.models import Permission, Role, UserPermissionOverride
 from app.rbac.schemas import PermissionOverrideCreate
-from app.rbac.service import RbacService
+from app.rbac.service import PermissionDelegationDenied, RbacService
 from tests.api.test_camp_surveys import camp_api_scenario  # noqa: F401
 from tests.api.test_system_evaluation_tasks import (
     _login,
@@ -48,7 +48,9 @@ def _deny(db, *, actor_id, account_id, scope_kind, scope_id, valid_from=None):
 
 
 @pytest.mark.parametrize("scope_kind", ["enrollment", "assigned_class"])
-def test_center_deny_hides_report_and_blocks_draft(db, db_client, report_api_scenario, scope_kind):
+def test_center_deny_hides_report_and_blocks_draft(
+    db, db_client, report_api_scenario, platform_users, scope_kind,
+):
     scenario = report_api_scenario.report
     csrf = report_api_scenario.login(db_client, "primary")
     report_id = uuid4()
@@ -67,7 +69,9 @@ def test_center_deny_hides_report_and_blocks_draft(db, db_client, report_api_sce
     assert created.status_code == 200, created.text
     _deny(
         db,
-        actor_id=scenario.accounts["admin"].id,
+        # The report reviewer stays an ordinary admin. A separate real manager
+        # installs the deny; report access does not imply permissions.manage.
+        actor_id=platform_users["accounts"]["admin"].id,
         account_id=scenario.accounts["primary"].id,
         scope_kind=scope_kind,
         scope_id=scenario.enrollment.id
@@ -143,7 +147,9 @@ def test_center_deny_removes_admin_survey_identity(
     )
 
 
-def test_center_deny_hides_report_review_queue_and_versions(db, db_client, report_api_scenario):
+def test_center_deny_hides_report_review_queue_and_versions(
+    db, db_client, report_api_scenario, platform_users,
+):
     scenario = report_api_scenario.report
     report_id, _ = _create_pending_report(
         db_client, report_api_scenario, starts_on=NOW.date(), body="review private"
@@ -153,7 +159,7 @@ def test_center_deny_hides_report_review_queue_and_versions(db, db_client, repor
     assert baseline.status_code == 200 and baseline.json()["total"] == 1
     _deny(
         db,
-        actor_id=scenario.accounts["admin"].id,
+        actor_id=platform_users["accounts"]["admin"].id,
         account_id=scenario.accounts["admin"].id,
         scope_kind="enrollment",
         scope_id=scenario.enrollment.id,
@@ -197,7 +203,7 @@ def test_center_deny_blocks_upload_target(
 @pytest.mark.parametrize("actor", ["student", "guardian"])
 @pytest.mark.parametrize("scope_kind", ["enrollment", "assigned_class"])
 def test_family_report_capability_excludes_center_denied_publication(
-    db, db_client, report_api_scenario, actor, scope_kind,
+    db, db_client, report_api_scenario, platform_users, actor, scope_kind,
 ):
     scenario = report_api_scenario.report
     report_id, submitted = _create_pending_report(
@@ -214,7 +220,7 @@ def test_family_report_capability_excludes_center_denied_publication(
     baseline = db_client.get("/api/v1/evaluations/reports/context")
     assert baseline.status_code == 200 and baseline.json()["family_available"] is True
     _deny(
-        db, actor_id=scenario.accounts["admin"].id, account_id=scenario.accounts[actor].id,
+        db, actor_id=platform_users["accounts"]["admin"].id, account_id=scenario.accounts[actor].id,
         scope_kind=scope_kind,
         scope_id=scenario.enrollment.id if scope_kind == "enrollment" else scenario.teaching_class.id,
         valid_from=NOW,
@@ -228,6 +234,21 @@ def test_family_report_capability_excludes_center_denied_publication(
     )
     assert published.status_code == 200 and published.json()["total"] == 0, published.text
     assert _report_write_counts(db) == before
+
+
+def test_report_reviewer_cannot_install_denies_without_permission_management(db, report_api_scenario):
+    scenario = report_api_scenario.report
+    before = db.scalar(select(func.count()).select_from(UserPermissionOverride))
+    with pytest.raises(PermissionDelegationDenied):
+        _deny(
+            db,
+            actor_id=scenario.accounts["admin"].id,
+            account_id=scenario.accounts["primary"].id,
+            scope_kind="enrollment",
+            scope_id=scenario.enrollment.id,
+            valid_from=NOW,
+        )
+    assert db.scalar(select(func.count()).select_from(UserPermissionOverride)) == before
 
 
 @pytest.mark.parametrize("variant", ["original", "preview"])

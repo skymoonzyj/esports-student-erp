@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from .config_schemas import KINDS, MEMBERS
+from .config_schemas import KINDS, members_for_catalog
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,14 +15,14 @@ class RuleIdentity:
 def registered_rule(suite_id: str, test_id: str, catalog_version: str) -> RuleIdentity:
     """Return the one rule identity registered for an exact catalog member."""
 
-    if suite_id not in MEMBERS or test_id not in MEMBERS[suite_id]:
+    if test_id not in members_for_catalog(suite_id, catalog_version):
         raise ValueError("unknown suite or task")
-    if catalog_version not in {
-        f"{suite_id}-v1",
-        f"{suite_id}-v2",
-        f"{suite_id}-v3",
-    }:
-        raise ValueError("unknown catalog version")
+    if catalog_version == "pc-moba-v4":
+        return RuleIdentity("lane_last_hit", "pc-moba-v4", "pc-moba-v4")
+    if catalog_version == "pc-moba-v5":
+        return RuleIdentity("lane_last_hit_towers", "pc-moba-v5", "pc-moba-v5")
+    if catalog_version in ("pc-fps-v4", "pc-fps-v5"):
+        return RuleIdentity(KINDS[test_id], "pc-fps-v4", "pc-fps-v4")
 
     raw_kind = KINDS[test_id]
     scoring_version = report_version = f"{suite_id}-v1"

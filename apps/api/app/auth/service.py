@@ -68,6 +68,8 @@ from app.registration.verification_service import (
     VerificationIssued,
     VerificationTarget,
     VerificationTargetMismatch,
+    invalidate_password_reset_challenges_in_transaction,
+    lock_password_credentials_in_transaction,
     lock_registration_credential_keys,
     registration_credential_lock_keys,
 )
@@ -604,7 +606,10 @@ class AuthService:
             raise InvalidCredentials("invalid credentials")
         return result
 
-    def authenticate(self, token: str | None, *, request_id: str) -> AuthContext:
+    def authenticate(
+        self, token: str | None, *, request_id: str,
+        foreign_key_compatible_locks: bool = False,
+    ) -> AuthContext:
         if not token or len(token) > 256:
             raise InvalidSession("invalid session")
         context: AuthContext | None = None
@@ -618,11 +623,17 @@ class AuthService:
             if person_id is None:
                 raise InvalidSession("invalid session")
             readiness_policy = GuardianReadinessPolicy(self.db)
-            locked_people = readiness_policy.lock_students([person_id])
+            # Rental writes retain identity locks while waiting for assets.
+            # NO KEY UPDATE still excludes identity/status/readiness mutations,
+            # but permits legacy custody/audit FK KEY SHARE checks on these rows.
+            # Other callers retain the original FOR UPDATE locking contract.
+            locked_people = readiness_policy.lock_students(
+                [person_id], no_key_update=foreign_key_compatible_locks
+            )
             account = self.db.scalar(
                 select(UserAccount)
                 .where(UserAccount.person_id == person_id)
-                .with_for_update()
+                .with_for_update(key_share=foreign_key_compatible_locks)
                 .execution_options(populate_existing=True)
             )
             if not locked_people or account is None:
@@ -684,6 +695,7 @@ class AuthService:
     ) -> str:
         csrf_token = self._token()
         with write_transaction(self.db):
+            lock_password_credentials_in_transaction(self.db, context.account.id)
             locked_people = GuardianReadinessPolicy(self.db).lock_students(
                 [context.account.person_id]
             )
@@ -716,6 +728,9 @@ class AuthService:
             account.force_password_change = False
             account.failed_login_count = 0
             account.locked_until = None
+            invalidate_password_reset_challenges_in_transaction(
+                self.db, account_id=account.id, invalidated_at=self.clock()
+            )
             self.db.execute(
                 update(AuthSession)
                 .where(
@@ -887,7 +902,7 @@ class AuthService:
     ) -> VerificationIssued:
         normalized = normalize_login_identifier(identifier)
         login_digest = login_identifier_digest(self.lookup, normalized)
-        account_id = self.db.scalar(
+        account_query = (
             select(AccountLoginIdentifier.account_id)
             .join(UserAccount, UserAccount.id == AccountLoginIdentifier.account_id)
             .join(Person, Person.id == UserAccount.person_id)
@@ -898,13 +913,22 @@ class AuthService:
                 Person.deleted_at.is_(None),
             )
         )
-        return verification.issue(
-            identifier_kind=normalized.kind,
-            identifier=normalized.value,
-            purpose="password_reset",
-            request_source=request_source,
-            account_id=account_id,
-        )
+        with write_transaction(self.db):
+            account_id = self.db.scalar(account_query)
+            if account_id is not None:
+                lock_password_credentials_in_transaction(self.db, account_id)
+                # Recheck after the wait, but never switch to another account
+                # under the original account's credential lock.
+                account_id = self.db.scalar(
+                    account_query.where(UserAccount.id == account_id)
+                )
+            return verification.issue_in_transaction(
+                identifier_kind=normalized.kind,
+                identifier=normalized.value,
+                purpose="password_reset",
+                request_source=request_source,
+                account_id=account_id,
+            )
 
     def complete_password_reset(
         self,
@@ -915,7 +939,9 @@ class AuthService:
         request_id: str,
         verification: RegistrationVerificationService,
     ) -> None:
-        new_hash = self.passwords.hash(new_password)
+        # Keep policy validation cheap; Argon2 must only run after both the OTP
+        # and the live account binding have authorized a real password write.
+        self.passwords.validate(new_password)
         snapshot: _PasswordResetRegistrationSnapshot | None = None
         applications: list[RegistrationApplication] = []
         account: UserAccount | None = None
@@ -943,6 +969,7 @@ class AuthService:
             prepared_target = target
             if challenge.account_id is None:
                 return target
+            lock_password_credentials_in_transaction(self.db, challenge.account_id)
             candidate = VerificationConsumed(
                 challenge_id=challenge.id,
                 application_id=challenge.application_id,
@@ -995,6 +1022,7 @@ class AuthService:
             if consumed.account_id is None:
                 return
             assert snapshot is not None and account is not None
+            new_hash = self.passwords.hash(new_password)
             now = self.clock()
             application_ids = {application.id for application in applications}
             for application in applications:
@@ -1010,6 +1038,9 @@ class AuthService:
                 application_ids=application_ids,
                 identifier_digests=set(snapshot.registration_identifier_digests),
                 invalidated_at=now,
+            )
+            invalidate_password_reset_challenges_in_transaction(
+                self.db, account_id=account.id, invalidated_at=now
             )
             account.password_hash = new_hash
             account.force_password_change = False
@@ -1816,10 +1847,13 @@ class AccountService:
             user_id=actor.id, permission="accounts.manage", resource_tokens=tokens
         ).allowed:
             raise AccountManagementDenied("account management is not allowed")
-        if rbac.account_has_role(account.id, "super_admin") and not rbac.account_has_role(
-            actor.id, "super_admin"
-        ):
-            raise SuperAdminAccountProtected("only a super administrator may manage this account")
+        if not rbac.account_has_role(actor.id, "super_admin"):
+            if rbac.account_has_role(account.id, "super_admin"):
+                raise SuperAdminAccountProtected("only a super administrator may manage this account")
+            from app.rbac.account_protection import protected_management_target
+
+            if protected_management_target(self.db, account.id):
+                raise AccountManagementDenied("only a super administrator may manage this account")
 
     def _lock_managed_account(self, account_id: UUID, actor_user_id: UUID | None) -> UserAccount:
         person_id = self.db.scalar(
@@ -1912,6 +1946,7 @@ class AccountService:
         """
         from app.team_management.lifecycle import TeamLifecycleService
         from app.team_management.models import TeamManagerAssignment, TeamMembership
+        from app.team_management.staff_service import staff_team_ids_for_account
         from app.team_management.write_support import lock_directory
 
         with atomic_write_transaction(self.db):
@@ -1978,6 +2013,7 @@ class AccountService:
                     )
                 )
             )
+            team_ids.update(staff_team_ids_for_account(self.db, account.id))
             lock_directory(self.db, list(team_ids))
             now = datetime.now(UTC)
             TeamLifecycleService(self.db).close_for_deleted_account(account.id, actor_user_id, now)
@@ -2044,10 +2080,14 @@ class AccountService:
         self, account_id: UUID, *, actor_user_id: UUID | None = None
     ) -> TemporaryPassword:
         with write_transaction(self.db):
+            lock_password_credentials_in_transaction(self.db, account_id)
             account = self._lock_managed_account(account_id, actor_user_id)
             temporary_password = self.passwords.temporary_password()
             account.password_hash = self.passwords.hash(temporary_password)
             account.force_password_change = True
+            invalidate_password_reset_challenges_in_transaction(
+                self.db, account_id=account.id, invalidated_at=datetime.now(UTC)
+            )
             self.db.execute(
                 update(AuthSession)
                 .where(AuthSession.user_id == account.id, AuthSession.revoked_at.is_(None))

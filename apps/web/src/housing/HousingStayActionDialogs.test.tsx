@@ -76,7 +76,7 @@ beforeEach(() => {
   })
 })
 
-it("edits only planned departure with date-only input and deliberate duration choice", async () => {
+it("defaults to fixed-term and edits an existing planned departure without a duration choice", async () => {
   const onSubmit = vi.fn()
   const user = userEvent.setup()
   const checkedIn: HousingStay = { ...stay, stay_purpose: "permanent", cohort_id: null, status: "checked_in", actual_check_in_at: "2026-08-10T08:05:00+08:00" }
@@ -84,8 +84,12 @@ it("edits only planned departure with date-only input and deliberate duration ch
   expect(screen.getByLabelText("计划离开日期")).toHaveAttribute("type", "date")
   expect(screen.queryByLabelText("计划入住日期")).not.toBeInTheDocument()
   expect(screen.queryByLabelText("备注")).not.toBeInTheDocument()
-  expect(screen.getByRole("button", { name: "保存计划离开" })).toBeDisabled()
-  await user.selectOptions(screen.getByLabelText("住宿期限"), "fixed_term")
+  expect(screen.getByLabelText("住宿期限")).toHaveValue("fixed_term")
+  expect(screen.getByLabelText("计划离开日期")).toHaveValue("2026-08-31")
+  expect(screen.getByRole("button", { name: "保存计划离开" })).toBeEnabled()
+  await user.click(screen.getByRole("button", { name: "保存计划离开" }))
+  expect(onSubmit).toHaveBeenLastCalledWith({ version: 4, duration_mode: "fixed_term", planned_check_out_at: "2026-08-31T00:00:00+08:00" })
+
   fireEvent.change(screen.getByLabelText("计划离开日期"), { target: { value: "2026-09-02" } })
   await user.click(screen.getByRole("button", { name: "保存计划离开" }))
   expect(onSubmit).toHaveBeenLastCalledWith({ version: 4, duration_mode: "fixed_term", planned_check_out_at: "2026-09-02T00:00:00+08:00" })
@@ -93,6 +97,20 @@ it("edits only planned departure with date-only input and deliberate duration ch
   expect(screen.queryByLabelText("计划离开日期")).not.toBeInTheDocument()
   await user.click(screen.getByRole("button", { name: "保存计划离开" }))
   expect(onSubmit).toHaveBeenLastCalledWith({ version: 4, duration_mode: "long_term", planned_check_out_at: null })
+})
+
+it("requires a valid date when a long-term stay has no planned departure", async () => {
+  const onSubmit = vi.fn()
+  const checkedIn: HousingStay = { ...stay, stay_purpose: "permanent", duration_mode: "long_term", planned_check_out_at: null, cohort_id: null, status: "checked_in", actual_check_in_at: "2026-08-10T08:05:00+08:00" }
+  render(<EditPlannedDepartureDialog {...dialogProps(onSubmit)} stay={checkedIn} />)
+
+  expect(screen.getByLabelText("住宿期限")).toHaveValue("fixed_term")
+  expect(screen.getByLabelText("计划离开日期")).toHaveValue("")
+  expect(screen.getByRole("button", { name: "保存计划离开" })).toBeDisabled()
+  fireEvent.change(screen.getByLabelText("计划离开日期"), { target: { value: "2026-09-02" } })
+  expect(screen.getByRole("button", { name: "保存计划离开" })).toBeEnabled()
+  await userEvent.click(screen.getByRole("button", { name: "保存计划离开" }))
+  expect(onSubmit).toHaveBeenCalledExactlyOnceWith({ version: 4, duration_mode: "fixed_term", planned_check_out_at: "2026-09-02T00:00:00+08:00" })
 })
 
 it("keeps rejected planned-departure drafts editable and blocks submission until corrected", async () => {

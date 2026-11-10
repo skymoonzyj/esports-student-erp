@@ -238,6 +238,12 @@ export function TalentTestsPage({
         ) : null}
       </section>
 
+      <section className="talent-session-panel" aria-label="实体灯独立专项">
+        <h2>实体灯专项</h2>
+        <p>ReactionX 连接器与实体设备训练，独立准备及保存；不计入原八项测试轮次。正式模式尚未开放，自由训练不参与排名。</p>
+        <Link to="/talent-tests/reactionx">进入实体灯专项</Link>
+      </section>
+
       {context.data.can_read_reports ? (
         <section className="talent-readable-reports" aria-label="授权人员和报告">
           <form

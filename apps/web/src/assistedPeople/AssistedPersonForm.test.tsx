@@ -23,6 +23,83 @@ const guardian = {
 }
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers() })
 
+it("normalizes return permits for strict person and guardian, preserving manual facts on edits", async () => {
+  const { onSubmit } = show({ ...minor, document_type: "hk_mo_permit", identity_number: "h1234567801",
+    guardians: [{ ...guardian, document_type: "hk_mo_permit", identity_number: "m8765432102" }] })
+  expect(screen.getByLabelText("证件类型")).toHaveValue("hk_mo_permit")
+  fireEvent.change(screen.getByLabelText("回乡证号码"), { target: { value: "h1234567803" } })
+  fireEvent.change(screen.getByLabelText("监护人回乡证号码"), { target: { value: "m8765432104" } })
+  expect(screen.getByLabelText("出生日期")).toHaveValue("2012-01-02")
+  expect(screen.getByLabelText("性别")).toHaveValue("female")
+  expect(screen.getByLabelText("监护人出生日期")).toHaveValue("1990-01-02")
+  fireEvent.click(screen.getByRole("button", { name: "提交申请" }))
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+  expect(onSubmit.mock.calls[0][0]).toMatchObject({ document_type: "hk_mo_permit", identity_number: "H12345678", guardians: [{ document_type: "hk_mo_permit", identity_number: "M87654321" }] })
+})
+
+it("clears facts on return-permit switch and still requires manual facts and adult guardians", () => {
+  const { onSubmit } = show({ ...adult, guardians: [{ ...guardian, document_type: "hk_mo_permit", identity_number: "M87654321", date_of_birth: "2015-01-02" }] })
+  fireEvent.change(screen.getByLabelText("证件类型"), { target: { value: "hk_mo_permit" } })
+  fireEvent.change(screen.getByLabelText("回乡证号码"), { target: { value: "H12345678" } })
+  expect(screen.getByLabelText("出生日期")).toHaveValue("")
+  expect(screen.getByLabelText("性别")).toHaveValue("")
+  fireEvent.click(screen.getByRole("button", { name: "提交申请" }))
+  expect(screen.getByLabelText("出生日期")).toHaveAttribute("aria-invalid", "true")
+  expect(screen.getByLabelText("性别")).toHaveAttribute("aria-invalid", "true")
+  expect(screen.getByText("监护人必须年满 18 周岁")).toBeVisible()
+  expect(onSubmit).not.toHaveBeenCalled()
+})
+
+it("fills valid CN birthday, sex and China-calendar age, and clears them after an invalid number or HK switch", () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true }); vi.setSystemTime(new Date("2026-01-01T16:01:00Z"))
+  show()
+  fireEvent.change(screen.getByLabelText("身份证"), { target: { value: adult.identity_number } })
+  expect(screen.getByLabelText("出生日期")).toHaveValue("1990-01-02")
+  expect(screen.getByLabelText("性别")).toHaveValue("male")
+  expect(screen.getByText("年龄：36 周岁")).toBeVisible()
+  fireEvent.change(screen.getByLabelText("身份证"), { target: { value: "110105199001021239" } })
+  expect(screen.getByLabelText("出生日期")).toHaveValue("")
+  expect(screen.getByLabelText("性别")).toHaveValue("")
+  fireEvent.change(screen.getByLabelText("身份证"), { target: { value: adult.identity_number } })
+  fireEvent.change(screen.getByLabelText("证件类型"), { target: { value: "hk_id" } })
+  expect(screen.getByLabelText("香港身份证号码")).toHaveValue("")
+  expect(screen.getByLabelText("出生日期")).toHaveValue("")
+  expect(screen.getByLabelText("性别")).toHaveValue("")
+})
+
+it("requires separate birthday and sex for HKID, normalizes it, and preserves the strict intake checks", async () => {
+  const { onSubmit } = show(adult)
+  fireEvent.change(screen.getByLabelText("证件类型"), { target: { value: "hk_id" } })
+  fireEvent.change(screen.getByLabelText("香港身份证号码"), { target: { value: " a123456（3） " } })
+  fireEvent.click(screen.getByRole("button", { name: "提交申请" }))
+  expect(screen.getByLabelText("出生日期")).toHaveAttribute("aria-invalid", "true")
+  expect(screen.getByLabelText("性别")).toHaveAttribute("aria-invalid", "true")
+  expect(onSubmit).not.toHaveBeenCalled()
+  fireEvent.change(screen.getByLabelText("出生日期"), { target: { value: "1990-01-02" } })
+  fireEvent.change(screen.getByLabelText("性别"), { target: { value: "female" } })
+  fireEvent.click(screen.getByRole("button", { name: "提交申请" }))
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledExactlyOnceWith({ ...adult, document_type: "hk_id", identity_number: "A1234563", sex: "female" }))
+})
+
+it("supports an adult HK guardian without deriving demographic facts from HKID", async () => {
+  const { onSubmit } = show({ ...minor, guardians: [{ ...guardian, document_type: "hk_id", identity_number: "AB123456(9)" }] } as IntakeInput)
+  expect(screen.getByLabelText("监护人证件类型")).toHaveValue("hk_id")
+  fireEvent.click(screen.getByRole("button", { name: "提交申请" }))
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+  expect(onSubmit.mock.calls[0][0].guardians[0]).toMatchObject({ document_type: "hk_id", identity_number: "AB1234569", date_of_birth: "1990-01-02" })
+  fireEvent.change(screen.getByLabelText("监护人香港身份证号码"), { target: { value: "AB123456(0)" } })
+  fireEvent.click(screen.getByRole("button", { name: "提交申请" }))
+  expect(screen.getByLabelText("监护人香港身份证号码")).toHaveAttribute("aria-invalid", "true")
+  expect(onSubmit).toHaveBeenCalledTimes(1)
+})
+
+it("rejects non-ASCII HK letters before normalization rather than submitting a null or expanded identity", () => {
+  const { onSubmit } = show({ ...adult, document_type: "hk_id", identity_number: "ß1234568" })
+  fireEvent.click(screen.getByRole("button", { name: "提交申请" }))
+  expect(screen.getByLabelText("香港身份证号码")).toHaveAttribute("aria-invalid", "true")
+  expect(onSubmit).not.toHaveBeenCalled()
+})
+
 it.each(["2026-02-27", "2026-02-28", "2026-03-01"])("uses the canonical leap-day eighteenth birthday for subject and guardian on %s", async (today) => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   vi.setSystemTime(new Date(`${today}T04:00:00Z`))

@@ -6,6 +6,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY --chown=node:node . .
+COPY --from=reactionx_contracts --chown=node:node /schema.json /fixtures.json /shared/reactionx/v1/
 RUN chown -R node:node /app
 
 USER node

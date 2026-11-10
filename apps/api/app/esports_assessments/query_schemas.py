@@ -7,7 +7,14 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, Field, StrictBool, StrictInt, field_validator, model_validator
 
-from .config_schemas import MEMBERS, StrictModel, SuiteConfig, SuiteId, TaskConfig, TestId
+from .config_schemas import (
+    StrictModel,
+    SuiteConfig,
+    SuiteId,
+    TaskConfig,
+    TestId,
+    is_supported_suite_test,
+)
 from .schemas import (
     AttemptView,
     ControlSettings,
@@ -73,10 +80,11 @@ class AssessmentContextView(StrictModel):
             raise ValueError("invalid ongoing session set")
         if self.active_run:
             run = self.active_run
-            if run.test_id not in MEMBERS[run.suite_id]:
+            if not is_supported_suite_test(run.suite_id, run.test_id):
                 raise ValueError("active run test does not belong to suite")
             if run.mode == "formal" and not any(
-                s.id == run.session_id and s.suite_id == run.suite_id for s in sessions
+                s.id == run.session_id and s.suite_id == run.suite_id and run.test_id in s.members
+                for s in sessions
             ):
                 raise ValueError("active formal run is not an ongoing session")
         if not self.can_read_self and (sessions or self.active_run):
@@ -100,7 +108,9 @@ class RecoveryItem(ActiveRunView):
 
     @model_validator(mode="after")
     def check_recovery(self) -> Self:
-        if self.run_until <= self.issued_at or self.test_id not in MEMBERS[self.suite_id]:
+        if self.run_until <= self.issued_at or not is_supported_suite_test(
+            self.suite_id, self.test_id
+        ):
             raise ValueError("invalid recovery identity or deadlines")
         return self
 

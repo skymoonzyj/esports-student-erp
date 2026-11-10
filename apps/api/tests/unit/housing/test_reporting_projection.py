@@ -411,13 +411,14 @@ def test_missing_person_facts_reject_report_without_inventing_age(field, guardia
 
 
 @pytest.mark.parametrize("guardian", [False, True])
-def test_cn_only_report_rejects_passport_even_when_number_looks_like_cn_id(guardian):
+@pytest.mark.parametrize("document_type", ["passport", "hk_id", "hk_mo_permit"])
+def test_cn_only_report_rejects_non_cn_even_when_number_looks_like_cn_id(guardian, document_type):
     resident_row = resident_candidate()
     guardian_row = guardian_candidate("测试监护人")
     if guardian:
-        guardian_row = replace(guardian_row, guardian_document_type="passport")
+        guardian_row = replace(guardian_row, guardian_document_type=document_type)
     else:
-        resident_row = replace(resident_row, document_type="passport")
+        resident_row = replace(resident_row, document_type=document_type)
     result = build_projection_from_candidates(
         residents=[resident_row],
         guardians=[guardian_row],

@@ -579,6 +579,62 @@ def test_team_manager_requires_current_ownership_and_remains_readonly(
         assert "PRIVATE_STAY_NOTE" not in response.text
 
 
+@pytest.mark.parametrize(
+    "role_key,staff_role",
+    [("team_manager", "manager"), ("coach", "coach"), ("assistant_coach", "assistant_coach")],
+)
+def test_new_staff_binding_exact_housing_summary_is_readonly_and_revocable(
+    db, db_client, platform_users, role_key, staff_role
+):
+    from app.rbac.models import UserRole
+    from app.rbac.seed import ROLES
+    from app.team_management.models import TeamMembership, TeamStaffAssignment
+    from tests.services.test_team_access import teams
+
+    target = stay(db, platform_users)
+    user = platform_users["accounts"]["customer_service"]
+    creator = platform_users["accounts"]["admin"].id
+    team, _ = teams(db, creator)
+    db.add(UserRole(user_id=user.id, role_id=ROLES[role_key].id))
+    assignment = TeamStaffAssignment(
+        account_id=user.id, team_id=team.id, staff_role=staff_role, created_by_user_id=creator
+    )
+    db.add_all(
+        [
+            assignment,
+            TeamMembership(
+                person_id=target.person_id,
+                team_id=team.id,
+                joined_on=datetime.now(UTC).date(),
+                created_by_user_id=creator,
+            ),
+        ]
+    )
+    db.commit()
+    for permission in (
+        "housing.read",
+        "housing.stays.manage",
+        "housing.transfers.manage",
+        "housing.checkouts.manage",
+    ):
+        grant(db, platform_users, "customer_service", permission)
+    response = get(db_client, platform_users, "customer_service")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store, private"
+    body = response.json()
+    assert body["current"]["room_name"] == "本人房间"
+    assert body["management_stay"] is None
+    assert body["allowed_actions"]["create_stay"] is False
+    assert "PRIVATE_STAY_NOTE" not in response.text
+    assert "occupants" not in response.text and "phone" not in response.text
+    assert get(
+        db_client, platform_users, "customer_service", suffix="/check-in-options"
+    ).status_code in {403, 404}
+    assignment.ended_at, assignment.end_kind = datetime.now(UTC), "unassigned"
+    db.commit()
+    assert get(db_client, platform_users, "customer_service").status_code in {403, 404}
+
+
 def test_permission_revocation_changes_revision_and_management_actions(
     db, db_client, platform_users
 ):

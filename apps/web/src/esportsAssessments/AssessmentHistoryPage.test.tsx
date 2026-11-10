@@ -7,6 +7,7 @@ import { AssessmentHistoryPage } from './AssessmentHistoryPage'
 import { renderAssessmentPage, studentFixture } from './testSupport/renderAssessmentPage'
 import { jsonResponse, practiceFixture, reportContext, summaryFixture, REPORT_ID, PREVIOUS_ID, PERSON_ID, SESSION_ID } from './reportTestFixtures'
 import { fixtureSuiteConfig } from './testSupport/fixtures'
+import { fixtureV4SuiteConfig } from './testSupport/fixturesV4'
 
 // Keep the real console output: warnings are observed, not suppressed.
 beforeEach(() => { vi.spyOn(console, 'error') })
@@ -91,6 +92,11 @@ it('shows own formal progress separately from completed reports without generati
   expect(await screen.findByText(/进行中 · 0\/4/)).toBeVisible()
   expect(screen.getByRole('link', { name: '查看轮次' })).toHaveAttribute('href', `/esports-assessments/sessions/${SESSION_ID}`)
   expect(screen.queryByRole('link', { name: /查看报告/ })).not.toBeInTheDocument()
+})
+it('shows the frozen three-item denominator for v4 formal history', async () => {
+  const frozen = fixtureV4SuiteConfig()
+  setup({ page: () => ({ items: [{ mode: 'formal', session: { id: SESSION_ID, suite_id: 'pc-fps', suite_config: frozen, status: 'in_progress', members: frozen.test_ids, results: [], report_id: null }, created_at: '2026-11-08T00:00:00Z', completed_at: null }], visible_total: 1, next_cursor: null }) })
+  expect(await screen.findByText(/进行中 · 0\/3/)).toBeVisible()
 })
 
 it('clears practice selections on pagination instead of comparing across hidden pages', async () => {

@@ -20,7 +20,11 @@ from app.operations.metrics import (
     RouteMetric,
     TrafficBucket,
 )
-from app.operations.models import OperationsMetricBatch, OperationsRequestMinute
+from app.operations.models import (
+    OperationsMetricBatch,
+    OperationsRequestError,
+    OperationsRequestMinute,
+)
 
 METRIC_LOCK = 420_005_201
 
@@ -56,6 +60,17 @@ def persist_batch(db: Session, batch: MetricBatch, *, now: datetime, retention_d
                     row.latency_histogram, aggregate.histogram, strict=True
                 )
             ]
+    error_cutoff = now - timedelta(days=30)
+    for event in batch.errors:
+        if event.occurred_at < error_cutoff:
+            continue
+        db.execute(
+            insert(OperationsRequestError).values(
+                id=event.id, occurred_at=event.occurred_at, account_id=event.account_id,
+                source_ip=event.source_ip, request_id=event.request_id, method=event.method,
+                route=event.route, status_code=event.status_code, reason=event.reason,
+            ).on_conflict_do_nothing(index_elements=[OperationsRequestError.id])
+        )
     db.flush()
     return True
 
@@ -64,6 +79,9 @@ def prune_metrics(db: Session, *, now: datetime, retention_days: int) -> None:
     cutoff = now - timedelta(days=retention_days)
     db.execute(delete(OperationsRequestMinute).where(OperationsRequestMinute.starts_at < cutoff))
     db.execute(delete(OperationsMetricBatch).where(OperationsMetricBatch.created_at < cutoff))
+    db.execute(delete(OperationsRequestError).where(
+        OperationsRequestError.occurred_at < now - timedelta(days=30)
+    ))
 
 
 def _percentile(histogram: list[int], percentile: float, maximum: float) -> float:

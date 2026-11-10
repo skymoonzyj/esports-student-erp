@@ -25,6 +25,7 @@ from app.esports_assessments.models import (
 from app.esports_assessments.schemas import SessionCreate
 from tests.esports_helpers import (
     attempt_request,
+    create_v3_session,
     environment,
     result_request,
     session_request,
@@ -65,17 +66,19 @@ def test_operation_digest_is_canonical_and_target_bound():
 def test_session_create_replay_is_authorized_and_payload_bound(db, actor):
     service = FormalAssessmentService(db)
     key = uuid4()
-    first = service.create(actor, session_request("pc-fps", key), NOW)
-    replay = service.create(actor, session_request("pc-fps", key), NOW + timedelta(seconds=1))
+    first = create_v3_session(service, actor, session_request("pc-fps", key), NOW)
+    replay = create_v3_session(
+        service, actor, session_request("pc-fps", key), NOW + timedelta(seconds=1)
+    )
     assert replay == first
     with pytest.raises(AssessmentConflict) as mismatch:
-        service.create(actor, session_request("pc-moba", key), NOW)
+        create_v3_session(service, actor, session_request("pc-moba", key), NOW)
     assert mismatch.value.code == "esports_replay_mismatch"
 
     actor.account.status = "disabled"
     db.commit()
     with pytest.raises(AssessmentForbidden):
-        service.create(actor, session_request("pc-fps", key), NOW)
+        create_v3_session(service, actor, session_request("pc-fps", key), NOW)
 
 
 def test_withdrawn_suite_rejects_fresh_work_but_not_replay(db, actor, monkeypatch):
@@ -83,11 +86,11 @@ def test_withdrawn_suite_rejects_fresh_work_but_not_replay(db, actor, monkeypatc
 
     service = FormalAssessmentService(db)
     request = session_request("pc-fps")
-    session = service.create(actor, request, NOW)
+    session = create_v3_session(service, actor, request, NOW)
     monkeypatch.setattr(catalog, "AVAILABLE_SUITES", frozenset())
-    assert service.create(actor, request, NOW).id == session.id
+    assert create_v3_session(service, actor, request, NOW).id == session.id
     with pytest.raises(AssessmentUnavailable) as create_error:
-        service.create(actor, session_request("pc-moba"), NOW)
+        create_v3_session(service, actor, session_request("pc-moba"), NOW)
     assert create_error.value.code == "esports_suite_unavailable"
     with pytest.raises(AssessmentUnavailable):
         service.start_attempt(
@@ -102,7 +105,7 @@ def test_withdrawn_suite_still_accepts_valid_existing_attempt_submission(db, act
     from app.esports_assessments import catalog
 
     service = FormalAssessmentService(db)
-    session = service.create(actor, session_request(), NOW)
+    session = create_v3_session(service, actor, session_request(), NOW)
     attempt = service.start_attempt(actor, session.id, attempt_request("pc-fps", "precision"), NOW)
     monkeypatch.setattr(catalog, "AVAILABLE_SUITES", frozenset())
     saved = service.submit(
@@ -121,7 +124,7 @@ def test_withdrawn_suite_still_accepts_valid_existing_attempt_submission(db, act
 
 def test_attempt_replay_keeps_seed_and_deadlines_but_refreshes_server_now(db, actor, monkeypatch):
     service = FormalAssessmentService(db)
-    session = service.create(actor, session_request(), NOW)
+    session = create_v3_session(service, actor, session_request(), NOW)
     generated: list[int] = []
 
     def next_seed(bits: int) -> int:
@@ -152,7 +155,7 @@ def test_attempt_replay_keeps_seed_and_deadlines_but_refreshes_server_now(db, ac
 
 def test_formal_pc_fps_requires_active_pointer_lock(db, actor):
     service = FormalAssessmentService(db)
-    session = service.create(actor, session_request(), NOW)
+    session = create_v3_session(service, actor, session_request(), NOW)
     bad_environment = environment("pc-fps").model_copy(update={"pointer_lock_active": False})
     request = attempt_request("pc-fps", "precision").model_copy(
         update={"environment": bad_environment}
@@ -163,7 +166,7 @@ def test_formal_pc_fps_requires_active_pointer_lock(db, actor):
 
 def test_awaiting_submission_releases_occupancy_but_not_same_test(db, actor):
     service = FormalAssessmentService(db)
-    session = service.create(actor, session_request(), NOW)
+    session = create_v3_session(service, actor, session_request(), NOW)
     first = service.start_attempt(actor, session.id, attempt_request("pc-fps", "precision"), NOW)
     at_lease = first.run_until
     with pytest.raises(AssessmentConflict) as pending:
@@ -199,7 +202,7 @@ def test_fresh_formal_start_reconciles_cross_mode_occupancy(db, actor):
     from app.esports_assessments.catalog import get_task
 
     service = FormalAssessmentService(db)
-    session = service.create(actor, session_request(), NOW)
+    session = create_v3_session(service, actor, session_request(), NOW)
     config = get_task("pc-moba", "last-hit")
     practice = AssessmentPracticeRun(
         person_id=actor.person.id,
@@ -237,7 +240,7 @@ def test_fresh_formal_start_reconciles_cross_mode_occupancy(db, actor):
 
 def test_submit_deadline_is_exclusive_and_invalid_payload_does_not_claim_key(db, actor):
     service = FormalAssessmentService(db)
-    session = service.create(actor, session_request(), NOW)
+    session = create_v3_session(service, actor, session_request(), NOW)
     attempt = service.start_attempt(actor, session.id, attempt_request("pc-fps", "precision"), NOW)
     key = uuid4()
     invalid = result_request(
@@ -292,7 +295,7 @@ def test_submit_deadline_is_exclusive_and_invalid_payload_does_not_claim_key(db,
 
 def test_fatal_quality_is_a_safe_conflict_and_does_not_claim_submission_key(db, actor):
     service = FormalAssessmentService(db)
-    session = service.create(actor, session_request(), NOW)
+    session = create_v3_session(service, actor, session_request(), NOW)
     attempt = service.start_attempt(actor, session.id, attempt_request("pc-fps", "precision"), NOW)
     key = uuid4()
     rejected = result_request(
@@ -318,7 +321,7 @@ def test_fatal_quality_is_a_safe_conflict_and_does_not_claim_submission_key(db, 
 
 def test_schedule_failure_does_not_claim_submission_key(db, actor):
     service = FormalAssessmentService(db)
-    session = service.create(actor, session_request(), NOW)
+    session = create_v3_session(service, actor, session_request(), NOW)
     attempt = service.start_attempt(
         actor, session.id, attempt_request("pc-fps", "recognition"), NOW
     )
@@ -344,7 +347,7 @@ def test_schedule_failure_does_not_claim_submission_key(db, actor):
 
 def test_interrupt_is_idempotent_and_operation_key_is_attempt_bound(db, actor):
     service = FormalAssessmentService(db)
-    session = service.create(actor, session_request(), NOW)
+    session = create_v3_session(service, actor, session_request(), NOW)
     first = service.start_attempt(actor, session.id, attempt_request("pc-fps", "precision"), NOW)
     key = uuid4()
     interrupted = service.interrupt(actor, first.id, key, NOW + timedelta(seconds=10))
@@ -363,7 +366,7 @@ def test_interrupt_is_idempotent_and_operation_key_is_attempt_bound(db, actor):
 
 def test_abandon_interrupts_pending_attempts_and_saved_replay_survives(db, actor):
     service = FormalAssessmentService(db)
-    session = service.create(actor, session_request(), NOW)
+    session = create_v3_session(service, actor, session_request(), NOW)
     saved_attempt = service.start_attempt(
         actor, session.id, attempt_request("pc-fps", "precision"), NOW
     )
@@ -404,7 +407,7 @@ def test_abandon_interrupts_pending_attempts_and_saved_replay_survives(db, actor
 
 def test_four_out_of_order_results_create_one_report_with_exact_comparisons(db, actor):
     service = FormalAssessmentService(db)
-    session = service.create(actor, session_request(), NOW)
+    session = create_v3_session(service, actor, session_request(), NOW)
     audit_actions = select(AuditEvent.action).where(AuditEvent.resource_id == session.id)
     assert list(db.scalars(audit_actions)) == ["esports_assessments.started"]
     order = ("recognition", "precision", "switching", "tracking")
@@ -492,7 +495,7 @@ def test_clean_same_configuration_uses_previous_completed_report(db, actor):
     service = FormalAssessmentService(db)
 
     def complete(started_at):
-        session = service.create(actor, session_request(), started_at)
+        session = create_v3_session(service, actor, session_request(), started_at)
         saved = None
         for index, test_id in enumerate(("precision", "tracking", "switching", "recognition")):
             attempt_at = started_at + timedelta(seconds=90 * index)
@@ -528,7 +531,7 @@ def complete_comparison_report(
     db, actor, at, *, sensitivity=1, width=1280, flagged=False, perfect=True
 ):
     service = FormalAssessmentService(db)
-    session = service.create(actor, session_request(), at)
+    session = create_v3_session(service, actor, session_request(), at)
     saved = None
     for index, test_id in enumerate(("precision", "tracking", "switching", "recognition")):
         started = at + timedelta(seconds=90 * index)
@@ -652,7 +655,7 @@ def test_final_audit_failure_rolls_back_result_report_and_operation_key(db, acto
     from app.audit.service import AuditMetadataRejected, AuditService
 
     service = FormalAssessmentService(db)
-    session = service.create(actor, session_request(), NOW)
+    session = create_v3_session(service, actor, session_request(), NOW)
     attempts = []
     for index, test_id in enumerate(("precision", "tracking", "switching", "recognition")):
         started_at = NOW + timedelta(seconds=90 * index)

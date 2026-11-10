@@ -43,7 +43,25 @@ def test_invited_housing_seed_is_self_only_for_all_standard_roles(db: Session) -
     assert permission.id == UUID("20000000-0000-4000-8000-000000000086")
     assert permission.name == "查看受邀人员住宿"
     assert permission.sensitive is True
-    expected = {(role_key, "self") for role_key in ROLES}
+    # New specialized roles do not inherit unrelated invited-housing access.
+    expected = {
+        (role_key, "self")
+        for role_key in (
+            "admin",
+            "coach",
+            "customer_service",
+            "life_teacher",
+            "staff",
+            "guardian",
+            "student",
+            "registered_user",
+            "super_admin",
+            "administration",
+            "finance",
+            "team_member",
+            "team_manager",
+        )
+    }
     for _ in range(2):
         grants = set(
             db.execute(
@@ -2057,6 +2075,9 @@ def test_scoped_manager_needs_matching_delegation_to_remove_deny_but_can_remove_
 ) -> None:
     manager = permission_accounts["other"]
     target = permission_accounts["admin"]
+    # Exercise scoped delegation against an ordinary target; protected accounts
+    # cannot be narrowed by delegated managers at all.
+    db.execute(delete(UserRole).where(UserRole.user_id == target.id))
     valid_from = datetime.now(UTC) - timedelta(days=2)
     valid_until = datetime.now(UTC) + timedelta(days=2)
     deny = UserPermissionOverride(
@@ -2692,6 +2713,9 @@ def test_building_scoped_reader_delegates_only_floors_in_that_building(
 ) -> None:
     manager = permission_accounts["other"]
     target = permission_accounts["admin"]
+    # Scope delegation is exercised against an ordinary target; a delegated
+    # manager cannot change any permissions of an actual super administrator.
+    db.execute(delete(UserRole).where(UserRole.user_id == target.id))
     building = INITIAL_BUILDINGS[0]
     own_floor = FLOOR_SEEDS[0]
     other_floor = next(floor for floor in FLOOR_SEEDS if floor.building_id != building.id)

@@ -37,8 +37,9 @@ def merge_completion_payload(
         if source == "phone" and incoming is not None:
             incoming = incoming.get_secret_value()
         existing = values[target]
-        if source == "issuing_country" and approved.document_type == "cn_id":
-            if incoming not in (None, "CN"):
+        if source == "issuing_country" and approved.document_type != "passport":
+            allowed = {"cn_id": "CN", "hk_id": "HK"}.get(approved.document_type)
+            if incoming not in (None, allowed):
                 raise ProfileClaimError(code="completion_conflicts")
             continue
         if existing is not None and incoming is not None and existing != incoming:
@@ -49,9 +50,13 @@ def merge_completion_payload(
         # Existing approved relationships are immutable to the claimant. Their
         # explicit correction remains the existing authenticated admin workflow.
         incoming_guardians = submitted["guardians"]
-        if approved.guardians and incoming_guardians != [
-            g.model_dump(mode="json") for g in approved.guardians
-        ]:
+        from app.personnel_intake.schemas import AssistedGuardianView
+
+        if (
+            approved.guardians
+            and [AssistedGuardianView.model_validate(g) for g in incoming_guardians]
+            != approved.guardians
+        ):
             raise ProfileClaimError(code="completion_conflicts")
         if not approved.guardians:
             values["guardians"] = incoming_guardians

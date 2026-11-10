@@ -19,6 +19,7 @@ import subprocess
 import tarfile
 import tempfile
 import time
+import zlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -35,6 +36,118 @@ def load_probe():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_container_program_transport_exact_utf8_source_and_small_argv_without_docker():
+    source = ((ROOT / "scripts/erp_backup_container.py").read_text()
+              + Path(__file__).with_name("assisted_restore_probe.py").read_text()
+              + "\n# 精确保留合成恢复程序\n" * 1000)
+    assert len(source.encode()) > 131072
+    wrapper = container_program(source)
+    tree = ast.parse(wrapper)
+    decode = next(node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                  and isinstance(node.func, ast.Attribute) and node.func.attr == "b64decode")
+    encoded = ast.literal_eval(decode.args[0])
+    assert zlib.decompress(base64.b64decode(encoded)).decode("utf-8") == source
+    compile_call = next(node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name) and node.func.id == "compile")
+    assert [ast.literal_eval(value) for value in compile_call.args[1:]] == ["<string>", "exec"]
+    assert len(wrapper.encode()) < 65536
+
+
+def test_container_program_transport_rejects_unbounded_argv_without_docker():
+    source = "pass\n#" + "".join(hashlib.sha256(str(n).encode()).hexdigest() for n in range(4096))
+    with pytest.raises(ValueError, match="^restore_code_argument_too_large$"):
+        container_program(source)
+
+
+def test_owned_attach_diagnostics_report_only_known_class_and_owned_frames_without_docker():
+    value = owned_attach_failure_metadata(
+        b'Traceback (most recent call last):\n'
+        b'  File "<string>", line 87, in produce\n'
+        b'  File "/app/app/personnel_intake/approval_service.py", line 1051, in direct_create_pending\n'
+        b'    raise ValueError(private_runtime_key)\n'
+        b'ValueError: DO_NOT_PRINT_PRIVATE_RUNTIME_KEY\n'
+    )
+    assert value == {
+        "error_class": "ValueError",
+        "frames": [
+            {"path": "<string>", "line": 87},
+            {"path": "/app/app/personnel_intake/approval_service.py", "line": 1051},
+        ],
+    }
+    assert "DO_NOT_PRINT" not in json.dumps(value)
+
+
+def test_owned_attach_diagnostics_redact_malicious_messages_paths_and_unknown_classes_without_docker():
+    secret = "DO_NOT_PRINT_PRIVATE_CONFIG_OR_IDENTITY"
+    stderr = (
+        f'  File "/Users/{secret}/private.py", line 123, in danger\n'
+        f'  File "/app/app/../../{secret}.py", line 123, in danger\n'
+        f'  File "/app/app/{secret}.py", line 123, in danger\n'
+        '  File "<string>", line 0, in danger\n'
+        '  File "<string>", line 99999999, in danger\n'
+        f'{secret}: {secret}\nValueError{secret}: {secret}\n'
+        f'AssertionError({secret})\n'
+    ).encode()
+    value = owned_attach_failure_metadata(stderr)
+    assert value == {"error_class": "redacted", "frames": []}
+    assert secret not in json.dumps(value)
+    many = owned_attach_failure_metadata(
+        (b'  File "<string>", line 87, in produce\n' * 1000)
+        + b'RuntimeError: DO_NOT_PRINT_PRIVATE_RUNTIME_KEY\n'
+    )
+    assert len(many["frames"]) <= 8
+    assert len(json.dumps(many)) < 1000
+    assert "DO_NOT_PRINT" not in json.dumps(many)
+
+
+@pytest.mark.parametrize("constraint", [
+    "ck_person_team_staff_end", "ck_team_staff_assignments_end_pair", "DO_NOT_PRINT_UNKNOWN_CONSTRAINT",
+])
+def test_owned_attach_diagnostics_only_fixed_constraint_names_without_docker(constraint):
+    value = owned_attach_failure_metadata(
+        (f'sqlalchemy.exc.IntegrityError: violates check constraint "{constraint}"\n'
+         'DETAIL: Failing row contains (DO_NOT_PRINT_PRIVATE_FACTS).\n').encode()
+    )
+    if constraint.startswith("ck_"):
+        assert value == {"error_class": "IntegrityError", "frames": [], "known_constraints": [constraint]}
+    else:
+        assert value == {"error_class": "IntegrityError", "frames": []}
+    assert "DO_NOT_PRINT" not in json.dumps(value)
+
+
+def test_extracted_legacy_seed_all_free_globals_exist_in_producer_without_docker():
+    import builtins
+    import symtable
+    from importlib import import_module
+
+    own_tree = ast.parse(Path(__file__).read_text())
+    runtime_test = next(node for node in own_tree.body if isinstance(node, ast.FunctionDef)
+                        and node.name == "test_encrypted_0069_recovery_preserves_domain_and_provenance")
+    preludes = [node.value for node in ast.walk(runtime_test)
+                if isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and "from sqlalchemy import Engine" in node.value]
+    assert len(preludes) == 1
+    namespace = dict(vars(load_probe()))
+    for statement in ast.parse(preludes[0]).body:
+        assert isinstance(statement, ast.ImportFrom) and statement.level == 0
+        assert statement.module in {"sqlalchemy", "uuid"}
+        module = import_module(statement.module)
+        for alias in statement.names:
+            namespace[alias.asname or alias.name] = getattr(module, alias.name)
+    migration = ast.parse((ROOT / "apps/api/tests/db/test_assisted_personnel_migration.py").read_text())
+    seed = next(node for node in migration.body if isinstance(node, ast.FunctionDef)
+                and node.name == "seed_business_rows")
+    pending = [symtable.symtable(ast.unparse(seed), "<legacy-seed>", "exec")]
+    required = set()
+    while pending:
+        scope = pending.pop()
+        required.update(symbol.get_name() for symbol in scope.get_symbols()
+                        if symbol.is_global() and symbol.is_referenced())
+        pending.extend(scope.get_children())
+    assert {"Table", "MetaData"} <= required
+    assert required <= set(namespace) | set(vars(builtins))
 
 
 def test_restore_services_share_clock_and_observe_cross_purpose_email_cooldown():
@@ -56,6 +169,100 @@ def test_restore_activation_password_satisfies_real_account_policy():
     from app.security.passwords import PasswordService
 
     PasswordService.validate(load_probe().PENDING_ACTIVATION_PASSWORD)
+
+
+def test_identity_restore_fixture_contract_has_all_four_historical_states_without_docker():
+    from uuid import UUID
+
+    from app.personnel_intake.identity_selection import resolve_managed_identity
+
+    module = load_probe()
+    a, b = UUID(int=11), UUID(int=12)
+    cases = module.identity_staff_fixture_inputs(a, b)
+    assert set(cases) == {"unactivated_multi_role", "realized_link", "ended_history", "reconfirmed_version"}
+    seen = set()
+    for case in cases.values():
+        assert "kind" not in case["facts"] and "activation_role_keys" not in case["facts"]
+        assert case["facts"]["email"].endswith("@example.com")
+        seen.add(case["facts"]["identity_number"])
+        resolved = resolve_managed_identity(case["selection"])
+        assert (resolved.kind, resolved.staff_type) == ("staff", "coach")
+        assert case["selection"].primary_identity == "coach"
+        assert case["selection"].concurrent_identities == ["team_manager"]
+        assert [(item.staff_role, item.team_ids) for item in case["teams"]] == [
+            ("coach", [a, b]), ("manager", [a])]
+    assert len(seen) == 4
+
+
+@pytest.mark.parametrize("field,value", [
+    ("proofs", [{"version": 1, "role_plan_id": "replacement", "digest": "changed"}]),
+    ("positions", [{"id": "other", "account_assignment_id": None, "ended_at": None}]),
+    ("identity", {"origin_approval_id": "replacement"}),
+    ("roster", [{"row_key": "duplicate"}]),
+])
+def test_identity_restore_probe_detects_source_link_or_history_replacement_without_docker(field, value):
+    original = {"proofs": [{"version": 1, "role_plan_id": "original", "digest": "original"}],
+                "positions": [{"id": "original", "account_assignment_id": "link", "ended_at": "ended"}],
+                "identity": {"origin_approval_id": "original"}, "roster": [{"row_key": "person:original"}]}
+    observed = copy.deepcopy(original)
+    observed[field] = value
+    with pytest.raises(AssertionError, match="identity_staff_restore_case_changed"):
+        load_probe().assert_identity_staff_restored_case(observed, original)
+
+
+def test_restore_fixture_clock_past_requires_no_sleep_without_docker():
+    now = dt.datetime(2026, 11, 7, tzinfo=dt.UTC)
+
+    def forbidden_sleep(_):
+        raise AssertionError("past_fixture_must_not_sleep")
+
+    load_probe().wait_restore_fixture_clock(now - dt.timedelta(seconds=1), clock=lambda: now,
+                                          sleeper=forbidden_sleep, timer=lambda: 0)
+
+
+@pytest.mark.parametrize("seconds", [1.5, 90])
+def test_restore_fixture_clock_waits_real_progress_with_short_bounded_sleeps_without_docker(seconds):
+    origin = dt.datetime(2026, 11, 7, tzinfo=dt.UTC)
+    elapsed, waits = [0.0], []
+
+    def sleep(duration):
+        assert 0 < duration <= .25
+        waits.append(duration)
+        elapsed[0] += duration
+
+    load_probe().wait_restore_fixture_clock(origin + dt.timedelta(seconds=seconds),
+        clock=lambda: origin + dt.timedelta(seconds=elapsed[0]), sleeper=sleep, timer=lambda: elapsed[0])
+    assert elapsed[0] == seconds and waits
+
+
+@pytest.mark.parametrize("target", [None, dt.datetime(2026, 11, 7, tzinfo=dt.UTC).replace(tzinfo=None),
+                                   dt.datetime(2026, 11, 7, tzinfo=dt.UTC) + dt.timedelta(seconds=91)])
+def test_restore_fixture_clock_rejects_invalid_or_too_future_without_docker(target):
+    now = dt.datetime(2026, 11, 7, tzinfo=dt.UTC)
+    with pytest.raises(ValueError, match="^restore_fixture_clock_invalid$"):
+        load_probe().wait_restore_fixture_clock(target, clock=lambda: now,
+                                               sleeper=lambda _: None, timer=lambda: 0)
+
+
+def test_restore_fixture_clock_stalled_is_bounded_without_docker():
+    now = dt.datetime(2026, 11, 7, tzinfo=dt.UTC)
+    elapsed = [0.0]
+
+    def sleep(duration):
+        elapsed[0] += duration
+
+    with pytest.raises(ValueError, match="^restore_fixture_clock_stalled$"):
+        load_probe().wait_restore_fixture_clock(now + dt.timedelta(seconds=1), clock=lambda: now,
+                                               sleeper=sleep, timer=lambda: elapsed[0])
+    assert elapsed[0] <= 90
+
+
+def test_restore_fixture_clock_backward_is_rejected_without_docker():
+    now = dt.datetime(2026, 11, 7, tzinfo=dt.UTC)
+    times = iter([now, now - dt.timedelta(seconds=1)])
+    with pytest.raises(ValueError, match="^restore_fixture_clock_backward$"):
+        load_probe().wait_restore_fixture_clock(now + dt.timedelta(seconds=1), clock=lambda: next(times),
+                                               sleeper=lambda _: None, timer=lambda: 0)
 
 
 @pytest.mark.parametrize("passed", [False, True])
@@ -110,15 +317,28 @@ def test_legacy_person_seed_runs_against_pre_pending_schema_without_docker():
 @pytest.mark.parametrize(
     "missing",
     [
+        "migrations/versions/0089_quick_intake_housing.py",
+        "app/personnel_intake/quick_import_models.py",
+        "app/personnel_intake/quick_import_service.py",
         "migrations/versions/0069_pending_profile_intake.py",
         "app/identity/document_identity.py",
         "app/personnel_intake/claims/completion.py",
         "app/personnel_intake/readiness.py",
+        "migrations/versions/0087_intake_identity_teams.py",
+        "migrations/versions/0088_intake_role_intents.py",
+        "app/personnel_intake/role_intent_models.py",
+        "app/personnel_intake/role_intent_policy.py",
+        "app/personnel_intake/role_intents.py",
+        "app/personnel_intake/identity_models.py",
+        "app/team_management/person_staff_service.py",
     ],
 )
 def test_recovery_archive_fails_closed_when_pending_dependency_missing(tmp_path, missing):
     api = ROOT / "apps/api"
     for relative in (
+        "migrations/versions/0089_quick_intake_housing.py",
+        "app/personnel_intake/quick_import_models.py",
+        "app/personnel_intake/quick_import_service.py",
         "alembic.ini",
         "pyproject.toml",
         "migrations/versions/0068_deferred_email_claims.py",
@@ -131,6 +351,17 @@ def test_recovery_archive_fails_closed_when_pending_dependency_missing(tmp_path,
         "app/personnel_intake/activation_service.py",
         "app/personnel_intake/readiness.py",
         "app/identity/document_identity.py",
+        "migrations/versions/0087_intake_identity_teams.py",
+        "migrations/versions/0088_intake_role_intents.py",
+        "app/personnel_intake/role_intent_models.py",
+        "app/personnel_intake/role_intent_policy.py",
+        "app/personnel_intake/role_intents.py",
+        "app/personnel_intake/identity_models.py",
+        "app/personnel_intake/identity_selection.py",
+        "app/team_management/person_staff_models.py",
+        "app/team_management/person_staff_schemas.py",
+        "app/team_management/person_staff_service.py",
+        "app/team_management/person_staff_query.py",
         "Dockerfile",
         "tests/cli/assisted_restore_probe.py",
         "tests/cli/test_assisted_personnel_backup_docker.py",
@@ -215,6 +446,9 @@ def write_source_archive(root, target):
         | set((api / "migrations").rglob("*.py"))
     )
     required = {
+        "migrations/versions/0089_quick_intake_housing.py",
+        "app/personnel_intake/quick_import_models.py",
+        "app/personnel_intake/quick_import_service.py",
         "migrations/versions/0068_deferred_email_claims.py",
         "migrations/versions/0069_pending_profile_intake.py",
         "app/identity/document_identity.py",
@@ -225,6 +459,17 @@ def write_source_archive(root, target):
         "app/personnel_intake/claims/proof.py",
         "app/personnel_intake/claims/binding.py",
         "app/personnel_intake/activation_service.py",
+        "migrations/versions/0087_intake_identity_teams.py",
+        "migrations/versions/0088_intake_role_intents.py",
+        "app/personnel_intake/role_intent_models.py",
+        "app/personnel_intake/role_intent_policy.py",
+        "app/personnel_intake/role_intents.py",
+        "app/personnel_intake/identity_models.py",
+        "app/personnel_intake/identity_selection.py",
+        "app/team_management/person_staff_models.py",
+        "app/team_management/person_staff_schemas.py",
+        "app/team_management/person_staff_service.py",
+        "app/team_management/person_staff_query.py",
     }
     if not required <= {path.relative_to(api).as_posix() for path in sources}:
         raise ValueError("recovery_source_incomplete")
@@ -275,6 +520,13 @@ def test_source_archive_covers_claim_code_and_image_fingerprints_without_docker(
             "app/personnel_intake/claims/proof.py",
             "app/personnel_intake/claims/binding.py",
             "app/personnel_intake/activation_service.py",
+            "migrations/versions/0087_intake_identity_teams.py",
+            "migrations/versions/0088_intake_role_intents.py",
+            "app/personnel_intake/role_intent_models.py",
+            "app/personnel_intake/role_intent_policy.py",
+            "app/personnel_intake/role_intents.py",
+            "app/personnel_intake/identity_models.py",
+            "app/team_management/person_staff_service.py",
         ):
             raw = (ROOT / "apps/api" / relative).read_bytes()
             assert archive.extractfile("apps/api/" + relative).read() == raw
@@ -296,12 +548,16 @@ def test_source_archive_covers_claim_code_and_image_fingerprints_without_docker(
 @pytest.mark.parametrize(
     "relative",
     [
+        "migrations/versions/0089_quick_intake_housing.py",
+        "app/personnel_intake/quick_import_models.py",
         "app/personnel_intake/claims/models.py",
         "app/personnel_intake/claims/schemas.py",
         "migrations/versions/0068_deferred_email_claims.py",
         "migrations/versions/0069_pending_profile_intake.py",
         "app/identity/document_identity.py",
         "app/personnel_intake/claims/completion.py",
+        "migrations/versions/0088_intake_role_intents.py",
+        "app/personnel_intake/role_intents.py",
     ],
 )
 def test_api_image_source_guard_rejects_unverified_source_without_docker(
@@ -362,6 +618,16 @@ def require_image(value):
     return value
 
 
+def container_program(source):
+    """Carry exact static UTF8 code under Linux's single-argument limit."""
+    encoded = base64.b64encode(zlib.compress(source.encode("utf-8"), level=9)).decode("ascii")
+    wrapper = ("import base64,zlib;exec(compile(zlib.decompress(base64.b64decode("
+               + repr(encoded) + ")), '<string>', 'exec'))")
+    if len(wrapper.encode("utf-8")) >= 131072:
+        raise ValueError("restore_code_argument_too_large")
+    return wrapper
+
+
 def check_owned(details, identifier, label, network, volumes=None):
     host = details.get("HostConfig", {})
     actual_volumes = tuple(
@@ -379,6 +645,49 @@ def check_owned(details, identifier, label, network, volumes=None):
     ):
         raise ValueError("ownership_mismatch")
     return actual_volumes
+
+
+def owned_attach_failure_metadata(stderr):
+    """Never expose container output, messages, arguments or arbitrary paths."""
+    result = {"error_class": "redacted", "frames": []}
+    if not isinstance(stderr, bytes):
+        return result
+    classes = {
+        "AssertionError", "AttributeError", "ImportError", "IntegrityError",
+        "InvalidRequestError", "KeyError", "ModuleNotFoundError", "NameError",
+        "OperationalError", "ProgrammingError", "RuntimeError", "TypeError",
+        "ValidationError", "ValueError",
+    }
+    source = ROOT / "apps/api"
+    lines = stderr[:65536].decode("utf-8", errors="replace").splitlines()[:512]
+    known_constraints = [name for name in (
+        "ck_person_team_staff_end", "ck_team_staff_assignments_end_pair",
+    ) if any(f'violates check constraint "{name}"' in line for line in lines)]
+    if known_constraints:
+        result["known_constraints"] = known_constraints
+    for line in lines:
+        kind = re.match(r"^(?:[A-Za-z_][A-Za-z_0-9]*\.)*([A-Za-z_][A-Za-z_0-9]*):", line)
+        if kind and kind.group(1) in classes:
+            result["error_class"] = kind.group(1)
+        frame = re.fullmatch(
+            r'\s*File "(<string>|/app/(?:app|migrations)/[A-Za-z_0-9./-]+\.py)", '
+            r'line ([0-9]{1,7})(?:, in [A-Za-z_0-9<>.]+)?\s*', line,
+        )
+        if not frame or len(result["frames"]) >= 8:
+            continue
+        name, number = frame.group(1), int(frame.group(2))
+        if not 0 < number <= 1_000_000:
+            continue
+        if name != "<string>":
+            relative = Path(name.removeprefix("/app/"))
+            candidate = source / relative
+            if (
+                ".." in relative.parts or candidate.is_symlink() or not candidate.is_file()
+                or not candidate.resolve().is_relative_to(source.resolve())
+            ):
+                continue
+        result["frames"].append({"path": name, "line": number})
+    return result
 
 
 @pytest.mark.parametrize("value", [None, "", "api:latest", "sha256:abc"])
@@ -706,9 +1015,14 @@ class OwnedDocker:
             )
             return subprocess.CompletedProcess(command, 0, (identifier + "\n").encode())
         try:
-            return subprocess.run(
-                ["docker", "start", "--attach", "--interactive", identifier], check=check, **kwargs
-            )
+            try:
+                return subprocess.run(
+                    ["docker", "start", "--attach", "--interactive", identifier], check=check, **kwargs
+                )
+            except subprocess.CalledProcessError as exc:
+                print(json.dumps({"owned_attach_failure": owned_attach_failure_metadata(exc.stderr)},
+                                 sort_keys=True), flush=True)
+                raise
         finally:
             self.remove(identifier)
 
@@ -942,9 +1256,9 @@ def test_encrypted_0069_recovery_preserves_domain_and_provenance(monkeypatch):
         if isinstance(node, ast.FunctionDef) and node.name == "seed_business_rows"
     )
     # AST extracts just the pure seed function; never executes fixture/reset imports.
-    producer = (
+    producer = container_program(
         definitions
-        + "\nfrom sqlalchemy import Engine\nfrom uuid import UUID\n"
+        + "\nfrom sqlalchemy import Engine, MetaData, Table\nfrom uuid import UUID\n"
         + domain
         + "\n"
         + ast.unparse(seed)
@@ -952,7 +1266,7 @@ def test_encrypted_0069_recovery_preserves_domain_and_provenance(monkeypatch):
         + "verify_api_source(value['api_source'])\n"
         + "print(json.dumps(produce(value['runtime_config'], seed_business_rows, database_manifest)))\n"
     )
-    probe_program = (
+    probe_program = container_program(
         definitions
         + "\n"
         + domain
@@ -1174,6 +1488,11 @@ sys.stdout.write(output.getvalue())
                 "profile_claims",
                 "profile_claim_bindings",
                 "profile_claim_decisions",
+                "intake_activation_role_plans",
+                "intake_identity_selections",
+                "person_team_staff_positions",
+                "person_team_staff_authorizations",
+                "team_staff_assignments",
             )
         )
         summary = {
@@ -1200,6 +1519,11 @@ sys.stdout.write(output.getvalue())
                     "profile_claims",
                     "profile_claim_bindings",
                     "profile_claim_decisions",
+                    "intake_activation_role_plans",
+                    "intake_identity_selections",
+                    "person_team_staff_positions",
+                    "person_team_staff_authorizations",
+                    "team_staff_assignments",
                 }
             },
             "domain_values_constraints_triggers_decryption": True,
@@ -1210,6 +1534,8 @@ sys.stdout.write(output.getvalue())
             "claim_statuses_proof_binding_immutability": True,
             "pending_passport_staff_binding_origins_ids_preserved": True,
             "pending_restore_case_count": len(evidence["pending_restore_cases"]),
+            "identity_staff_restore_case_count": len(evidence["identity_staff_restore_cases"]),
+            "identity_staff_history_fk_proof_access_maintenance": True,
             "pending_staff_count": sum(
                 item["expected"]["staff_type"] == "other"
                 for item in evidence["pending_restore_cases"].values()

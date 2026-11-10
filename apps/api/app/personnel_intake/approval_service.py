@@ -1,6 +1,7 @@
 """Atomic assisted approval. Public methods own the transaction; helpers never commit."""
 
 import hashlib
+import json
 from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
@@ -46,7 +47,15 @@ from app.personnel_intake.guardian_records import (
     facts_match,
     guardian_graph_component,
     insert_person,
+    payload_identity_keys,
 )
+from app.personnel_intake.identity_selection import (
+    ManagedIdentityInput,
+    ResolvedIntakeIdentity,
+    StaffTeamSelection,
+    canonical_identity_selection,
+)
+from app.personnel_intake.identity_service import IntakeIdentityService, resolve_management_identity
 from app.personnel_intake.locks import person_credential_fingerprint
 from app.personnel_intake.models import (
     AssistedApproval,
@@ -57,6 +66,7 @@ from app.personnel_intake.schemas import (
     ApprovalResult,
     AssistedGuardianView,
     AssistedProfileCorrection,
+    DirectPersonInput,
     IntakeInput,
     IntakePayloadView,
     IntakeView,
@@ -291,9 +301,11 @@ class PersonnelApprovalService(PersonnelIntakeService):
         person_id: UUID | None = None,
         payload: IntakePayloadView | PendingIntakePayloadView | None = None,
         row: PersonnelIntakeRequest | None = None,
+        direct: bool = False,
     ) -> None:
         roles, _ = self.access.actor_state(actor)
-        if not roles & {"admin", "super_admin"} or not self.access.allowed(
+        allowed_roles = {"admin", "super_admin", "administration"} if direct else {"admin", "super_admin"}
+        if not roles & allowed_roles or not self.access.allowed(
             actor,
             permission,
             target_person_id=person_id or (row.person_id if row else None),
@@ -341,8 +353,29 @@ class PersonnelApprovalService(PersonnelIntakeService):
         reason: str | None = None,
         preserve_email: bool = False,
         identity_confirmed: bool | None = None,
+        activation_role_keys: list[str] | None = None,
+        identity_selection: ResolvedIntakeIdentity | None = None,
+        staff_teams: list[StaffTeamSelection] | None = None,
     ) -> str:
         command = payload.model_dump(mode="json")
+        if identity_selection is not None:
+            command["identity_contract"] = 1
+            command.update(json.loads(canonical_identity_selection(
+                identity_selection.selection, staff_teams or []
+            )))
+        if activation_role_keys:
+            command["activation_role_keys"] = sorted(activation_role_keys)
+        # Optional metadata must not change replay digests for pre-HKID commands.
+        legacy_people = list(command["guardians"])
+        if isinstance(payload, IntakePayloadView):
+            legacy_people.append(command)
+        for person in legacy_people:
+            if (
+                person.get("document_type") == "cn_id"
+                and person.get("document_issuing_country") is None
+            ):
+                person.pop("document_type", None)
+                person.pop("document_issuing_country", None)
         if preserve_email:
             # New omitted-email commands authenticate client intent, not the
             # mutable value resolved for this write. Affiliations are also
@@ -387,6 +420,7 @@ class PersonnelApprovalService(PersonnelIntakeService):
             permission="people.update" if kind == "correction" else "personnel_intake.review",
             person_id=old.person_id,
             row=self.db.get(PersonnelIntakeRequest, old.request_id),
+            direct=kind == "direct_create",
         )
         return self._result(old)
 
@@ -408,6 +442,9 @@ class PersonnelApprovalService(PersonnelIntakeService):
         permission: str = "personnel_intake.review",
         locked_graph_person_ids: set[UUID] | None = None,
         claim_lifecycle: PreparedClaimLifecycle | None = None,
+        identity_role_keys: list[str] | None = None,
+        staff_team_ids: set[UUID] | None = None,
+        direct: bool = False,
     ) -> Person | None:
         values: list[IntakePayloadView | PendingIntakePayloadView | AssistedGuardianView] = [
             payload,
@@ -416,7 +453,10 @@ class PersonnelApprovalService(PersonnelIntakeService):
         own_digest = self._digests(payload)[0]
         digests = {
             own_digest,
-            *(self.lookup.digest(value.identity_number) for value in payload.guardians),
+            *(
+                payload_identity_keys(value, self.lookup).identity_digest
+                for value in payload.guardians
+            ),
         }
         people = list(self.db.scalars(select(Person).where(Person.identity_digest.in_(digests))))
         if person_id and all(person.id != person_id for person in people):
@@ -432,7 +472,7 @@ class PersonnelApprovalService(PersonnelIntakeService):
             None,
         )
         target_id = person_id or (own.id if own else None)
-        self._require_admin(actor, permission=permission, person_id=target_id, payload=payload)
+        self._require_admin(actor, permission=permission, person_id=target_id, payload=payload, direct=direct)
         seeds = {person.id for person in people}
         guardian_ids, edges = guardian_graph_component(self.db, seeds)
         expected_guardian_ids = set(guardian_ids)
@@ -464,8 +504,7 @@ class PersonnelApprovalService(PersonnelIntakeService):
             )
             for p in people
         ]
-        if isinstance(payload, PendingIntakePayloadView):
-            document_keys.append(self._pending_document_keys(payload))
+        document_keys.extend(payload_identity_keys(value, self.lookup) for value in values)
         lock_document_identity_keys(self.db, document_keys)
         lock_registration_credential_keys(
             self.db,
@@ -523,6 +562,12 @@ class PersonnelApprovalService(PersonnelIntakeService):
         if not current_accounts.issubset(account_ids):
             raise conflict()
         directory_ids = set(claim_lifecycle.context.team_ids) if claim_lifecycle else set()
+        if identity_role_keys:
+            from app.rbac.models import Role
+
+            list(self.db.scalars(select(Role).where(Role.key.in_(identity_role_keys))
+                 .order_by(Role.id).with_for_update().execution_options(populate_existing=True)))
+        directory_ids.update(staff_team_ids or ())
         if payload.team_id:
             directory_ids.add(payload.team_id)
         if directory_ids:
@@ -565,6 +610,7 @@ class PersonnelApprovalService(PersonnelIntakeService):
         else:
             self.policy.require_available(
                 identity=payload.identity_number,
+                identity_keys=payload_identity_keys(payload, self.lookup),
                 email=payload.email,
                 person_id=person.id if person else None,
                 request_id=request_id,
@@ -572,11 +618,14 @@ class PersonnelApprovalService(PersonnelIntakeService):
         for value in payload.guardians:
             guardian = self.db.scalar(
                 select(Person).where(
-                    Person.identity_digest == self.lookup.digest(value.identity_number)
+                    Person.identity_digest
+                    == payload_identity_keys(value, self.lookup).identity_digest
                 )
             )
             self.policy.require_identity_available(
-                identity=value.identity_number, person_id=guardian.id if guardian else None
+                identity=value.identity_number,
+                person_id=guardian.id if guardian else None,
+                identity_keys=payload_identity_keys(value, self.lookup),
             )
             if value.email:
                 self.policy.require_email_available(
@@ -669,6 +718,9 @@ class PersonnelApprovalService(PersonnelIntakeService):
                     status="draft",
                 )
             )
+            self.db.flush()
+        if payload.kind == "staff" and self.db.get(StaffProfile, person.id) is None:
+            self.db.add(StaffProfile(person_id=person.id, staff_type="other"))
             self.db.flush()
         relation_ids = AssistedGuardianWriter(
             self.db, cipher=self.cipher, lookup=self.lookup
@@ -771,16 +823,29 @@ class PersonnelApprovalService(PersonnelIntakeService):
             return self._view(actor, row)
 
     def direct_create(
-        self, actor: AuthContext, input: IntakeInput, idempotency_key: UUID
+        self, actor: AuthContext, input: IntakeInput | DirectPersonInput, idempotency_key: UUID,
+        *, activation_role_keys: list[str] | None = None,
+        identity_selection: ManagedIdentityInput | None = None,
+        staff_teams: list[StaffTeamSelection] | None = None,
     ) -> ApprovalResult:
+        selection, groups, activation_role_keys = resolve_management_identity(
+            kind=input.kind, identity=identity_selection, role_keys=activation_role_keys,
+            staff_teams=staff_teams,
+        )
         payload = normalize_payload(input)
-        digest = self._fingerprint("direct_create", payload)
+        digest = self._fingerprint("direct_create", payload, activation_role_keys=activation_role_keys,
+                                   identity_selection=selection, staff_teams=groups)
         try:
             with atomic_write_transaction(self.db):
-                self._require_admin(actor, payload=payload)
+                self._require_admin(actor, payload=payload, direct=True)
                 self._operation(actor, idempotency_key)
-                person = self._lock_context(actor, payload, submitter_id=actor.account.id)
-                self._require_admin(actor, payload=payload, person_id=person.id if person else None)
+                person = self._lock_context(
+                    actor, payload, submitter_id=actor.account.id,
+                    identity_role_keys=selection.selected_role_keys if selection else None,
+                    staff_team_ids={team for group in groups for team in group.team_ids},
+                    direct=True,
+                )
+                self._require_admin(actor, payload=payload, person_id=person.id if person else None, direct=True)
                 previous = self._replay(actor, idempotency_key, digest, "direct_create")
                 if previous:
                     return previous
@@ -804,9 +869,23 @@ class PersonnelApprovalService(PersonnelIntakeService):
                 self.db.add(row)
                 self.db.flush()
                 self._save_revision(actor, row, payload)
-                return self._materialize(
+                result = self._materialize(
                     actor, row, payload, person, key=idempotency_key, digest=digest
                 )
+                if selection is not None:
+                    IntakeIdentityService(self.db, lookup=self.lookup).materialize_in_transaction(
+                        actor, person_id=result.person_id, approval_id=result.approval_id,
+                        selection=selection, staff_teams=groups, operation_key=idempotency_key,
+                        operation_digest=digest, occurred_at=datetime.now(UTC),
+                    )
+                elif activation_role_keys:
+                    from app.personnel_intake.role_grants import ActivationRoleService
+
+                    ActivationRoleService(self.db, lookup=self.lookup).create_in_transaction(
+                        actor, person_id=result.person_id, approval_id=result.approval_id,
+                        keys=activation_role_keys, operation_key=idempotency_key, operation_digest=digest,
+                    )
+                return result
         except (IntegrityError, TeamServiceError) as exc:
             raise conflict() from exc
 
@@ -826,7 +905,7 @@ class PersonnelApprovalService(PersonnelIntakeService):
     def _require_pending_admin(self, actor: AuthContext) -> None:
         # No affiliation exists yet: a scoped review grant cannot authorize an
         # unowned record. Role labels alone never substitute for a global grant.
-        self._require_admin(actor)
+        self._require_admin(actor, direct=True)
 
     def _validate_pending_affiliations(
         self, actor: AuthContext, payload: PendingIntakePayloadView
@@ -875,15 +954,30 @@ class PersonnelApprovalService(PersonnelIntakeService):
         )
 
     def direct_create_pending(
-        self, actor: AuthContext, input: PendingIntakeInput, idempotency_key: UUID
+        self, actor: AuthContext, input: PendingIntakeInput, idempotency_key: UUID,
+        *, activation_role_keys: list[str] | None = None,
+        identity_selection: ManagedIdentityInput | None = None,
+        staff_teams: list[StaffTeamSelection] | None = None,
     ) -> ApprovalResult:
+        selection, groups, activation_role_keys = resolve_management_identity(
+            kind=input.kind, identity=identity_selection, role_keys=activation_role_keys,
+            staff_teams=staff_teams,
+        )
+        if groups and input.team_allocation_status == "not_required":
+            raise self._error(status=422, code="validation_error", detail="已有工作人员归属不能选择无需分队")
         payload = normalize_pending_payload(input)
-        digest = self._fingerprint("direct_create", payload)
+        digest = self._fingerprint("direct_create", payload, activation_role_keys=activation_role_keys,
+                                   identity_selection=selection, staff_teams=groups)
         try:
             with atomic_write_transaction(self.db):
                 self._require_pending_admin(actor)
                 self._operation(actor, idempotency_key)
-                existing = self._lock_context(actor, payload, submitter_id=actor.account.id)
+                existing = self._lock_context(
+                    actor, payload, submitter_id=actor.account.id,
+                    identity_role_keys=selection.selected_role_keys if selection else None,
+                    staff_team_ids={team for group in groups for team in group.team_ids},
+                    direct=True,
+                )
                 self._require_pending_admin(actor)
                 previous = self._replay(actor, idempotency_key, digest, "direct_create")
                 if previous:
@@ -946,6 +1040,19 @@ class PersonnelApprovalService(PersonnelIntakeService):
                 row.state = "approved"
                 self._release(row)
                 self._audit(actor, row, "direct_create")
+                if selection is not None:
+                    IntakeIdentityService(self.db, lookup=self.lookup).materialize_in_transaction(
+                        actor, person_id=person.id, approval_id=approval.id,
+                        selection=selection, staff_teams=groups, operation_key=idempotency_key,
+                        operation_digest=digest, occurred_at=now,
+                    )
+                elif activation_role_keys:
+                    from app.personnel_intake.role_grants import ActivationRoleService
+
+                    ActivationRoleService(self.db, lookup=self.lookup).create_in_transaction(
+                        actor, person_id=person.id, approval_id=approval.id,
+                        keys=activation_role_keys, operation_key=idempotency_key, operation_digest=digest,
+                    )
                 return self._result(approval)
         except (IntegrityError, TeamServiceError, DocumentIdentityConflict) as exc:
             raise conflict() from exc
@@ -1237,7 +1344,7 @@ class PersonnelApprovalService(PersonnelIntakeService):
                         else snapshot_person.email
                     )
                 payload = normalize_payload(
-                    IntakeInput(
+                    DirectPersonInput(
                         **supplied_fields,
                         kind=old_payload.kind,
                         coach_person_ids=old_payload.coach_person_ids,
@@ -1256,7 +1363,7 @@ class PersonnelApprovalService(PersonnelIntakeService):
                 lifecycle = prepare_claim_lifecycle(
                     self.db,
                     person_id=person_id,
-                    identity_digest=self.lookup.digest(payload.identity_number),
+                    identity_digest=payload_identity_keys(payload, self.lookup).identity_digest,
                     cipher=self.cipher,
                     lookup=self.lookup,
                 )
@@ -1329,7 +1436,11 @@ class PersonnelApprovalService(PersonnelIntakeService):
                 person.identity_ciphertext = self.cipher.encrypt(
                     payload.identity_number, field_name="identity_number"
                 )
-                person.identity_digest = self.lookup.digest(payload.identity_number)
+                identity_keys = payload_identity_keys(payload, self.lookup)
+                person.identity_digest = identity_keys.identity_digest
+                person.document_type = payload.document_type
+                person.document_issuing_country = identity_keys.issuing_country
+                person.passport_number_digest = identity_keys.passport_number_digest
                 person.phone_ciphertext, person.phone_digest = (
                     self.cipher.encrypt(payload.phone, field_name="phone"),
                     self.lookup.digest(payload.phone),

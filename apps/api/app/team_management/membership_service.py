@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.auth.service import AuthContext
 from app.core.time import business_date_at
 from app.core.transactions import atomic_write_transaction
+from app.security.encryption import EnvelopeCipher, LookupDigest
 from app.team_management import write_support as support
 from app.team_management.allocation import sync_team_allocation_in_transaction
 from app.team_management.errors import (
@@ -28,8 +29,15 @@ from app.team_management.schemas import (
 
 
 class TeamMembershipService:
-    def __init__(self, db: Session) -> None:
+    def __init__(
+        self,
+        db: Session,
+        *,
+        cipher: EnvelopeCipher | None = None,
+        lookup: LookupDigest | None = None,
+    ) -> None:
         self.db = db
+        self.cipher, self.lookup = cipher, lookup
 
     def join_assisted_in_transaction(
         self, actor: AuthContext, team_id: UUID, person_id: UUID, now: datetime
@@ -42,7 +50,9 @@ class TeamMembershipService:
         if team is None:
             raise conflict()
         support.require_active_team(self.db, team)
-        support.require_member_candidate(self.db, person_id=person_id)
+        support.require_member_candidate(
+            self.db, person_id=person_id, cipher=self.cipher, lookup=self.lookup
+        )
         current = self.db.scalar(
             select(TeamMembership)
             .where(TeamMembership.person_id == person_id, TeamMembership.ended_at.is_(None))
@@ -81,7 +91,9 @@ class TeamMembershipService:
                 if previous is not None:
                     return previous
                 support.require_active_team(self.db, team)
-                support.require_member_candidate(self.db, person_id=input.person_id)
+                support.require_member_candidate(
+                    self.db, person_id=input.person_id, cipher=self.cipher, lookup=self.lookup
+                )
                 current = self.db.scalar(
                     select(TeamMembership)
                     .where(
@@ -201,7 +213,9 @@ class TeamMembershipService:
                         raise TeamSameTeam()
                     assert target is not None
                     support.require_active_team(self.db, target)
-                    support.require_member_candidate(self.db, person_id=row.person_id)
+                    support.require_member_candidate(
+                        self.db, person_id=row.person_id, cipher=self.cipher, lookup=self.lookup
+                    )
                 now = support.utc_now()
                 result = TeamMutationResult(
                     operation_id=uuid4(),

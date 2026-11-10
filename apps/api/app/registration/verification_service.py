@@ -90,6 +90,33 @@ def lock_registration_credential_keys(db: Session, keys: list[int]) -> None:
         db.execute(select(func.pg_advisory_xact_lock(key)))
 
 
+def lock_password_credentials_in_transaction(db: Session, account_id: UUID) -> None:
+    """Serialize password issuance/writes before any credential or row locks.
+
+    Identifier locks alone do not serialize recovery through two different
+    verified contacts, or issuance against ordinary/admin password changes.
+    """
+    key = registration_advisory_lock_key("account-password-credentials", str(account_id))
+    lock_registration_credential_keys(db, [key])
+
+
+def invalidate_password_reset_challenges_in_transaction(
+    db: Session, *, account_id: UUID, invalidated_at: datetime
+) -> None:
+    """Expire every unused recovery proof under the account credential lock."""
+    db.execute(
+        update(RegistrationVerificationChallenge)
+        .where(
+            RegistrationVerificationChallenge.account_id == account_id,
+            RegistrationVerificationChallenge.purpose == "password_reset",
+            RegistrationVerificationChallenge.consumed_at.is_(None),
+            RegistrationVerificationChallenge.expires_at > invalidated_at,
+        )
+        .values(expires_at=invalidated_at)
+        .execution_options(synchronize_session=False)
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class VerificationIssued:
     challenge_id: UUID

@@ -51,7 +51,9 @@ _PERSON_LABELS = {
     "student": "学员",
     "player": "队员",
     "student_player": "学员兼队员",
+    "team_manager": "战队经理",
     "coach": "教练",
+    "assistant_coach": "助教",
     "life_teacher": "生活老师",
     "customer_service": "客服",
     "administration": "行政",
@@ -114,6 +116,10 @@ class HousingOccupancyExportService:
             current_gender=request.current_gender,
             occupancy=request.occupancy,
             assignability=request.assignability,
+            quick_filter=request.quick_filter,
+            cleaning_statuses=frozenset(request.cleaning_statuses),
+            daily_cleaning_enabled=request.daily_cleaning_enabled,
+            cleaning_frequencies=frozenset(request.cleaning_frequencies),
         )
         room_rows = self.db.execute(
             select(HousingRoom, HousingBuilding, HousingFloor)
@@ -145,7 +151,9 @@ class HousingOccupancyExportService:
         for room, building, floor in room_rows:
             projection = projections[room.id]
             card = inventory._room_card(room, building, floor, self.access, projection)
-            if inventory._matches_filters(card, filters, projection):
+            if inventory._matches_filters(card, filters, projection) and inventory._matches_quick_filter(
+                card, filters.quick_filter
+            ):
                 selected_rooms.append(room)
         if not selected_rooms:
             return []
@@ -312,6 +320,10 @@ def row_values(row: OccupancyExportRow) -> tuple[str, ...]:
         # Preserve the legacy 10-column contract and the raw number cell while
         # making the document type unambiguous in its existing annotation cell.
         annotations.append("护照（原号）")
+    elif row.document_type == "hk_id":
+        annotations.append("香港身份证")
+    elif row.document_type == "hk_mo_permit":
+        annotations.append("回乡证（港澳居民来往内地通行证）")
     if row.profile_missing:
         labels = {
             "phone": "联系电话",

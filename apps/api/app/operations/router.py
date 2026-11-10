@@ -5,17 +5,20 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response
+from pydantic import IPvAnyAddress
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.audit.service import AuditService
 from app.auth.dependencies import require_standard_account
+from app.auth.models import UserAccount
 from app.auth.service import AuthContext
 from app.core.database import get_db
 from app.core.errors import ProblemError
 from app.core.transactions import write_transaction
+from app.identity.models import Person
 from app.operations.cloud_status import read_cloud_evidence, with_cloud_copy
-from app.operations.models import OperationsAlert, OperationsRequestMinute
+from app.operations.models import OperationsAlert, OperationsRequestError, OperationsRequestMinute
 from app.operations.probes import read_backup_status
 from app.operations.schemas import (
     OperationsAlertPage,
@@ -24,6 +27,8 @@ from app.operations.schemas import (
     OperationsHistoryPage,
     OperationsHistoryPoint,
     OperationsOverview,
+    OperationsRequestErrorPage,
+    OperationsRequestErrorResponse,
 )
 from app.operations.service import OperationsMonitorService
 from app.rbac.service import RbacService
@@ -116,6 +121,50 @@ def get_operations_history(
     ) for row in rows]
     return OperationsHistoryPage(items=items, total=total, page=page, page_size=page_size,
                                  retention_days=retention)
+
+
+@router.get("/request-errors", response_model=OperationsRequestErrorPage)
+def get_operations_request_errors(
+    response: Response,
+    context: Annotated[AuthContext, Depends(require_standard_account)],
+    db: Annotated[Session, Depends(get_db)],
+    days: Annotated[int, Query()] = 1,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    account_id: UUID | None = None,
+    source_ip: IPvAnyAddress | None = None,
+    status_code: Annotated[int | None, Query(ge=400, le=599)] = None,
+) -> OperationsRequestErrorPage:
+    _authorize(context, db, response)
+    if days not in (1, 7, 30):
+        raise ProblemError(status=422, code="invalid_days", detail="仅支持最近1天、7天或30天")
+    now = datetime.now(UTC)
+    model = OperationsRequestError
+    filters = [model.occurred_at >= now - timedelta(days=days), model.occurred_at <= now]
+    if account_id is not None:
+        filters.append(model.account_id == account_id)
+    if source_ip is not None:
+        filters.append(model.source_ip == source_ip.compressed)
+    if status_code is not None:
+        filters.append(model.status_code == status_code)
+    total = db.scalar(select(func.count()).select_from(model).where(*filters)) or 0
+    rows = db.execute(
+        select(model, Person.full_name)
+        .outerjoin(UserAccount, UserAccount.id == model.account_id)
+        .outerjoin(Person, Person.id == UserAccount.person_id)
+        .where(*filters)
+        .order_by(model.occurred_at.desc(), model.id.desc())
+        .offset((page - 1) * page_size).limit(page_size)
+    ).all()
+    return OperationsRequestErrorPage(
+        items=[OperationsRequestErrorResponse(
+            id=event.id, occurred_at=event.occurred_at, account_id=event.account_id,
+            account_name=full_name, source_ip=event.source_ip, request_id=event.request_id,
+            method=event.method, route=event.route, status_code=event.status_code,
+            reason=event.reason,
+        ) for event, full_name in rows],
+        total=total, page=page, page_size=page_size,
+    )
 
 
 @router.get("/alerts", response_model=OperationsAlertPage)

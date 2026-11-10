@@ -47,6 +47,55 @@ async function fillAdult() {
   await userEvent.type(screen.getByLabelText("资料更正原因"), "资料核对")
 }
 
+it.each([
+  { kind: "staff", canEditEmail: true },
+  { kind: "staff", canEditEmail: false },
+  { kind: "student", canEditEmail: true },
+  { kind: "player", canEditEmail: true },
+])("corrects strict $kind facts with protected-email=$canEditEmail without changing identity, affiliations or activation roles", async ({ kind, canEditEmail }) => {
+  current = Object.assign({}, metadata, { kind, intake_mode: "strict", can_edit_activation_email: canEditEmail,
+    current_coach_person_ids: [], eligible_coaches: [], allowed_actions: ["correct_profile"] })
+  post = async () => json({}, 500)
+  show()
+  await userEvent.click(await screen.findByRole("button", { name: "更正本人及监护资料" }))
+  expect(screen.getByLabelText("姓名")).toHaveValue("")
+  expect(screen.queryByLabelText("人员身份")).not.toBeInTheDocument()
+  expect(screen.queryByLabelText("主要身份")).not.toBeInTheDocument()
+  expect(screen.queryByLabelText("所属队伍")).not.toBeInTheDocument()
+  expect(screen.queryByRole("group", { name: "账号激活角色（激活后生效）" })).not.toBeInTheDocument()
+  expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/management-identity-context"))).toBe(false)
+  if (!canEditEmail) expect(screen.getByLabelText("邮箱")).toBeDisabled()
+  await userEvent.click(screen.getByRole("button", { name: "提交更正" }))
+  expect(writes).toHaveLength(0)
+  expect(screen.getByLabelText("手机号")).toHaveAttribute("aria-invalid", "true")
+  await fillAdult()
+  await userEvent.click(screen.getByRole("button", { name: "提交更正" }))
+  await screen.findByText(/操作未成功/)
+  expect(writes).toHaveLength(1)
+  expect(writes[0]).toEqual({ full_name: "测试本人", identity_number: "110105199001021238", phone: "13800000000",
+    ...(canEditEmail ? { email: "adult@example.test" } : {}), sex: "male", date_of_birth: "1990-01-02", guardians: [],
+    expected_version: 4, reason: "资料核对", idempotency_key: expect.any(String) })
+  expect(writeUrls[0]).toBe(`/api/v1/personnel-intake/people/${person}/corrections`)
+  post = async () => json({ request_id: null, person_id: person, approval_id: coach })
+  await userEvent.click(screen.getByRole("button", { name: "提交更正" }))
+  expect(await screen.findByText("资料更正成功。")).toBeVisible()
+  expect(writes).toHaveLength(2)
+  expect(writes[1]).toEqual(writes[0])
+})
+
+it.each([["hk_id", "香港身份证号码", "A123456(3)", "A1234563"], ["hk_mo_permit", "回乡证号码", "h1234567802", "H12345678"]])("retains the %s discriminator and version in strict correction evidence", async (documentType, label, number, canonical) => {
+  show()
+  await userEvent.click(await screen.findByRole("button", { name: "更正本人及监护资料" }))
+  await fillAdult()
+  fireEvent.change(screen.getByLabelText("证件类型"), { target: { value: documentType } })
+  fireEvent.change(screen.getByLabelText(label), { target: { value: number } })
+  fireEvent.change(screen.getByLabelText("性别"), { target: { value: "male" } })
+  fireEvent.change(screen.getByLabelText("出生日期"), { target: { value: "1990-01-02" } })
+  fireEvent.click(screen.getByRole("button", { name: "提交更正" }))
+  await waitFor(() => expect(writes).toHaveLength(1))
+  expect(writes[0]).toMatchObject({ document_type: documentType, identity_number: canonical, expected_version: 4 })
+})
+
 function pendingMetadata() {
   current = Object.assign({}, metadata, { kind: "staff", intake_mode: "pending", can_edit_activation_email: false, current_coach_person_ids: [], allowed_actions: ["correct_pending_profile"] })
 }
@@ -69,9 +118,11 @@ it.each([
   expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/readiness"))).toBe(false)
 })
 
-it("pending correction posts only nullable person facts, never category, notes, housing, roles or affiliations", async () => {
+it.each([["passport", "护照号码", "AB123456", "AB123456"], ["hk_mo_permit", "回乡证号码", "m8765432102", "M87654321"]])("%s pending correction posts only nullable facts and retains retry key, version and protected email", async (documentType, label, number, canonical) => {
   pendingMetadata(); post = async () => json({ detail: "private server data" }, 500)
   show(); await fillPending()
+  fireEvent.change(screen.getByLabelText("证件类型"), { target: { value: documentType } })
+  fireEvent.change(screen.getByLabelText(label), { target: { value: number } })
   expect(screen.queryByLabelText("人员身份")).not.toBeInTheDocument()
   expect(screen.queryByLabelText("队伍归属状态")).not.toBeInTheDocument()
   expect(screen.getByLabelText("邮箱")).toBeDisabled()
@@ -81,7 +132,7 @@ it("pending correction posts only nullable person facts, never category, notes, 
   await userEvent.click(screen.getByRole("button", { name: "提交待补更正" }))
   await waitFor(() => expect(writes).toHaveLength(2))
   expect(writeUrls).toEqual([`/api/v1/personnel-intake/people/${person}/pending-corrections`, `/api/v1/personnel-intake/people/${person}/pending-corrections`])
-  expect(writes[0]).toEqual({ full_name: "Passport Person", identity_number: "AB123456", document_type: "passport", document_issuing_country: null,
+  expect(writes[0]).toEqual({ full_name: "Passport Person", identity_number: canonical, document_type: documentType, document_issuing_country: null,
     phone: null, sex: null, date_of_birth: null, guardians: [], expected_version: 4, reason: "真实资料核对", idempotency_key: expect.any(String) })
   expect(writes[1]).toEqual(writes[0])
   expect(screen.queryByText("private server data")).not.toBeInTheDocument()

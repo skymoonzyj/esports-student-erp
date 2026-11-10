@@ -672,6 +672,68 @@
 .organizationManagerCandidates label { display: flex; align-items: center; gap: 0.75rem; }
 .organizationManagerCandidates input[type="radio"] { width: auto; }
 .organizationManagerPagination { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+
+/* Finance and revenue management use the same legible, audit-friendly canvas. */
+.revenueSharePage { min-width: 0; }
+.revenueShareHeader h1 { font-size: clamp(26px, 3vw, 34px); letter-spacing: -.025em; }
+.revenueShareStats { gap: 16px; }
+.revenueShareStats > div { min-width: 0; min-height: 108px; padding: 20px; border-radius: var(--ui-radius-md, 12px); }
+.revenueShareStats span { font-weight: 600; }
+.revenueShareStats strong { font-size: clamp(23px, 2vw, 29px); font-weight: 650; overflow-wrap: anywhere; letter-spacing: -.02em; }
+.revenueShareStats > div:first-child strong { color: var(--color-accent-800); }
+.revenueShareSectionHeading h2 { font-size: 18px; }
+.revenueShareTableWrap { min-width: 0; max-width: 100%; border-radius: var(--ui-radius-md, 12px); overscroll-behavior-x: contain; scrollbar-gutter: stable; }
+.revenueShareTable { font-variant-numeric: tabular-nums; }
+.revenueShareTable th { height: 48px; background: var(--ui-header-bg, var(--color-canvas)); }
+.revenueShareTable td { padding-block: var(--ui-table-cell-y, 16px); }
+.revenueShareTable tbody tr:hover { background: color-mix(in srgb, var(--color-accent-soft) 34%, white); }
+.revenueShareTable .financeAmount { text-align: right; white-space: nowrap; }
+.revenueShareForm,
+.revenueShareRuleForm,
+.revenueShareReferralItem { border-radius: var(--ui-radius-md, 12px); }
+.revenueShareForm input:not([type="radio"]):not([type="checkbox"]),
+.revenueShareForm select,
+.revenueShareRuleForm input,
+.revenueShareRuleForm select,
+.revenueShareDialogForm input,
+.revenueSharePagination select { min-height: 44px; border-radius: var(--ui-radius-sm, 8px); }
+.iconTextButton,
+.dangerTextButton,
+.revenueShareHeader button,
+.revenueShareSectionActions button,
+.revenueShareDialogActions button { min-height: 44px; border-radius: var(--ui-radius-sm, 8px); }
+.revenueShareIconButton { width: 44px; height: 44px; flex-basis: 44px; }
+.revenueShareDialog { max-height: calc(100dvh - 36px); padding: 26px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-lg, 18px); }
+.revenueShareDialog > header { padding-bottom: 16px; border-bottom: 1px solid var(--color-border-soft); }
+.revenueShareDialogActions { margin-top: 10px; padding-top: 18px; border-top: 1px solid var(--color-border-soft); }
+.revenueSharePayee { padding: 14px; border-radius: var(--ui-radius-sm, 8px); background: var(--color-canvas); }
+.organizationManagersOrganizations li,
+.organizationManagersList li { min-width: 0; border-color: var(--color-border-soft); background: white; }
+.organizationManagerCandidates label { min-height: 44px; }
+.revenueShareTableWrap:focus-visible,
+.revenueSharePage button:focus-visible,
+.revenueShareDialog button:focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }
+
+html[data-ui-theme="command"] .revenueShareStats { gap: 0; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--ui-radius-md, 8px); }
+html[data-ui-theme="command"] .revenueShareStats > div { min-height: 88px; padding: 16px 20px; border: 0; border-right: 1px solid var(--color-border-soft); border-radius: 0; }
+html[data-ui-theme="command"] .revenueShareStats > div:last-child { border-right: 0; }
+html[data-ui-theme="command"] .revenueShareStats strong { font-size: 25px; }
+html[data-ui-theme="command"] .revenueShareSection { margin-top: 20px; padding-top: 18px; }
+
+@media (max-width: 720px) {
+  .revenueShareStats > div { min-height: 94px; padding: 16px; }
+  .revenueShareHeader { flex-wrap: wrap; }
+  .revenueShareSectionHeading { align-items: flex-start; flex-wrap: wrap; }
+  .revenueShareDialogBackdrop { padding: 10px; }
+  .revenueShareDialog { max-height: calc(100dvh - 20px); padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); }
+  .revenueShareDialogActions > button { flex: 1 1 110px; }
+  html[data-ui-theme="command"] .revenueShareStats > div:nth-child(2n) { border-right: 0; }
+  html[data-ui-theme="command"] .revenueShareStats > div:nth-child(-n + 2) { border-bottom: 1px solid var(--color-border-soft); }
+}
+@media (max-width: 430px) {
+  html[data-ui-theme="command"] .revenueShareStats > div { border-right: 0; border-bottom: 1px solid var(--color-border-soft); }
+  html[data-ui-theme="command"] .revenueShareStats > div:last-child { border-bottom: 0; }
+}
 @media (max-width: 600px) {
   .organizationManagersOrganizations li,
   .organizationManagersList li { align-items: flex-start; flex-direction: column; }
