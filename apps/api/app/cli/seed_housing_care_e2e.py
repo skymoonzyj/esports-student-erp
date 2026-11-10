@@ -44,6 +44,8 @@ CARE_ACCOUNT_ROLES = {
     base.E2E_LIFE_TEACHER_ACCOUNT_ID: "super_admin",
     base.E2E_COACH_ACCOUNT_ID: "coach",
     base.E2E_READY_MALE_STUDENT_ACCOUNT_ID: "administration",
+    # Reuse an isolated synthetic actor/credential, never create a real account.
+    base.E2E_VISITOR_ACCOUNT_ID: "property",
 }
 
 
@@ -84,6 +86,7 @@ def seed_housing_care(db: Session, settings: Settings) -> None:
     with write_transaction(db):
         db.execute(delete(HousingRoomPhoto))
         for room in db.scalars(select(HousingRoom)):
+            room.cleaning_frequency = "unspecified"
             room.daily_cleaning_enabled = False
             room.cleaning_status = "ready"
             room.cleaning_pending_at = None
@@ -105,7 +108,13 @@ def seed_housing_care(db: Session, settings: Settings) -> None:
             room.capacity = 2
             room.verification_status = "pending_verification" if number == "4-205" else "verified"
             room.service_status = "maintenance" if number == "4-204" else "available"
-            room.daily_cleaning_enabled = number in {"4-201", "4-202", "4-206"}
+            room.cleaning_frequency = (
+                "daily" if number in {"4-201", "4-202", "4-206"}
+                else "weekly" if number == "4-204"
+                else "on_demand" if number == "4-205"
+                else "unspecified"
+            )
+            room.daily_cleaning_enabled = room.cleaning_frequency == "daily"
             room.version = 1
         for account, role in CARE_ACCOUNT_ROLES.items():
             db.execute(delete(UserRole).where(UserRole.user_id == account))

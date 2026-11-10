@@ -227,7 +227,8 @@ def _authorize_locked_room(
     room: HousingRoom,
     *permissions: str,
 ) -> None:
-    locked_access = _access(db, context, occurred_at)
+    _require_current_care_actor(db, context)
+    locked_access = _access(db, context, datetime.now(UTC))
     if not locked_access.can_read_room(room):
         raise LockedHousingAuthorizationDenied(not_found=True)
     if any(not _can_manage(locked_access, room, permission) for permission in permissions):
@@ -237,7 +238,7 @@ def _authorize_locked_room(
 def _require_current_care_actor(db: Session, context: AuthContext) -> None:
     """Read scalar facts so identity-map/auth prechecks cannot grant stale authority.
 
-    Room-only care writes must never acquire a person row lock in reverse order.
+    Locked housing writes must never acquire a person row lock in reverse order.
     """
     now = datetime.now(UTC)
     account = db.execute(

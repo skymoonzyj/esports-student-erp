@@ -6,16 +6,20 @@ Removing a refusal or leaking/stopping an unowned resource must fail these tests
 
 from __future__ import annotations
 
+import ast
 import base64
 import copy
 import json
 import os
+import re
+import shutil
 import signal
 import socket
 import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,6 +29,66 @@ SECRET = "never-print-password-713829"
 PLAYWRIGHT_PRIVATE_ARGS = ["--reporter=json", "--trace=off"]
 ASSISTED_SPECS = ("assisted-personnel.spec.ts", "profile-claims.spec.ts",
                   "pending-profile-lifecycle.spec.ts", "person-housing.spec.ts")
+INTAKE_IMAGES = ("role-picker-clear.png", "role-picker-command.png", "role-plan-clear.png", "role-plan-command.png")
+INTAKE_ARTIFACTS = ".superpowers/sdd/2026-11-06-intake-identity-teams/task-6-legacy-role-artifacts"
+IDENTITY_IMAGES = tuple(f"{name}-{theme}.png" for theme in ("clear", "command")
+                        for name in ("identity-selection", "staff-roster"))
+IDENTITY_ARTIFACTS = ".superpowers/sdd/2026-11-06-intake-identity-teams/task-6-e2e-artifacts"
+
+
+def test_identity_visual_theme_override_survives_authoritative_refresh_and_new_document_without_api(tmp_path):
+    """The test-only DOM fixture must maintain both themes without replacing API/store state."""
+    helper = ROOT / "apps/web/tests/support/intakeIdentityTheme.ts"
+    assert helper.is_file(), "identity theme fixture missing"
+    program = r"""
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {createRequire} from 'node:module';
+const input=JSON.parse(fs.readFileSync(0,'utf8'));
+const require=createRequire(input.package);
+const ts=require('typescript');
+const {JSDOM}=require('jsdom');
+const compiled=ts.transpileModule(fs.readFileSync(input.helper,'utf8'), {
+  compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
+}).outputText;
+for (const theme of ['clear','command']) {
+  for (const initial of ['clear','command']) {
+    // A fresh document models navigation/reload; the exact browser init script
+    // is evaluated again, not an unrelated duplicate of its implementation.
+    const dom=new JSDOM('<!doctype html><html><body><input value="synthetic"></body></html>', {url:'http://127.0.0.1:15199/'});
+    try {
+      const context={exports:{},globalThis:dom.window};
+      vm.runInNewContext(compiled,context);
+      const root=dom.window.document.documentElement;
+      root.dataset.uiTheme=initial;
+      dom.window.localStorage.setItem('erp.appearance.v1','synthetic authoritative cache');
+      dom.window.fetch=()=>{throw new Error('visual fixture must not intercept or call an API')};
+      context.exports.installIdentityTheme(theme);
+      assert.equal(root.dataset.uiTheme,theme);
+      // AppearanceStore accepts a real server response by writing this same
+      // attribute. Its value/cache remains independent from the visual fixture.
+      root.dataset.uiTheme=theme==='clear'?'command':'clear';
+      await new Promise(resolve=>dom.window.queueMicrotask(resolve));
+      assert.equal(root.dataset.uiTheme,theme);
+      assert.equal(dom.window.localStorage.getItem('erp.appearance.v1'),'synthetic authoritative cache');
+      assert.equal(dom.window.document.querySelector('input').value,'synthetic');
+      const replacement=dom.window.document.createElement('html');
+      replacement.dataset.uiTheme=initial;
+      root.replaceWith(replacement);
+      await new Promise(resolve=>dom.window.queueMicrotask(resolve));
+      assert.equal(replacement.dataset.uiTheme,theme);
+    } finally { dom.window.close(); }
+  }
+}
+"""
+    node = shutil.which("node")
+    assert node is not None, "local Node required for pure theme fixture validation"
+    result = subprocess.run([node, "--input-type=module", "-e", program],
+        input=json.dumps({"helper": str(helper), "package": str(ROOT / "apps/web/package.json")}),
+        cwd=tmp_path, env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(tmp_path)},
+        capture_output=True, text=True, timeout=20, check=False)
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.fixture
@@ -113,10 +177,28 @@ def harness(tmp_path: Path) -> tuple[Path, dict[str, str], Path]:
         "if settings.get('FAKE_HOLD_NPM') and name=='npm':\n"
         "    while True: time.sleep(.1)\n"
         "if name=='npm':\n"
+        f"    default_images={','.join(INTAKE_IMAGES)!r} if 'intake-activation-roles.spec.ts' in args else ''\n"
+        f"    if 'intake-identity-teams.spec.ts' in args: default_images={','.join(IDENTITY_IMAGES)!r}\n"
+        "    for filename in filter(None, settings.get('FAKE_INTAKE_SCREENSHOTS', default_images).split(',')):\n"
+        "        image=Path(os.environ['PLAYWRIGHT_OUTPUT_DIR'])/'synthetic'/filename\n"
+        "        image.parent.mkdir(parents=True, exist_ok=True)\n"
+        "        image.write_bytes(b'\\x89PNG\\r\\n\\x1a\\nsynthetic')\n"
+        "        if settings.get('FAKE_INTAKE_SCREENSHOT_DENY_READ'): image.chmod(0)\n"
+        "    if settings.get('FAKE_INTAKE_SCREENSHOT_SYMLINK'):\n"
+        "        image=Path(os.environ['PLAYWRIGHT_OUTPUT_DIR'])/'synthetic'/'role-picker-clear.png'\n"
+        "        image.parent.mkdir(parents=True, exist_ok=True)\n"
+        "        if image.exists(): image.unlink()\n"
+        f"        image.symlink_to({str(settings)!r})\n"
         "    project=settings.get('FAKE_NPM_FAIL_PROJECT')\n"
         "    if project and '--project='+project not in args: sys.exit(0)\n"
         "    if 'FAKE_REPORT_JSON' in settings:\n"
         "        Path(os.environ['PLAYWRIGHT_JSON_OUTPUT_FILE']).write_text(settings['FAKE_REPORT_JSON'])\n"
+        "    elif 'intake-identity-teams.spec.ts' in args:\n"
+        "        selected=next(arg.split('=',1)[1] for arg in args if arg.startswith('--project='))\n"
+        "        entries=[{'title': f'IDT{case} {theme}', 'file': 'intake-identity-teams.spec.ts', 'tests': [{'projectName':selected,'expectedStatus':'passed','status':'expected','results':[{'status':'passed','retry':0}]}]} for theme in ('clear','command') for case in range(1,7)]\n"
+        "        if settings.get('FAKE_IDENTITY_PARTIAL') and selected=='mobile-360': entries.pop()\n"
+        "        if settings.get('FAKE_IDENTITY_SKIP'): entries[0]['tests'][0]['results'][0]['status']='skipped'\n"
+        "        Path(os.environ['PLAYWRIGHT_JSON_OUTPUT_FILE']).write_text(json.dumps({'suites':[{'specs':entries}],'errors':[]}))\n"
         "    sys.exit(int(settings.get('FAKE_NPM_STATUS','0')))\n"
     )
     fake.chmod(0o700)
@@ -157,6 +239,96 @@ def records(events: Path) -> list[dict]:
     return [json.loads(line) for line in events.read_text().splitlines()] if events.exists() else []
 
 
+def cleanup_boundary(*, states, denied=(), wait_denied=()):
+    """Exercise actual cleanup functions at controlled OS/status boundaries.
+
+    No application imports, real signals, or DB. Every PID is a literal owned
+    fake session leader; ps supplies the real finished() parser's status input.
+    """
+    source = LAUNCHER.read_text().split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+    functions = [node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef)
+                 and node.name in {"finished", "signal_owned", "stop_children"}]
+    events = []
+    clock = [0.0]
+
+    def killpg(pid, sig):
+        assert pid in states, "never signal an unowned group"
+        events.append(("signal", pid, sig))
+        if pid in denied:
+            raise PermissionError(1, SECRET)
+
+    def observe(args, **_kwargs):
+        pid = int(args[-1])
+        values = states[pid]
+        value = values.pop(0) if len(values) > 1 else values[0]
+        events.append(("status", pid, value))
+        return SimpleNamespace(stdout=value)
+
+    def sleep(seconds):
+        clock[0] += seconds
+
+    class OwnedChild:
+        def __init__(self, pid):
+            self.pid = pid
+
+        def wait(self, timeout=None):
+            events.append(("wait", self.pid, timeout))
+            if self.pid in wait_denied:
+                raise subprocess.TimeoutExpired("private-owned-command", timeout)
+            return 0
+
+    namespace = {
+        "os": SimpleNamespace(killpg=killpg),
+        "signal": signal,
+        "subprocess": SimpleNamespace(run=observe, TimeoutExpired=subprocess.TimeoutExpired,
+                                      SubprocessError=subprocess.SubprocessError),
+        "time": SimpleNamespace(monotonic=lambda: clock[0], sleep=sleep),
+        "children": [OwnedChild(pid) for pid in states],
+    }
+    # Only the three named repository-owned definitions, never caller input.
+    exec(compile(ast.Module(body=functions, type_ignores=[]), "<actual-owned-cleanup>", "exec"), namespace)  # noqa: S102
+    return namespace, events, clock
+
+
+def test_cleanup_eperm_exit_transition_waits_without_reaping_or_resignalling():
+    namespace, events, clock = cleanup_boundary(states={41001: ["S", "E", "Zs"]}, denied={41001})
+    namespace["signal_owned"](namespace["children"][0], signal.SIGTERM)
+    assert [event for event in events if event[0] == "signal"] == [("signal", 41001, signal.SIGTERM)]
+    assert not any(event[0] == "wait" for event in events), "leader must remain unreaped to protect group identity"
+    assert 0 < clock[0] <= 1
+
+
+def test_cleanup_persistent_live_eperm_still_fails_closed_and_bounded():
+    namespace, events, clock = cleanup_boundary(states={41001: ["S"]}, denied={41001})
+    with pytest.raises(PermissionError):
+        namespace["signal_owned"](namespace["children"][0], signal.SIGKILL)
+    assert clock[0] <= 1
+    assert [event for event in events if event[0] == "signal"] == [("signal", 41001, signal.SIGKILL)]
+    assert not any(event[0] == "wait" for event in events)
+
+
+def test_cleanup_eperm_does_not_abandon_other_owned_groups_or_block_forever():
+    namespace, events, clock = cleanup_boundary(states={41001: ["S"], 41002: ["Z"]},
+                                                denied={41001}, wait_denied={41001})
+    with pytest.raises(PermissionError):
+        namespace["stop_children"]()
+    assert ("signal", 41002, signal.SIGTERM) in events
+    assert ("signal", 41002, signal.SIGKILL) in events
+    waits = [event for event in events if event[0] == "wait"]
+    assert [event[1] for event in waits] == [41001, 41002]
+    assert all(event[2] is not None and 0 < event[2] <= 2 for event in waits)
+    assert max(index for index, event in enumerate(events) if event[0] == "signal") < min(
+        index for index, event in enumerate(events) if event[0] == "wait")
+    assert clock[0] <= 3
+
+
+def test_cleanup_wait_timeout_does_not_skip_reaping_remaining_owned_leaders():
+    namespace, events, _clock = cleanup_boundary(states={41001: ["S"], 41002: ["Z"]}, wait_denied={41001})
+    with pytest.raises(subprocess.TimeoutExpired):
+        namespace["stop_children"]()
+    assert [event[1] for event in events if event[0] == "wait"] == [41001, 41002]
+
+
 LEGACY_SUITES = {
     "team": (("seed_e2e", "seed_team_management_e2e"), ("team-management.spec.ts",)),
     "registration": (("seed_e2e", "seed_registration_e2e"), (
@@ -192,6 +364,197 @@ def selected_fixture(harness, suite):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("# synthetic selected dependency\n")
     return dependencies
+
+
+@pytest.mark.parametrize("failure", ["FAKE_IDENTITY_PARTIAL", "FAKE_IDENTITY_SKIP", "screenshots", None])
+def test_intake_identity_gate_refuses_partial_acceptance(harness, failure):
+    """Missing mobile cases/screenshots or skipped cases must never publish acceptance."""
+    repo = harness[0].parents[1]
+    (repo / "apps/web/tests/intake-identity-teams.spec.ts").write_text("// synthetic selected spec\n")
+    updates = {failure: "1"} if failure else {}
+    if failure == "screenshots":
+        updates = {"FAKE_INTAKE_SCREENSHOTS": IDENTITY_IMAGES[0]}
+    result = run(harness, updates, args=("--suite", "intake-identity"))
+    events = records(harness[2])
+    assert not any(event["name"] in {"ssh", "scp", "docker"} for event in events)
+    if failure:
+        assert result.returncode == 1
+        assert "Intake identity E2E accepted" not in result.stdout
+        assert not (repo / IDENTITY_ARTIFACTS).exists()
+    else:
+        assert result.returncode == 0, result.stderr
+        assert "Intake identity E2E accepted" in result.stdout
+        assert [event["args"] for event in events if event["name"] == "npm"] == [
+            ["--prefix", "apps/web", "run", "test:e2e", "--", "intake-identity-teams.spec.ts",
+             "--project=" + project, *PLAYWRIGHT_PRIVATE_ARGS]
+            for project in ("desktop-1440", "mobile-360")]
+        assert sum(event["args"] == ["-m", "app.cli.seed_assisted_personnel_e2e", "--verify-financial-baseline"]
+                   for event in events) == 2
+        assert len(list((repo / IDENTITY_ARTIFACTS).rglob("*.png"))) == 8
+    assert SECRET not in result.stdout + result.stderr
+    assert_cleaned(events)
+
+
+@pytest.mark.parametrize("unsafe", [
+    "postgresql+psycopg://synthetic:synthetic@192.168.31.151:56529/assisted_test",
+    "postgresql+psycopg://synthetic:synthetic@127.0.0.1:5432/assisted_test",
+    "postgresql+psycopg://synthetic:synthetic@127.0.0.1:56529/erp",
+])
+def test_intake_identity_refuses_non_test_destination_before_mutation(harness, unsafe):
+    result = run(harness, {"TEST_DATABASE_URL": unsafe}, args=("--suite", "intake-identity"))
+    assert result.returncode == 2
+    assert not records(harness[2])
+    assert unsafe not in result.stdout + result.stderr
+
+
+def test_intake_roles_fixed_suite_reseeds_and_verifies_private_baseline(harness):
+    repo = harness[0].parents[1]
+    (repo / "apps/web/tests/intake-activation-roles.spec.ts").write_text("// synthetic selected spec\n")
+    result = run(harness, args=("--suite", "intake-roles"))
+    assert result.returncode == 0, result.stderr
+    events = records(harness[2])
+    selected = [event for event in events if event["name"] == "npm" or
+                event["args"][:1] == ["-m"] and event["args"][1].startswith("app.cli.seed_")]
+    expected = []
+    for project in ("desktop-1440", "mobile-360"):
+        expected.extend((
+            ("python", ["-m", "app.cli.seed_e2e"]),
+            ("python", ["-m", "app.cli.seed_assisted_personnel_e2e"]),
+            ("npm", ["--prefix", "apps/web", "run", "test:e2e", "--", "intake-activation-roles.spec.ts",
+                     "--project=" + project, *PLAYWRIGHT_PRIVATE_ARGS]),
+            ("python", ["-m", "app.cli.seed_assisted_personnel_e2e", "--verify-financial-baseline"]),
+        ))
+    assert [(event["name"], event["args"]) for event in selected] == expected
+    for event in events:
+        if event["args"] == ["-m", "app.cli.seed_assisted_personnel_e2e"]:
+            assert event["env"]["ASSISTED_E2E_DISPOSABLE_DATABASE"] == "assisted_test"
+        if event["name"] in {"vite", "npm"}:
+            assert not {"DATABASE_URL", "TEST_DATABASE_URL", "ASSISTED_E2E_DISPOSABLE_DATABASE"} & event["env"].keys()
+    assert SECRET not in result.stdout + result.stderr
+    assert_cleaned(events)
+
+
+def test_intake_roles_mailbox_reader_dependency_refuses_before_mutation(harness):
+    repo = harness[0].parents[1]
+    (repo / "apps/web/tests/intake-activation-roles.spec.ts").write_text("// synthetic selected spec\n")
+    (repo / "apps/api/app/cli/read_registration_test_code.py").unlink()
+    result = run(harness, args=("--suite", "intake-roles"))
+    assert result.returncode == 2
+    assert "selected suite integration dependency is missing" in result.stderr
+    assert not records(harness[2])
+
+
+def test_intake_roles_exports_only_fixed_synthetic_pngs_after_success(harness):
+    repo = harness[0].parents[1]
+    (repo / "apps/web/tests/intake-activation-roles.spec.ts").write_text("// synthetic selected spec\n")
+    result = run(harness, {"FAKE_INTAKE_SCREENSHOTS": ",".join((*INTAKE_IMAGES, "not-allowlisted.png"))},
+                 args=("--suite", "intake-roles"))
+    assert result.returncode == 0, result.stderr
+    artifacts = repo / INTAKE_ARTIFACTS
+    assert sorted(path.relative_to(artifacts).as_posix() for path in artifacts.rglob("*.png")) == [
+        f"{project}/{name}" for project in ("desktop-1440", "mobile-360") for name in sorted(INTAKE_IMAGES)
+    ]
+    assert not list(artifacts.rglob("*.json"))
+    for path in artifacts.rglob("*.png"):
+        assert path.stat().st_mode & 0o777 == 0o600
+    assert_cleaned(records(harness[2]))
+
+
+def test_intake_roles_refuses_symlinked_screenshot_source(harness):
+    repo = harness[0].parents[1]
+    (repo / "apps/web/tests/intake-activation-roles.spec.ts").write_text("// synthetic selected spec\n")
+    result = run(harness, {"FAKE_INTAKE_SCREENSHOT_SYMLINK": "1"}, args=("--suite", "intake-roles"))
+    assert result.returncode == 1
+    assert SECRET not in result.stdout + result.stderr
+    assert not list((repo / ".superpowers").rglob("*.png"))
+    assert_cleaned(records(harness[2]))
+
+
+def test_intake_roles_does_not_export_failed_run_images(harness):
+    repo = harness[0].parents[1]
+    (repo / "apps/web/tests/intake-activation-roles.spec.ts").write_text("// synthetic selected spec\n")
+    result = run(harness, {"FAKE_INTAKE_SCREENSHOTS": "role-picker-clear.png", "FAKE_NPM_STATUS": "1"},
+                 args=("--suite", "intake-roles"))
+    assert result.returncode == 1
+    assert not list((repo / ".superpowers").rglob("*.png"))
+    assert_cleaned(records(harness[2]))
+
+
+@pytest.mark.parametrize("updates", [
+    {"FAKE_NPM_STATUS": "1", "FAKE_NPM_FAIL_PROJECT": "mobile-360"},
+    {"FAKE_BASELINE_VERIFY_FAIL_AT": "2"},
+])
+def test_intake_roles_late_failure_never_publishes_partial_desktop_evidence(harness, updates):
+    repo = harness[0].parents[1]
+    (repo / "apps/web/tests/intake-activation-roles.spec.ts").write_text("// synthetic selected spec\n")
+    result = run(harness, updates, args=("--suite", "intake-roles"))
+    assert result.returncode == 1
+    assert not (repo / INTAKE_ARTIFACTS).exists()
+    assert_cleaned(records(harness[2]))
+
+
+def test_intake_roles_existing_artifacts_refuse_before_mutation_without_overwriting(harness):
+    repo = harness[0].parents[1]
+    (repo / "apps/web/tests/intake-activation-roles.spec.ts").write_text("// synthetic selected spec\n")
+    previous = repo / INTAKE_ARTIFACTS / "desktop-1440" / "role-picker-clear.png"
+    previous.parent.mkdir(parents=True)
+    previous.write_bytes(b"previous synthetic evidence")
+    result = run(harness, args=("--suite", "intake-roles"))
+    assert result.returncode == 2
+    assert "prior or unsafe screenshot destination" in result.stderr
+    assert previous.read_bytes() == b"previous synthetic evidence"
+    assert not records(harness[2])
+
+
+@pytest.mark.parametrize("location", ["ancestor", "leaf"])
+def test_intake_roles_symlinked_destination_refuses_before_mutation(harness, location, tmp_path):
+    repo = harness[0].parents[1]
+    (repo / "apps/web/tests/intake-activation-roles.spec.ts").write_text("// synthetic selected spec\n")
+    outside = tmp_path / "outside-evidence"
+    outside.mkdir()
+    preserved = outside / "preserved.png"
+    preserved.write_bytes(b"do not overwrite")
+    if location == "ancestor":
+        (repo / ".superpowers").symlink_to(outside, target_is_directory=True)
+    else:
+        leaf = repo / INTAKE_ARTIFACTS / "desktop-1440" / "role-picker-clear.png"
+        leaf.parent.mkdir(parents=True)
+        leaf.symlink_to(preserved)
+    result = run(harness, args=("--suite", "intake-roles"))
+    assert result.returncode == 2
+    assert "prior or unsafe screenshot destination" in result.stderr
+    assert preserved.read_bytes() == b"do not overwrite"
+    assert not records(harness[2])
+
+
+def test_intake_roles_missing_expected_crop_never_publishes_incomplete_evidence(harness):
+    repo = harness[0].parents[1]
+    (repo / "apps/web/tests/intake-activation-roles.spec.ts").write_text("// synthetic selected spec\n")
+    result = run(harness, {"FAKE_INTAKE_SCREENSHOTS": "role-picker-clear.png"}, args=("--suite", "intake-roles"))
+    assert result.returncode == 1
+    assert not (repo / INTAKE_ARTIFACTS).exists()
+    assert_cleaned(records(harness[2]))
+
+
+@pytest.mark.parametrize("updates,category,number", [
+    ({"FAKE_NPM_STATUS": "1", "FAKE_REPORT_JSON": '{"errors":[{"message":"' + SECRET + '"}]}'}, "Failed", 0),
+    ({"FAKE_INTAKE_SCREENSHOT_DENY_READ": "1"}, "PermissionError", 13),
+])
+def test_failure_diagnostic_exposes_only_exception_type_errno_and_own_line(harness, updates, category, number):
+    repo = harness[0].parents[1]
+    (repo / "apps/web/tests/intake-activation-roles.spec.ts").write_text("// synthetic selected spec\n")
+    result = run(harness, updates, args=("--suite", "intake-roles"))
+    assert result.returncode == 1
+    diagnostic = re.search(r"Assisted E2E exception metadata: class=([A-Za-z]+) errno=(\d+) python_line=(\d+)", result.stderr)
+    assert diagnostic, result.stderr
+    assert diagnostic.group(1) == category
+    assert int(diagnostic.group(2)) == number
+    assert 1 <= int(diagnostic.group(3)) <= 2000
+    assert SECRET not in result.stdout + result.stderr
+    assert str(repo) not in result.stdout + result.stderr
+    assert all(event["runtime"] not in result.stdout + result.stderr for event in records(harness[2]) if "runtime" in event)
+    assert not (repo / INTAKE_ARTIFACTS).exists()
+    assert_cleaned(records(harness[2]))
 
 
 @pytest.mark.parametrize("args", [

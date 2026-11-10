@@ -42,7 +42,7 @@ function catalog(accessRevision: string): HousingCatalog {
 
 function overview(accessRevision: string, page: number): HousingOverview {
   const room: HousingRoom = {
-    daily_cleaning_enabled: false, cleaning_status: "ready", cleaning_pending_at: null, cleaning_completed_at: null, photo_count: 0,
+    cleaning_frequency: "weekly", daily_cleaning_enabled: false, cleaning_status: "ready", cleaning_pending_at: null, cleaning_completed_at: null, photo_count: 0,
     id: `room-${page === 2 ? "421" : "401"}`,
     building_id: "building-a", floor_id: "floor-a4", building_code: "A",
     building_name: "一号楼", building_is_active: true, floor_number: 4, floor_name: "四层",
@@ -59,8 +59,9 @@ function overview(accessRevision: string, page: number): HousingOverview {
     access_revision: accessRevision, as_of: "2026-10-10T01:30:00Z",
     summary: {
       pending_cleaning_rooms: 0,
+      daily_cleaning_rooms: 0, weekly_cleaning_rooms: 21, on_demand_cleaning_rooms: 0,
       total_rooms: 21, occupied_rooms: 21, unoccupied_rooms: 0, assignable_rooms: 0,
-      unassignable_rooms: 21, problem_rooms: 0, pending_verification_rooms: 0,
+      unassignable_rooms: 21, full_rooms: 21, problem_rooms: 0, pending_verification_rooms: 0,
       total_capacity: 21, current_occupants: 21, remaining_capacity: 0,
       occupancy_rate: "100.00", single_rooms: 21, double_rooms: 0, triple_rooms: 0,
       custom_rooms: 0, functional_rooms: 0,
@@ -99,6 +100,8 @@ function renderHousingRoute(nextRevision = "revision-a") {
     }
     const revision = contextRequests > 1 ? nextRevision : "revision-a"
     if (url.pathname.endsWith("/housing/catalog")) return jsonResponse(catalog(revision))
+    if (url.pathname.endsWith("/housing/property/capabilities")) return jsonResponse({ can_submit: false, can_review: false, can_export: false, show_basic_export: false })
+    if (url.pathname.endsWith("/portal/room-card-reminders")) return jsonResponse({ available: false, observed_at: "2026-11-05T00:00:00Z", business_date: "2026-11-05", next_refresh_at: "2026-11-06T00:00:00Z", items: [], total: 0, page: 1, page_size: 20 })
     if (url.pathname.endsWith("/housing/overview")) {
       overviewRequests.push(url.searchParams)
       return jsonResponse(overview(revision, Number(url.searchParams.get("page") ?? 1)))
@@ -121,18 +124,17 @@ async function filterAndOpenSecondPage() {
   expect(await screen.findByRole("article", { name: "房间 401：已入住 1 / 1" })).toBeVisible()
   await user.selectOptions(screen.getByLabelText("楼栋"), "building-a")
   await user.selectOptions(screen.getByLabelText("楼层"), "floor-a4")
-  await user.selectOptions(screen.getByLabelText("入住状态"), "occupied")
-  await user.selectOptions(screen.getByLabelText("每日保洁安排"), "false")
-  await user.click(screen.getByLabelText("待保洁"))
-  await user.click(screen.getByRole("button", { name: "应用筛选" }))
+  await user.selectOptions(screen.getByLabelText("保洁频率"), "weekly")
+  await user.click(screen.getByLabelText("退房待保洁"))
+  await user.click(screen.getByRole("button", { name: "按已用房间数筛选房间" }))
   expect(await screen.findByRole("article", { name: "房间 401：已入住 1 / 1" })).toBeVisible()
   await user.click(screen.getByRole("button", { name: "下一页" }))
   expect(await screen.findByRole("article", { name: "房间 421：已入住 1 / 1" })).toBeVisible()
   expect(screen.getByLabelText("楼栋")).toHaveValue("building-a")
   expect(screen.getByLabelText("楼层")).toHaveValue("floor-a4")
-  expect(screen.getByLabelText("入住状态")).toHaveValue("occupied")
-  expect(screen.getByLabelText("每日保洁安排")).toHaveValue("false")
-  expect(screen.getByLabelText("待保洁")).toBeChecked()
+  expect(screen.queryByLabelText("入住状态")).not.toBeInTheDocument()
+  expect(screen.getByLabelText("保洁频率")).toHaveValue(["weekly"])
+  expect(screen.getByLabelText("退房待保洁")).toBeChecked()
   expect(screen.getByText("第 2 / 2 页")).toBeVisible()
 }
 
@@ -156,7 +158,7 @@ it("preserves real housing filters and page after focus reauthorization without 
   const route = renderHousingRoute()
   await filterAndOpenSecondPage()
   expect(Object.fromEntries(route.overviewRequests.at(-1)!)).toEqual({
-    building_id: "building-a", floor_id: "floor-a4", occupancy: "occupied", cleaning_statuses: "pending", daily_cleaning_enabled: "false", page: "2", page_size: "20",
+    building_id: "building-a", floor_id: "floor-a4", quick_filter: "occupied", cleaning_statuses: "pending", cleaning_frequency: "weekly", page: "2", page_size: "20",
   })
   const requestsBeforeFocus = route.overviewRequests.length
 
@@ -166,16 +168,15 @@ it("preserves real housing filters and page after focus reauthorization without 
   await waitFor(() => {
     expect(screen.getByLabelText("楼栋")).toHaveValue("building-a")
     expect(screen.getByLabelText("楼层")).toHaveValue("floor-a4")
-    expect(screen.getByLabelText("入住状态")).toHaveValue("occupied")
-    expect(screen.getByLabelText("每日保洁安排")).toHaveValue("false")
-    expect(screen.getByLabelText("待保洁")).toBeChecked()
+    expect(screen.getByLabelText("保洁频率")).toHaveValue(["weekly"])
+    expect(screen.getByLabelText("退房待保洁")).toBeChecked()
   })
   expect(await screen.findByRole("article", { name: "房间 421：已入住 1 / 1" })).toBeVisible()
   expect(screen.getByText("第 2 / 2 页")).toBeVisible()
   expect(route.router.state.location.pathname).toBe("/housing")
   await waitFor(() => expect(route.overviewRequests.length).toBeGreaterThan(requestsBeforeFocus))
   expect(Object.fromEntries(route.overviewRequests.at(-1)!)).toEqual({
-    building_id: "building-a", floor_id: "floor-a4", occupancy: "occupied", cleaning_statuses: "pending", daily_cleaning_enabled: "false", page: "2", page_size: "20",
+    building_id: "building-a", floor_id: "floor-a4", quick_filter: "occupied", cleaning_statuses: "pending", cleaning_frequency: "weekly", page: "2", page_size: "20",
   })
 })
 
@@ -189,9 +190,8 @@ it("clears the previous filters and returns to page one when focus detects a cha
   expect(await screen.findByRole("article", { name: "房间 401：已入住 1 / 1" })).toBeVisible()
   expect(screen.getByLabelText("楼栋")).toHaveValue("")
   expect(screen.getByLabelText("楼层")).toHaveValue("")
-  expect(screen.getByLabelText("入住状态")).toHaveValue("")
-  expect(screen.getByLabelText("每日保洁安排")).toHaveValue("")
-  expect(screen.getByLabelText("待保洁")).not.toBeChecked()
+  expect(screen.getByLabelText("保洁频率")).toHaveValue([])
+  expect(screen.getByLabelText("退房待保洁")).not.toBeChecked()
   expect(screen.getByText("第 1 / 2 页")).toBeVisible()
   expect(Object.fromEntries(route.overviewRequests.at(-1)!)).toEqual({ page: "1", page_size: "20" })
   await waitFor(() => expect(route.queryClient.getQueryCache().findAll({ queryKey: housingKeys.scope(accountId, "revision-a") })).toHaveLength(0))
@@ -233,9 +233,8 @@ it("does not restore housing filters from the previous login when the same accou
   expect(route.router.state.location.pathname).toBe("/housing")
   expect(screen.getByLabelText("楼栋")).toHaveValue("")
   expect(screen.getByLabelText("楼层")).toHaveValue("")
-  expect(screen.getByLabelText("入住状态")).toHaveValue("")
-  expect(screen.getByLabelText("每日保洁安排")).toHaveValue("")
-  expect(screen.getByLabelText("待保洁")).not.toBeChecked()
+  expect(screen.getByLabelText("保洁频率")).toHaveValue([])
+  expect(screen.getByLabelText("退房待保洁")).not.toBeChecked()
   expect(screen.getByText("第 1 / 2 页")).toBeVisible()
   const newLoginRequests = route.overviewRequests.slice(requestsBeforeLogout)
   expect(newLoginRequests.length).toBeGreaterThan(0)

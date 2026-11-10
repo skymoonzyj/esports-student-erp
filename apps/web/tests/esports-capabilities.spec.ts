@@ -51,7 +51,7 @@ test('EA-CAP-DESKTOP-001 desktop layout survives resize and pointer-lock loss in
   await noHorizontalOverflow(page)
   await page.setViewportSize({ width: 1440, height: 900 })
 
-  await choosePractice(page, 'pc-fps', 'precision')
+  await choosePractice(page, 'pc-fps', 'gridshot')
   await prepareTrial(page)
   await expect.poll(() => page.evaluate(() => document.pointerLockElement !== null)).toBe(true)
   await page.mouse.move(730, 460)

@@ -22,6 +22,12 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.models import Base, TimestampMixin
+from app.personnel_intake import (
+    identity_models,  # noqa: F401
+    quick_import_models,  # noqa: F401
+    role_grant_models,  # noqa: F401
+    role_intent_models,  # noqa: F401
+)
 from app.personnel_intake.claims import models as profile_claim_models  # noqa: F401
 
 

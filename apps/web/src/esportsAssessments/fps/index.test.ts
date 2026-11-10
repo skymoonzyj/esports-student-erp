@@ -4,8 +4,37 @@ import { fixtureConfig, fixtureSettings } from '../testSupport/fixtures'
 import type { InputAction } from '../engineRuntime/types'
 import { createFpsEngine, validateFpsViewport } from './index'
 import { angularDistanceDeg, isTargetFullyVisible, vectorToDirection } from './math'
+import { fixtureV4Config } from '../testSupport/fixturesV4'
+import { fixtureV5Config } from '../testSupport/fixturesV5'
 
 describe('FPS factory and full registered configurations', () => {
+  it.each(['gridshot', 'sixshot'] as const)('routes only %s exact v5 to the fixed-board engine while preserving v4 rotation', id => {
+    const viewport = { width: 1600, height: 900 }, settings = fixtureSettings('pc-fps')
+    for (const [config, maximum] of [[fixtureV5Config(id), id === 'gridshot' ? 18 : 12], [fixtureV4Config('pc-fps', id), 170]] as const) {
+      const engine = createFpsEngine(config, 123, settings, viewport)
+      engine.input({ kind: 'look', at_ms: 0, dx: 170, dy: 0 })
+      const view = engine.scene()
+      if (view.kind !== 'fps') throw new Error('scene')
+      expect(view.camera.yaw_deg).toBe(maximum)
+    }
+  })
+
+  it('keeps v5 and v4 spheretrack90 scenes and raw results identical for the same inputs', () => {
+    const configs = [fixtureV4Config('pc-fps', 'spheretrack90'), fixtureV5Config('spheretrack90')]
+    const replay = configs.map(config => {
+      const game = createFpsEngine(config, 123, fixtureSettings('pc-fps'), { width: 1600, height: 900 })
+      const views = [game.scene()]
+      for (const action of [{ kind: 'look', at_ms: 0, dx: 170, dy: -100 }, { kind: 'look', at_ms: 101, dx: -345, dy: 12 }, { kind: 'fire', at_ms: 102, pressed: true }] as const) {
+        game.input(action)
+        views.push(game.scene())
+      }
+      game.advanceTo(15000)
+      views.push(game.scene())
+      return { views, raw: game.finish(), final: game.scene() }
+    })
+    expect(replay[0]).toEqual(replay[1])
+  })
+
   it.each(['pc-fps', 'mobile-fps'])('runs every tracking/switching practice configuration in %s', suite => {
     for (const test of ['tracking', 'switching']) {
       for (let difficulty = 1; difficulty <= 5; difficulty++) {

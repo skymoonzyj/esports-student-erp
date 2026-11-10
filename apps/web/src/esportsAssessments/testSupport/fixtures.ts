@@ -1,6 +1,6 @@
-import catalog from './catalog-v1.json'
-import currentCatalog from './catalog-v2.json'
-import catalogV3 from './catalog-v3.json'
+import catalog from './catalog-v1.json' with { type: 'json' }
+import currentCatalog from './catalog-v2.json' with { type: 'json' }
+import catalogV3 from './catalog-v3.json' with { type: 'json' }
 import {
   attemptViewSchema, controlSettingsSchema, environmentSnapshotSchema, pendingSubmissionSchema,
   qualityInputSchema, rawResultSchema, recognitionSchedule, suiteConfigSchema, suiteIdSchema,

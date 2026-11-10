@@ -1,5 +1,11 @@
 import { expect, it } from 'vitest'
 import { nativeActiveDuration } from '../../tests/helpers/esportsTiming'
+it('requires the full explicit lane deadline without weakening the legacy 60-second proof', () => {
+  const timing = { startedAt: 3000, deadline: 303000, finishedAt: 303010 }
+  expect(nativeActiveDuration(timing, 300000)).toBe(300010)
+  expect(() => nativeActiveDuration(timing)).toThrow()
+  expect(() => nativeActiveDuration({ ...timing, deadline: 63000 }, 300000)).toThrow()
+})
 
 it('accepts unequal RAF/React commit lag without treating DOM duration as the business window', () => {
   const runningCommit = 3220

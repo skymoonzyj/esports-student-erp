@@ -8,6 +8,7 @@ import {
   createAdminRequest,
   expectNoHorizontalOverflow,
   logout,
+  refocus,
 } from "./helpers"
 
 const API = "/api/v1/team-management"
@@ -60,6 +61,7 @@ async function membershipPage(page: Page, teamId: string, status = "current"): P
 }
 
 test.describe.configure({ mode: "serial" })
+test.use({ trace: "off", screenshot: "off", video: "off" })
 
 test("manager A/B and unbound manager have isolated menus, lists, and history", async ({ page }) => {
   await login(page, "team_manager_a")
@@ -272,3 +274,103 @@ test("mobile roster dialog stays inside viewport with focused search", async ({ 
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width + 1)
   await page.screenshot({ path: testInfo.outputPath("team-roster-dialog.png"), fullPage: true })
 })
+
+for (const theme of ["clear", "command"] as const) {
+  test(`${theme}: root binds independent read-only coach and assistant roles, then revokes live access`, async ({ page, browser, baseURL }, testInfo) => {
+    const rootCsrf = await login(page, "admin")
+    // Permit this case to run alone as well as after the existing serial cases.
+    if (!(await membershipPage(page, TEAM_A)).items.some((item) => item.person_id === PURE_MEMBER_PERSON)) {
+      const added = await page.request.post(`${API}/teams/${TEAM_A}/memberships`, {
+        headers: { "X-CSRF-Token": rootCsrf },
+        data: { person_id: PURE_MEMBER_PERSON, idempotency_key: randomUUID() },
+      })
+      expect(added.status()).toBe(200)
+    }
+    await openManagement(page)
+    await page.getByRole("button", { name: "查看 E2E王者一队" }).click()
+    // Real server/API throughout; setting only the DOM theme exercises the same
+    // two production token sets without changing the global preference of others.
+    await page.evaluate((value) => { document.documentElement.dataset.uiTheme = value }, theme)
+    const staffPanel = page.getByRole("region", { name: "队内工作人员（只读）" })
+    await expect(staffPanel).toBeVisible()
+    await expect(page.getByRole("region", { name: "旧名单管理绑定" })).toBeVisible()
+
+    for (const role of ["coach", "assistant_coach"]) {
+      await staffPanel.getByRole("button", { name: "绑定队内工作人员" }).click()
+      const dialog = page.getByRole("dialog", { name: "绑定队内工作人员" })
+      await dialog.getByRole("combobox", { name: "队内岗位", exact: true }).selectOption(role)
+      const search = dialog.getByLabel("搜索工作人员")
+      await search.fill("E2E教学教练")
+      const candidate = dialog.getByRole("button", { name: /E2E教学教练/ })
+      await expect(candidate).toHaveCount(1)
+      await candidate.click()
+      await expectNoHorizontalOverflow(page)
+      const bounds = await search.boundingBox()
+      expect(bounds).not.toBeNull()
+      expect(bounds!.x).toBeGreaterThanOrEqual(0)
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual((page.viewportSize()?.width ?? 1440) + 1)
+      await dialog.getByRole("button", { name: "确认绑定" }).click()
+      await expect(dialog).toHaveCount(0)
+    }
+    await expect(staffPanel.getByRole("button", { name: "解绑 E2E教学教练 的教练岗位", exact: true })).toBeVisible()
+    await expect(staffPanel.getByRole("button", { name: "解绑 E2E教学教练 的助教岗位", exact: true })).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath(`${theme}-team-readonly-staff-root.png`), fullPage: true })
+
+    const staffContext = await browser.newContext({
+      baseURL,
+      viewport: page.viewportSize(),
+      isMobile: Boolean(testInfo.project.use.isMobile),
+      hasTouch: Boolean(testInfo.project.use.hasTouch),
+    })
+    try {
+      const staffPage = await staffContext.newPage()
+      const staffCsrf = await login(staffPage, "coach")
+      await openManagement(staffPage)
+      await staffPage.getByRole("button", { name: "查看 E2E王者一队" }).click()
+      await staffPage.evaluate((value) => { document.documentElement.dataset.uiTheme = value }, theme)
+      const roster = staffPage.getByRole("region", { name: "E2E王者一队 名单" })
+      await expect(roster.getByText("E2E纯队员", { exact: true })).toBeVisible()
+      expect((await teamPage(staffPage)).items.map((item) => item.id)).toEqual([TEAM_A])
+      await expect(roster.getByRole("button", { name: /添加队员|移出|调队|绑定|分配管理|入住|调房|退房/ })).toHaveCount(0)
+      await expect(staffPage.getByRole("region", { name: "旧名单管理绑定" })).toHaveCount(0)
+      await expectNoHorizontalOverflow(staffPage)
+      await staffPage.screenshot({ path: testInfo.outputPath(`${theme}-team-readonly-staff-roster.png`), fullPage: true })
+      const isolated = await staffPage.request.get(`${API}/teams/${TEAM_B}/memberships`)
+      expect([403, 404]).toContain(isolated.status())
+      const current = await membershipPage(staffPage, TEAM_A)
+      const membershipId = current.items.find((item) => item.person_id === PURE_MEMBER_PERSON)!.id
+      const forbiddenWrite = await staffPage.request.post(`${API}/memberships/${membershipId}/leave`, {
+        headers: { "X-CSRF-Token": staffCsrf },
+        data: { idempotency_key: randomUUID() },
+      })
+      expect([403, 404]).toContain(forbiddenWrite.status())
+      expect((await membershipPage(page, TEAM_A)).items.some((item) => item.id === membershipId)).toBe(true)
+
+      // End one exact assignment: the independent assistant binding must survive.
+      await staffPanel.getByRole("button", { name: "解绑 E2E教学教练 的教练岗位", exact: true }).click()
+      let endDialog = page.getByRole("dialog", { name: "解绑队内岗位" })
+      await endDialog.getByRole("button", { name: "确认解绑" }).click()
+      await expect(endDialog).toHaveCount(0)
+      await expect(staffPanel.getByRole("button", { name: "解绑 E2E教学教练 的教练岗位", exact: true })).toHaveCount(0)
+      await expect(staffPanel.getByRole("button", { name: "解绑 E2E教学教练 的助教岗位", exact: true })).toBeVisible()
+      expect((await membershipPage(staffPage, TEAM_A)).items.some((item) => item.id === membershipId)).toBe(true)
+
+      // End the final binding while the staff browser holds a loaded roster.
+      await staffPanel.getByRole("button", { name: "解绑 E2E教学教练 的助教岗位", exact: true }).click()
+      endDialog = page.getByRole("dialog", { name: "解绑队内岗位" })
+      await endDialog.getByRole("button", { name: "确认解绑" }).click()
+      await expect(endDialog).toHaveCount(0)
+      await refocus(staffPage)
+      await expect(roster).toHaveCount(0)
+      await expect(staffPage.getByRole("button", { name: "查看 E2E王者一队" })).toHaveCount(0)
+      const revoked = await staffPage.request.get(`${API}/teams/${TEAM_A}/memberships`)
+      expect([403, 404]).toContain(revoked.status())
+      const contextResponse = await staffPage.request.get(`${API}/context`)
+      expect(contextResponse.status()).toBe(200)
+      expect(((await contextResponse.json()) as { can_open_management: boolean }).can_open_management).toBe(false)
+      expect((await membershipPage(page, TEAM_A)).items.some((item) => item.id === membershipId)).toBe(true)
+    } finally {
+      await staffContext.close()
+    }
+  })
+}

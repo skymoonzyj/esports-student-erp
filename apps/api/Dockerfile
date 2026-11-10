@@ -49,6 +49,8 @@ ARG ERP_USE_DEPENDENCY_IMAGE=0
 # the production image layers.
 COPY app/__init__.py app/main.py ./app/
 COPY app/admissions ./app/admissions
+COPY app/appearance ./app/appearance
+COPY app/assessment_rankings ./app/assessment_rankings
 COPY app/asset_management ./app/asset_management
 COPY app/api ./app/api
 COPY app/audit ./app/audit
@@ -66,6 +68,7 @@ COPY app/personnel_intake ./app/personnel_intake
 COPY app/portal ./app/portal
 COPY app/procurement ./app/procurement
 COPY app/rbac ./app/rbac
+COPY app/reactionx ./app/reactionx
 COPY app/referrals ./app/referrals
 COPY app/registration ./app/registration
 COPY app/revenue_share ./app/revenue_share

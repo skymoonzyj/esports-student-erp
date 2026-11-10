@@ -8,6 +8,19 @@ function Form() {
   return <><ClaimCompletionFields value={draft} onChange={setDraft} /><output aria-label="测试草稿">{JSON.stringify(draft)}</output></>
 }
 
+it.each([["hk_id", "香港身份证号码", "A123456(3)", "a1234563"], ["hk_mo_permit", "回乡证号码", "m8765432102", "M8765432104"]])("collects %s guardian documents separately from manually entered sex and birthday", (documentType, label, number, editedNumber) => {
+  render(<Form />)
+  fireEvent.click(screen.getByRole("button", { name: /添加监护人/ }))
+  fireEvent.change(screen.getByLabelText("监护人1证件类型"), { target: { value: documentType } })
+  fireEvent.change(screen.getByLabelText(`监护人1${label}`), { target: { value: number } })
+  expect(screen.getByLabelText("监护人1性别")).toHaveValue("")
+  expect(screen.getByLabelText("监护人1出生日期")).toHaveValue("")
+  fireEvent.change(screen.getByLabelText("监护人1性别"), { target: { value: "female" } })
+  fireEvent.change(screen.getByLabelText("监护人1出生日期"), { target: { value: "1980-01-02" } })
+  fireEvent.change(screen.getByLabelText(`监护人1${label}`), { target: { value: editedNumber } })
+  expect(toClaimCompletion(JSON.parse(screen.getByLabelText("测试草稿").textContent!))?.guardians?.[0]).toMatchObject({ document_type: documentType, identity_number: editedNumber, sex: "female", date_of_birth: "1980-01-02" })
+})
+
 it("keeps unknown facts nullable and collects guardian facts without inferred demographics or authority", () => {
   render(<Form />)
   expect(toClaimCompletion(emptyClaimCompletion())).toBeNull()

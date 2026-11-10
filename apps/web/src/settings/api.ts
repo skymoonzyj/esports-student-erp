@@ -165,6 +165,21 @@ export type AccountAccess = {
   effective_permissions: EffectivePermission[]
 }
 
+export type AccountJobRoleChangeInput = {
+  from_role_id: string | null
+  to_role_id: string
+  keep_concurrent_roles: boolean
+  expected_role_ids: string[]
+}
+
+export type AccountJobRoleChangeResult = {
+  account_id: string
+  added_role_ids: string[]
+  removed_role_ids: string[]
+  retained_role_ids: string[]
+  roles: Role[]
+}
+
 export type PermissionPreview = {
   allowed: boolean
   reason: string
@@ -527,6 +542,14 @@ export function assignRole(accountId: string, roleId: string): Promise<void> {
 
 export function removeRole(accountId: string, roleId: string): Promise<void> {
   return apiFetch<void>(`/accounts/${accountId}/roles/${roleId}`, { method: "DELETE" })
+}
+
+export function changeAccountJobRole(accountId: string, input: AccountJobRoleChangeInput): Promise<AccountJobRoleChangeResult> {
+  return apiFetch<AccountJobRoleChangeResult>(`/accounts/${accountId}/job-role-change`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  })
 }
 
 export function addPermissionOverride(

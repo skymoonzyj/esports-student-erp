@@ -5,6 +5,8 @@ import { ProblemDetailsError } from "../api/client"
 import { getAssetScan } from "./api"
 import { assetKeys } from "./keys"
 import { statusLabels } from "./status"
+import { OwnershipDetails } from "./OwnershipFields"
+import { AssetHardwareDetails } from "./AssetHardwareDetails"
 import "./assets.css"
 
 export function AssetScanPage() {
@@ -38,6 +40,8 @@ export function AssetScanPage() {
             <div><dt>采购日期</dt><dd>{asset.data.purchase_date ?? "未填写"}</dd></div>
             <div><dt>保修到期日</dt><dd>{asset.data.warranty_expires_on ?? "未填写"}</dd></div>
           </dl>
+          <OwnershipDetails asset={asset.data} />
+          <AssetHardwareDetails asset={asset.data} />
           <p>如发现资产状态或位置不符，请联系行政人员更新台账。</p>
         </section>
       ) : null}

@@ -26,6 +26,14 @@ const otherPersonId = "30000000-0000-4000-8000-000000000002"
 const foodRevision = "a".repeat(64)
 const cuisineId = "40000000-0000-4000-8000-000000000099"
 
+it("identifies an HK document without disclosing the raw number", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ ...personResponse(), document_type: "hk_id", identity_number: "A******3" })))
+  renderDetail()
+  expect(await screen.findByText("香港身份证")).toBeVisible()
+  expect(screen.getByText("A******3")).toBeVisible()
+  expect(screen.queryByText("A1234563")).not.toBeInTheDocument()
+})
+
 it("preserves a new allocation draft after target capability cycles and an old write completes", async () => {
   let canUpdate = true
   let finish!: (response: Response) => void
@@ -703,6 +711,50 @@ it("requires confirmation and clears the one-time password after opening an acco
 
   await user.click(screen.getByRole("button", { name: "我已保存并关闭" }))
   expect(screen.queryByText(temporaryPassword)).not.toBeInTheDocument()
+})
+
+it.each(["success", "failure"])("ignores a late account %s from another person without clearing the current pending request", async (outcome) => {
+  const pending: Array<(response: Response) => void> = []
+  const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input, init) => {
+    if (String(input).endsWith("/accounts") && init?.method === "POST") return new Promise<Response>(resolve => pending.push(resolve))
+    const id = String(input).includes(otherPersonId) ? otherPersonId : personId
+    return response({ ...personResponse(id), full_name: id === personId ? "测试甲" : "测试乙", account_management_allowed: true })
+  }))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(<MemoryRouter initialEntries={[`/people/${personId}`]}><QueryClientProvider client={client}><Link to={`/people/${otherPersonId}`}>下一人</Link><Routes><Route path="/people/:personId" element={<PersonDetailPage />} /></Routes></QueryClientProvider></MemoryRouter>)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole("button", { name: "开通账号" }))
+  await user.click(screen.getByRole("button", { name: "确认开通" }))
+  await user.click(screen.getByRole("link", { name: "下一人" }))
+  await screen.findByRole("heading", { name: "测试乙" })
+  await user.click(screen.getByRole("button", { name: "开通账号" }))
+  await user.click(screen.getByRole("button", { name: "确认开通" }))
+  await act(async () => pending[0](outcome === "success"
+    ? response({ temporary_password: "Person-A-secret-never-on-B" }, 201)
+    : response({ status: 409, detail: "Person A account failed", errors: [{ field: "guardian", message: "required" }] }, 409)))
+  expect(screen.queryByText("Person-A-secret-never-on-B")).not.toBeInTheDocument()
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "正在开通…" })).toBeDisabled()
+  await act(async () => pending[1](response({ temporary_password: "Person-B-secret" }, 201)))
+  expect(await screen.findByText("Person-B-secret")).toBeVisible()
+  expect(JSON.stringify(client.getQueryCache().getAll())).not.toContain("Person-A-secret")
+})
+
+it("ignores account credentials after cancellation on the same person", async () => {
+  let finish!: (response: Response) => void
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input, init) => {
+    if (String(input).endsWith("/accounts") && init?.method === "POST") return new Promise<Response>(resolve => { finish = resolve })
+    return new Response(JSON.stringify({ ...personResponse(), account_management_allowed: true }), { headers: { "Content-Type": "application/json" } })
+  }))
+  renderDetail()
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole("button", { name: "开通账号" }))
+  await user.click(screen.getByRole("button", { name: "确认开通" }))
+  await user.click(screen.getByRole("button", { name: "取消" }))
+  await act(async () => finish(new Response(JSON.stringify({ temporary_password: "Cancelled-secret" }), { status: 201, headers: { "Content-Type": "application/json" } })))
+  expect(screen.queryByText("Cancelled-secret")).not.toBeInTheDocument()
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
 })
 
 it("links back to guardian management when account opening is blocked", async () => {

@@ -2,6 +2,16 @@ import { afterEach, expect, it, vi } from "vitest"
 import { setCsrfToken } from "../api/client"
 import { claimAdminApi } from "./adminApi"
 afterEach(() => { setCsrfToken(null); vi.unstubAllGlobals() })
+it("parses return-permit person and guardian evidence in authenticated claim review", async () => {
+  const id = "30000000-0000-4000-8000-000000000001"
+  const completion = { phone: null, sex: null, date_of_birth: null, issuing_country: null, guardians: [{ full_name: "合成监护", identity_number: "M87654321", document_type: "hk_mo_permit", document_issuing_country: null,
+    phone: "13800000000", email: null, relationship: "母亲", sex: "female", date_of_birth: "1980-01-02", is_primary: true }] }
+  const detail = { id, version: 2, status: "pending", masked_name: "合**", masked_email: "s***@example.test", verified_at: "2026-10-30T00:00:00Z", expires_at: "2026-10-31T00:00:00Z", allowed_actions: ["approve"],
+    person_id: id, applicant_masked_name: "合**", applicant_masked_identity: "H1*****78", applicant_email: "synthetic@example.test", profile_masked_name: "合**", profile_masked_identity: "H1*****78", profile_masked_email: null,
+    private_match_reason: null, same_target_pending_count: 0, can_approve: true, applicant_document_type: "hk_mo_permit", applicant_issuing_country: null, applicant_completion: completion, profile_completion: completion }
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json(detail)))
+  expect(await claimAdminApi.detail(id, new AbortController().signal)).toEqual(detail)
+})
 it("uses formal authenticated transport and validates admin context without public-claim CSRF", async () => {
   setCsrfToken("formal-token")
   const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ can_enter: true }))

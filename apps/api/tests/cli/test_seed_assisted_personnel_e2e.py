@@ -115,6 +115,15 @@ def test_no_db_review_actor_catalog_is_distinct_and_uses_real_roles():
     assert len({row.phone for row in actors.values()}) == 4
 
 
+def test_no_db_identity_no_team_actor_is_a_separate_synthetic_root_with_explicit_denial():
+    module = seed_module()
+    actor = module.ACCOUNTS["identity_no_team"]
+    assert actor.role == "super_admin"
+    assert actor.phone == "19900009045"
+    assert actor.person_id not in {row.person_id for key, row in module.ACCOUNTS.items() if key != actor.key}
+    assert module.IDENTITY_NO_TEAM_DENIED_PERMISSION == "team_manager_assignments.manage"
+
+
 def test_no_db_pending_fixtures_keep_missing_facts_and_reservations_truthful():
     module = seed_module()
     fixtures = module.pending_person_fixtures()

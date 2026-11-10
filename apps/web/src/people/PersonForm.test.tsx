@@ -8,6 +8,28 @@ import { PersonForm } from "./PersonForm"
 
 afterEach(() => vi.unstubAllGlobals())
 
+it.each([["team_manager", "战队经理"], ["assistant_coach", "助教"]])("offers and submits the %s primary staff classification without account role writes", async (staffType, label) => {
+  const writes: Array<{ url: string; body: unknown }> = []
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (url, init) => {
+    if (init?.method === "POST") writes.push({ url: String(url), body: JSON.parse(String(init.body)) })
+    return Response.json({ id: "created-staff" })
+  }))
+  render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><PersonForm /></QueryClientProvider></MemoryRouter>)
+  await userEvent.click(screen.getByRole("radio", { name: /工作人员/ }))
+  expect(screen.getByRole("option", { name: label })).toHaveValue(staffType)
+  await userEvent.selectOptions(screen.getByLabelText("工作人员类型"), staffType)
+  await userEvent.type(screen.getByLabelText("姓名"), "合成工作人员")
+  await userEvent.type(screen.getByLabelText("身份证"), "11010519491231002X")
+  await userEvent.selectOptions(screen.getByLabelText("性别"), "female")
+  await userEvent.type(screen.getByLabelText("出生日期"), "1949-12-31")
+  await userEvent.type(screen.getByLabelText("手机号"), "13800138000")
+  await userEvent.type(screen.getByLabelText("邮箱"), "staff@example.com")
+  await userEvent.click(screen.getByRole("button", { name: "保存人员" }))
+  expect(writes).toHaveLength(1)
+  expect(writes[0]).toMatchObject({ url: "/api/v1/people/staff", body: { staff_type: staffType } })
+  expect(writes[0].body).not.toHaveProperty("roles")
+})
+
 it("keeps unknown sex and birth date empty without weakening ordinary required validation", async () => {
   const writes: unknown[] = []
   vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (_url, init) => {
@@ -19,6 +41,20 @@ it("keeps unknown sex and birth date empty without weakening ordinary required v
   expect(screen.getByLabelText("出生日期")).toHaveValue("")
   await userEvent.click(screen.getByRole("button", { name: "保存修改" }))
   expect(writes).toHaveLength(0)
+})
+
+it("edits a manager primary classification to assistant coach without changing account roles", async () => {
+  const patches: unknown[] = []
+  const person = { id: "team-staff", full_name: "合成工作人员", person_types: ["staff"], roles: [{ key: "coach", name: "教练" }], nickname: null, identity_number: "110105********002X", phone: "138****8000", email: "staff@example.com", sex: "female", date_of_birth: "1949-12-31", staff_type: "team_manager", created_at: "2026-11-06T00:00:00Z", student_number: null, student_status: null, visit_reason: null, linked_student_id: null }
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (_url, init) => {
+    if (init?.method === "PATCH") patches.push(JSON.parse(String(init.body)))
+    return Response.json(person)
+  }))
+  render(<MemoryRouter><QueryClientProvider client={new QueryClient()}><PersonForm personId="team-staff" /></QueryClientProvider></MemoryRouter>)
+  expect(await screen.findByLabelText("工作人员类型")).toHaveValue("team_manager")
+  await userEvent.selectOptions(screen.getByLabelText("工作人员类型"), "assistant_coach")
+  await userEvent.click(screen.getByRole("button", { name: "保存修改" }))
+  expect(patches).toEqual([{ staff_type: "assistant_coach" }])
 })
 
 it("places backend identity errors beside the matching field", async () => {

@@ -333,7 +333,8 @@ def test_room_projections_drive_current_future_issue_and_filters(db: Session) ->
     assert card.is_assignable is False
     assert overview.summary.occupied_rooms == 1
     assert overview.summary.current_occupants == 2
-    assert overview.summary.occupancy_rate == Decimal("100.00")
+    assert overview.summary.total_capacity == 0
+    assert overview.summary.occupancy_rate == Decimal("0.00")
 
     occupied.service_status = "available"
     occupied.room_type = "custom"

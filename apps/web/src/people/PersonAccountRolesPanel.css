@@ -1,0 +1,9 @@
+.personAccountRoles { min-width: 0; overflow-wrap: anywhere; }
+.personAccountRoles label { display: grid; gap: 6px; margin-block: 8px; }
+.personAccountRoles select { width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 8px); background: var(--color-surface); color: var(--color-text-strong); font: inherit; }
+.personAccountRoles fieldset { min-width: 0; margin-block: 12px; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 8px); }
+.personAccountRoles .checkboxLabel { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.personAccountRoles input[type="radio"] { width: 18px; height: 18px; min-height: 0; flex: 0 0 18px; margin: 0; accent-color: var(--color-accent-600); }
+.personAccountRoles [role="dialog"] { margin-block: 12px; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 8px); background: var(--color-surface); }
+.personAccountRoles button { max-width: 100%; min-height: 44px; white-space: normal; }
+.personAccountRoles :is(input, select, button):focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }

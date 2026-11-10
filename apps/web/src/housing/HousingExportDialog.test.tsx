@@ -2,6 +2,109 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { expect, it, vi } from "vitest"
 import { HousingExportDialog } from "./HousingExportDialog"
+import type { HousingFiltersValue } from "./api"
+
+it.each(["snapshot", "history"] as const)("inherits, edits and clears frequency filters without widening other %s predicates", async (kind) => {
+  const current = vi.fn().mockResolvedValue(undefined)
+  const history = vi.fn().mockResolvedValue(undefined)
+  const filters: HousingFiltersValue = { buildingId: "a", cleaningFrequencies: ["daily", "weekly"], quickFilter: "cleaning_weekly", cleaningStatuses: ["pending"] }
+  const original = structuredClone(filters)
+  render(<HousingExportDialog catalog={{ access_revision: "r", buildings: [], floors: [], can_create_building: false }} filters={filters} pending={false} error={null} onClose={vi.fn()} onSnapshot={current} onHistory={history} />)
+  const user = userEvent.setup()
+  await user.selectOptions(screen.getByLabelText("导出类型"), kind)
+  const frequency = screen.getByLabelText(kind === "snapshot" ? "导出保洁频率" : "历史导出保洁频率")
+  const shortcut = screen.getByLabelText(kind === "snapshot" ? "导出快捷筛选" : "历史导出快捷筛选")
+  expect(frequency).toHaveValue(["daily", "weekly"])
+  expect(shortcut).toHaveValue("cleaning_weekly")
+  await user.type(screen.getByLabelText("导出用途（必填）"), "保洁核对")
+  const submit = kind === "snapshot" ? current : history
+  await user.click(screen.getByRole("button", { name: "开始导出" }))
+  expect(submit).toHaveBeenLastCalledWith(expect.objectContaining({ cleaning_frequencies: ["daily", "weekly"], quick_filter: "cleaning_weekly", cleaning_statuses: ["pending"] }))
+  await user.deselectOptions(frequency, "daily")
+  await user.selectOptions(frequency, "on_demand")
+  await user.click(screen.getByRole("button", { name: "开始导出" }))
+  expect(submit).toHaveBeenLastCalledWith(expect.objectContaining({ cleaning_frequencies: ["weekly", "on_demand"], quick_filter: "cleaning_weekly" }))
+  await user.click(screen.getByRole("button", { name: kind === "snapshot" ? "清除导出保洁频率筛选" : "清除历史导出保洁频率筛选" }))
+  expect(frequency).toHaveValue([])
+  expect(shortcut).toHaveValue("")
+  await user.click(screen.getByRole("button", { name: "开始导出" }))
+  expect(submit).toHaveBeenLastCalledWith(expect.objectContaining({ cleaning_frequencies: [], quick_filter: undefined, cleaning_statuses: ["pending"], ...(kind === "snapshot" ? { building_ids: ["a"] } : { building_id: "a" }) }))
+  expect(filters).toEqual(original)
+})
+
+it.each(["snapshot", "history"] as const)("makes the inherited shortcut visible, preserves explicit intersections, and clears it independently for %s", async (kind) => {
+  const current = vi.fn().mockResolvedValue(undefined)
+  const history = vi.fn().mockResolvedValue(undefined)
+  const filters: HousingFiltersValue = { buildingId: "a", query: "409", quickFilter: "vacant", cleaningStatuses: ["pending"], dailyCleaningEnabled: false }
+  const initial = structuredClone(filters)
+  render(<HousingExportDialog catalog={{ access_revision: "r", buildings: [], floors: [], can_create_building: false }} filters={filters} pending={false} error={null} onClose={vi.fn()} onSnapshot={current} onHistory={history} />)
+  const user = userEvent.setup()
+  await user.selectOptions(screen.getByLabelText("导出类型"), kind)
+  const shortcut = screen.getByLabelText(kind === "snapshot" ? "导出快捷筛选" : "历史导出快捷筛选")
+  const occupancy = screen.getByLabelText(kind === "snapshot" ? "导出入住状态" : "历史导出入住状态")
+  expect(shortcut).toHaveValue("vacant")
+  expect(screen.getByText(/快捷筛选与其他条件取交集/)).toBeVisible()
+  await user.type(screen.getByLabelText("导出用途（必填）"), "台账核对")
+  const submit = kind === "snapshot" ? current : history
+  await user.click(screen.getByRole("button", { name: "开始导出" }))
+  expect(submit).toHaveBeenLastCalledWith(expect.objectContaining({ quick_filter: "vacant", query: "409", cleaning_statuses: ["pending"], daily_cleaning_enabled: false }))
+  await user.selectOptions(occupancy, "occupied")
+  await user.click(screen.getByRole("button", { name: "开始导出" }))
+  expect(shortcut).toHaveValue("vacant")
+  expect(occupancy).toHaveValue("occupied")
+  expect(submit).toHaveBeenLastCalledWith(expect.objectContaining({ occupancy: "occupied", quick_filter: "vacant" }))
+  await user.selectOptions(shortcut, "")
+  await user.click(screen.getByRole("button", { name: "开始导出" }))
+  expect(submit).toHaveBeenLastCalledWith(expect.objectContaining({ occupancy: "occupied", quick_filter: undefined, cleaning_statuses: ["pending"], daily_cleaning_enabled: false }))
+  await user.selectOptions(shortcut, "remaining")
+  await user.click(screen.getByRole("button", { name: "开始导出" }))
+  expect(submit).toHaveBeenLastCalledWith(expect.objectContaining({ quick_filter: "remaining" }))
+  expect(filters).toEqual(initial)
+})
+
+it.each([
+  [["pending"], "weekly"], [["ready"], "daily"], [["ready", "pending"], "on_demand"],
+] as const)("exposes historical cleaning restrictions %j / %s and can clear them to all", async (statuses, frequency) => {
+  const history = vi.fn().mockResolvedValue(undefined)
+  const filters: HousingFiltersValue = { cleaningStatuses: [...statuses], cleaningFrequencies: [frequency], quickFilter: "problem" }
+  const initial = structuredClone(filters)
+  render(<HousingExportDialog catalog={{ access_revision: "r", buildings: [], floors: [], can_create_building: false }} filters={filters} pending={false} error={null} onClose={vi.fn()} onSnapshot={vi.fn()} onHistory={history} />)
+  const user = userEvent.setup()
+  await user.selectOptions(screen.getByLabelText("导出类型"), "history")
+  const cleaning = screen.getByLabelText("历史导出保洁状态")
+  const frequencySelect = screen.getByLabelText("历史导出保洁频率")
+  expect(cleaning).toHaveValue([...statuses])
+  expect(frequencySelect).toHaveValue([frequency])
+  await user.type(screen.getByLabelText("导出用途（必填）"), "保洁核对")
+  await user.click(screen.getByRole("button", { name: "开始导出" }))
+  expect(history).toHaveBeenLastCalledWith(expect.objectContaining({ cleaning_statuses: [...statuses], cleaning_frequencies: [frequency], quick_filter: "problem" }))
+  await user.selectOptions(cleaning, ["ready", "pending"])
+  await user.selectOptions(frequencySelect, "weekly")
+  await user.click(screen.getByRole("button", { name: "开始导出" }))
+  expect(history).toHaveBeenLastCalledWith(expect.objectContaining({ cleaning_statuses: ["ready", "pending"], cleaning_frequencies: expect.arrayContaining(["weekly"]) }))
+  await user.click(screen.getByRole("button", { name: "清除历史导出保洁筛选" }))
+  expect(cleaning).toHaveValue([])
+  expect(frequencySelect).toHaveValue([])
+  await user.click(screen.getByRole("button", { name: "开始导出" }))
+  expect(history).toHaveBeenLastCalledWith(expect.objectContaining({ cleaning_statuses: [], daily_cleaning_enabled: undefined, quick_filter: "problem" }))
+  expect(filters).toEqual(initial)
+})
+
+it("retains base filters and the active shortcut in both export kinds", async () => {
+  const current = vi.fn().mockResolvedValue(undefined)
+  const history = vi.fn().mockResolvedValue(undefined)
+  render(<HousingExportDialog catalog={{ access_revision: "r", buildings: [], floors: [], can_create_building: false }} filters={{ buildingId: "a", query: "409", assignability: "full", quickFilter: "problem", cleaningStatuses: ["pending"], dailyCleaningEnabled: false }} pending={false} error={null} onClose={vi.fn()} onSnapshot={current} onHistory={history} />)
+  const user = userEvent.setup()
+  expect(screen.getByLabelText("导出可入住性")).toHaveValue("full")
+  await user.type(screen.getByLabelText("导出用途（必填）"), "台账核对")
+  await user.click(screen.getByRole("button", { name: "开始导出" }))
+  expect(current).toHaveBeenCalledWith(expect.objectContaining({ building_ids: ["a"], query: "409", assignability: "full", quick_filter: "problem", cleaning_statuses: ["pending"], daily_cleaning_enabled: false }))
+  await user.selectOptions(screen.getByLabelText("导出类型"), "history")
+  expect(screen.getByLabelText("历史导出可入住性")).toHaveValue("full")
+  await user.type(screen.getByLabelText("导出用途（必填）"), "历史核对")
+  await user.click(screen.getByRole("button", { name: "开始导出" }))
+  expect(history).toHaveBeenCalledWith(expect.objectContaining({ building_id: "a", query: "409", assignability: "full", quick_filter: "problem", cleaning_statuses: ["pending"], daily_cleaning_enabled: false }))
+})
 
 it("defaults to current snapshots and keeps historical export an explicit separate action", async () => {
   const current = vi.fn().mockResolvedValue(undefined)

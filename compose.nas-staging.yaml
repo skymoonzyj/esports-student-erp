@@ -33,6 +33,7 @@ services:
       EVALUATION_TOOL_STANDALONE_BASE_URL: ${EVALUATION_TOOL_STANDALONE_BASE_URL:-https://skymoonzyj.l.cd:18080}
       EVALUATION_MEDIA_ROOT: /app/runtime/evaluation-media
       EVALUATION_MEDIA_QUARANTINE_ROOT: /app/runtime/evaluation-quarantine
+      REACTIONX_RELEASE_ROOT: /app/runtime/reactionx-release
       EVALUATION_MEDIA_STORE_ID: ${EVALUATION_MEDIA_STORE_ID:-}
       OPERATIONS_BACKUP_STATUS_PATH: /app/var/backup-status.json
       EVALUATION_UPLOAD_MAX_OPEN_SESSIONS_PER_ACCOUNT: ${EVALUATION_UPLOAD_MAX_OPEN_SESSIONS_PER_ACCOUNT:-5}
@@ -44,6 +45,12 @@ services:
       - evaluation_media:/app/runtime/evaluation-media
       - evaluation_quarantine:/app/runtime/evaluation-quarantine
       - ${ERP_OPERATIONS_DIR:-/home/skymoonzyj/esports-erp/operations}:/app/var:ro
+      - type: bind
+        source: ./runtime/reactionx-release
+        target: /app/runtime/reactionx-release
+        read_only: true
+        bind:
+          create_host_path: false
     secrets:
       - database_url
       - field_encryption_master_key

@@ -50,7 +50,7 @@ export function EditReservationDialog({ stay, pending, error, focusFallbackRef, 
 }
 
 export function EditPlannedDepartureDialog({ stay, pending, error, focusFallbackRef, onClose, onSubmit }: BaseDialogProps<HousingPlannedDepartureUpdate>) {
-  const [durationMode, setDurationMode] = useState<HousingStayDurationMode | "">("")
+  const [durationMode, setDurationMode] = useState<HousingStayDurationMode | "">("fixed_term")
   const [checkOut, setCheckOut] = useState(stay.planned_check_out_at ? toShanghaiDateInput(stay.planned_check_out_at) : "")
   const fixedTerm = durationMode !== "long_term"
   const allowed = stay.allowed_actions.edit_planned_departure

@@ -66,3 +66,26 @@
 .claimReviewPage button:disabled { cursor: not-allowed; opacity: 0.55; }
 .claimReviewPage dd { overflow-wrap: anywhere; }
 .claimReviewPagination { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.registrationProcessingTabs { gap: 6px; margin-block: 18px; padding: 6px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); }
+.registrationProcessingTabs a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 16px; border-radius: var(--ui-radius-sm, 8px); font-size: 13px; }
+.registrationProcessingTabs a.active { color: var(--color-accent-800); background: var(--color-accent-soft); }
+.registrationProcessingTabs a:focus-visible,
+.claimReviewPage :is(button, input, select, textarea):focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }
+.claimReviewPage .registrationReviewPanel { padding: 22px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); }
+.claimReviewPage button,
+.claimReviewPage input:not([type="checkbox"]),
+.claimReviewPage select { min-height: 44px; }
+.claimReviewPage :is(button, input, select, textarea) { border-radius: var(--ui-radius-sm, 8px); }
+.claimReviewPage label { font-size: 13px; line-height: 1.65; }
+.claimReviewPage :is(input, select, textarea) { min-width: 0; color: var(--color-text); }
+html[data-ui-theme="command"] .registrationProcessingTabs { gap: 2px; padding: 4px; }
+html[data-ui-theme="command"] .claimReviewPage .registrationReviewPanel { padding: 18px; }
+@media (max-width: 600px) {
+  .registrationProcessingTabs a { flex: 1 1 auto; }
+  .claimReviewPage .registrationReviewPanel,
+  html[data-ui-theme="command"] .claimReviewPage .registrationReviewPanel { padding: 16px; }
+  .claimReviewPage label { align-items: stretch; flex-direction: column; }
+  .claimReviewPage label :is(input:not([type="checkbox"]), select, textarea) { width: 100%; }
+  .claimReviewPagination > button { flex: 1; }
+}

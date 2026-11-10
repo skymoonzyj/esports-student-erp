@@ -76,7 +76,9 @@ export function TeachingCatalogPage({
 }) {
   const auth = useOptionalAuth()
   const queryClient = useQueryClient()
-  const [tab, setTab] = useState<CatalogTab>("projects")
+  const canReadTeaching = permissions.has("teaching.read")
+  const [selectedTab, setTab] = useState<CatalogTab>("projects")
+  const tab = canReadTeaching ? selectedTab : "teams"
   const [projectName, setProjectName] = useState("")
   const [projectIncludeInactive, setProjectIncludeInactive] = useState(true)
   const [projectFilters, setProjectFilters] = useState<ProjectFilters>({
@@ -113,6 +115,7 @@ export function TeachingCatalogPage({
   const projects = useQuery({
     queryKey: ["projects", projectFilters],
     queryFn: () => listProjects(projectFilters),
+    enabled: canReadTeaching && tab === "projects",
   })
   const projectOptionFilters = useMemo<ProjectFilters>(
     () => ({ includeInactive: true, page: 1, pageSize: PROJECT_OPTIONS_PAGE_SIZE }),
@@ -281,14 +284,14 @@ export function TeachingCatalogPage({
 
   return (
     <div className="teachingCatalogPage">
-      <TeachingSectionNav
+      {canReadTeaching ? <TeachingSectionNav
         permissions={permissions}
         scopedPermissions={scopedPermissions}
-      />
+      /> : null}
       <header className="teachingPageHeader">
         <div>
-          <p className="teachingEyebrow">招生教学</p>
-          <h1>项目与职业队伍</h1>
+          <p className="teachingEyebrow">{canReadTeaching ? "招生教学" : "人员中心"}</p>
+          <h1>{canReadTeaching ? "项目与职业队伍" : "职业队伍"}</h1>
         </div>
         {tab === "projects" && canManageProjects ? (
           <button
@@ -319,14 +322,14 @@ export function TeachingCatalogPage({
       </header>
 
       <div className="teachingTabs" role="tablist" aria-label="教学目录">
-        <button
+        {canReadTeaching ? <button
           type="button"
           role="tab"
           aria-selected={tab === "projects"}
           onClick={() => setTab("projects")}
         >
           电竞项目
-        </button>
+        </button> : null}
         <button
           type="button"
           role="tab"

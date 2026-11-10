@@ -54,6 +54,14 @@ class HousingStaleVersion(HousingServiceError):
     code = "housing_stale_version"
 
 
+class HousingBatchConflict(HousingServiceError):
+    code = "housing_batch_conflict"
+
+    def __init__(self, errors: Sequence[dict[str, str]]) -> None:
+        super().__init__(self.code)
+        self.errors = [dict(error) for error in errors]
+
+
 class HousingRoomPendingCleaning(HousingServiceError):
     code = "housing_room_pending_cleaning"
 

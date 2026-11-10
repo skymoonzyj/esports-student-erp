@@ -13,7 +13,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 OLD = "0065_invited_housing_visibility"
-HEAD = "0069_pending_profile_intake"
+HEAD = "0090_administration_team_mgmt"
 DSN = "postgresql://erp_verify@127.0.0.1:5432/erp_verify"
 PENDING_ACTIVATION_PASSWORD = "Restore0069!"
 TABLES = (
@@ -28,7 +28,15 @@ TABLES = (
     "profile_claims",
     "profile_claim_bindings",
     "profile_claim_decisions",
+    "intake_activation_role_plans",
+    "intake_identity_selections",
+    "person_team_staff_positions",
+    "person_team_staff_authorizations",
+    "team_staff_assignments",
 )
+# This legacy recovery fixture has no pending role intents. Include the new
+# storage in exact-row preservation without claiming nonempty business coverage.
+ADDITIVE_EMPTY_TABLES = ("intake_role_intents", "intake_role_decisions", "quick_intake_receipts")
 
 
 def verify_api_source(expected, root=Path("/app")):
@@ -92,6 +100,12 @@ def trigger_fingerprint(db):
         "trg_assisted_profile_activation_monotonic",
         "trg_accounts_identity_facts",
         "trg_people_account_identity_facts",
+        "intake_identity_selections_immutable",
+        "person_team_staff_authorizations_immutable",
+        "person_team_staff_positions_history_guard",
+        "person_staff_authorization_role",
+        "intake_role_intents_immutable",
+        "intake_role_decisions_immutable",
     }
     assert required <= {row[0] for row in definitions}, "required_triggers_missing"
     return fingerprint(definitions)
@@ -190,6 +204,329 @@ def pending_fixture_inputs():
 def assert_pending_restored_case(observed, expected):
     # Only a controlled label is exposed on failure, never restored PII/ciphertext.
     assert observed == expected, "pending_restore_case_changed"
+
+
+def identity_staff_fixture_inputs(team_a, team_b):
+    """Pure synthetic management intent; actual services produce every DB row."""
+    from app.personnel_intake.identity_selection import ManagedIdentityInput, StaffTeamSelection
+    from app.security.encryption import EnvelopeCipher, LookupDigest
+
+    cipher, lookup = EnvelopeCipher(b"c" * 32), LookupDigest(b"d" * 32)
+    result = {}
+    for index, name in enumerate(("unactivated_multi_role", "realized_link", "ended_history",
+                                  "reconfirmed_version"), 70):
+        values = person_values(index, cipher, lookup)
+        result[name] = {
+            "facts": {
+                "full_name": f"Synthetic identity restore {index}",
+                "identity_number": cipher.decrypt(values["identity_ciphertext"], field_name="identity_number"),
+                "phone": f"13900000{index:03d}", "email": f"restore-identity-{index}@example.com",
+                "sex": "male", "date_of_birth": values["date_of_birth"], "guardians": [],
+                "coach_person_ids": [], "team_id": None, "team_allocation_status": "pending",
+            },
+            "selection": ManagedIdentityInput(primary_identity="coach", concurrent_identities=["team_manager"]),
+            "teams": [StaffTeamSelection(staff_role="coach", team_ids=[team_a, team_b]),
+                      StaffTeamSelection(staff_role="manager", team_ids=[team_a])],
+        }
+    return result
+
+
+def assert_identity_staff_restored_case(observed, expected):
+    # Never expose restored person facts, encrypted blobs or authorization data.
+    assert observed == expected, "identity_staff_restore_case_changed"
+
+
+def collect_identity_staff_case(session, actor, person_id, cipher, lookup):
+    """Authenticate every retained proof version, not just the current row count."""
+    from sqlalchemy import select
+
+    from app.auth.models import UserAccount
+    from app.personnel_intake.guardian_records import authenticated_approval_facts
+    from app.personnel_intake.identity_models import IntakeIdentitySelection
+    from app.personnel_intake.models import AssistedApproval
+    from app.personnel_intake.role_grant_models import ActivationRolePlan
+    from app.personnel_intake.role_grants import ActivationRoleService
+    from app.team_management.models import TeamStaffAssignment
+    from app.team_management.person_staff_models import (
+        PersonTeamStaffAuthorization,
+        PersonTeamStaffPosition,
+    )
+    from app.team_management.person_staff_query import PersonStaffQuery
+    from app.team_management.person_staff_schemas import staff_authorization_digest
+    from app.team_management.person_staff_service import authorization_evidence
+
+    def raw(row):
+        return {column.name: getattr(row, column.name) for column in row.__table__.columns}
+
+    identity = session.get(IntakeIdentitySelection, person_id)
+    assert identity is not None, "restored_identity_source_missing"
+    assert identity.person_id == person_id, "restored_identity_person_changed"
+    original = session.get(AssistedApproval, identity.origin_approval_id)
+    assert original is not None and original.person_id == person_id, "restored_identity_approval_changed"
+    authenticated_approval_facts(original, cipher=cipher, lookup=lookup)
+    positions = list(session.scalars(select(PersonTeamStaffPosition).where(
+        PersonTeamStaffPosition.person_id == person_id).order_by(PersonTeamStaffPosition.id)))
+    proofs = list(session.scalars(select(PersonTeamStaffAuthorization).where(
+        PersonTeamStaffAuthorization.position_id.in_([position.id for position in positions])
+    ).order_by(PersonTeamStaffAuthorization.position_id, PersonTeamStaffAuthorization.version)))
+    by_id = {position.id: position for position in positions}
+    for proof in proofs:
+        position = by_id[proof.position_id]
+        assert position.person_id == person_id, "restored_position_person_changed"
+        assert position.origin_approval_id == identity.origin_approval_id, "restored_position_origin_changed"
+        assert proof.evidence_digest == staff_authorization_digest(lookup, authorization_evidence(position, proof)), "restored_staff_proof_invalid"
+        plan = session.get(ActivationRolePlan, proof.role_plan_id)
+        assert plan is not None and plan.person_id == person_id, "restored_staff_plan_source_changed"
+        ActivationRoleService(session, lookup=lookup).authenticate(plan)
+    links = []
+    for position in positions:
+        if position.account_assignment_id is not None:
+            link = session.get(TeamStaffAssignment, position.account_assignment_id)
+            account = session.get(UserAccount, link.account_id) if link else None
+            assert link is not None and account is not None, "restored_realization_link_missing"
+            assert (account.person_id, link.team_id, link.staff_role) == (person_id, position.team_id, position.staff_role), "restored_realization_fk_changed"
+            assert (link.ended_at is None) == (position.ended_at is None), "restored_realization_end_changed"
+            links.append(fingerprint(raw(link)))
+    plans = list(session.scalars(select(ActivationRolePlan).where(
+        ActivationRolePlan.person_id == person_id).order_by(ActivationRolePlan.version)))
+    roster = []
+    query = PersonStaffQuery(session, lookup=lookup)
+    for team in sorted({position.team_id for position in positions}):
+        for status in ("current", "ended"):
+            page = query.list(actor, team, status=status, page=1, page_size=100)
+            assert page.total <= 100, "restore_roster_fixture_exceeds_page"
+            selected = [row for row in page.items if row.person_id == person_id]
+            assert len({row.row_key for row in selected}) == len(selected), "restored_duplicate_staff_roster"
+            roster.extend({"team": str(team), "status": status, **row.model_dump(mode="json")} for row in selected)
+    return {
+        "identity": fingerprint(raw(identity)),
+        "positions": [raw(position) for position in positions],
+        "proofs": [raw(proof) for proof in proofs],
+        "plans": [fingerprint(raw(plan)) for plan in plans],
+        "links": links, "roster": roster,
+    }
+
+
+def produce_identity_staff_cases(engine, cipher, lookup, actor_id, expected_plain_hashes):
+    """Use actual management creation/claim/activation/maintenance transactions."""
+    from pydantic import SecretStr
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+
+    from app.auth.models import UserAccount
+    from app.auth.service import AuthContext
+    from app.identity.models import Person
+    from app.personnel_intake.approval_service import PersonnelApprovalService
+    from app.personnel_intake.claims.models import ProfileClaim
+    from app.personnel_intake.claims.review_service import ProfileClaimReviewService
+    from app.personnel_intake.claims.schemas import ClaimDecisionInput, ClaimStartInput
+    from app.personnel_intake.guardian_records import authenticated_approval_facts, canonical_json
+    from app.personnel_intake.models import AssistedApproval, PersonnelIntakeRevision
+    from app.personnel_intake.role_grants import ActivationRoleService
+    from app.personnel_intake.schemas import ActivationRoleUpdate, PendingIntakeInput
+    from app.rbac.models import Role, UserRole
+    from app.teaching.models import GameProject, ProfessionalTeam
+    from app.team_management.person_staff_models import PersonTeamStaffPosition
+    from app.team_management.person_staff_schemas import (
+        PersonStaffEndInput,
+        PersonStaffReconfirmInput,
+    )
+    from app.team_management.person_staff_service import PersonStaffService
+
+    cases = {}
+    with Session(engine) as session:
+        account = session.get(UserAccount, actor_id)
+        actor = AuthContext(account=account, person=session.get(Person, account.person_id), session=None)
+        # Synthetic fixture qualification; never mock/bypass the actual root gate.
+        session.add(UserRole(user_id=actor_id, role_id=session.scalar(select(Role.id).where(Role.key == "super_admin"))))
+        division = GameProject(id=uuid4(), name="Synthetic identity restore division", sort_order=987,
+                               is_active=True, is_team_division=True, created_by_user_id=actor_id)
+        session.add(division)
+        session.flush()
+        teams = [ProfessionalTeam(id=uuid4(), project_id=division.id, name=f"Synthetic identity team {n}",
+                                  is_active=True, created_by_user_id=actor_id) for n in (1, 2)]
+        session.add_all(teams)
+        session.commit()
+        team_a, team_b = (team.id for team in teams)
+        inputs = identity_staff_fixture_inputs(team_a, team_b)
+        for index, (name, data) in enumerate(inputs.items(), 1):
+            created = PersonnelApprovalService(session, cipher=cipher, lookup=lookup).direct_create_pending(
+                actor, PendingIntakeInput(kind="staff", **data["facts"]), uuid4(),
+                identity_selection=data["selection"], staff_teams=data["teams"],
+            )
+            person_id = created.person_id
+            if name == "realized_link":
+                fixture = pending_service_fixture(session, cipher, lookup)
+                email = data["facts"]["email"]
+                started = fixture.public.start(ClaimStartInput(
+                    full_name=SecretStr(data["facts"]["full_name"]),
+                    identity_number=SecretStr(data["facts"]["identity_number"]), email=SecretStr(email),
+                    completion={key: data["facts"][key] for key in ("phone", "sex", "date_of_birth", "guardians")},
+                ), f"127.87.0.{index}")
+                token = started.session_token.get_secret_value()
+                fixture.public.verify(token, SecretStr(fixture.sender.messages[-1].code))
+                claim = session.scalar(select(ProfileClaim).where(ProfileClaim.target_person_id == person_id))
+                assert claim is not None, "identity_restore_claim_not_created"
+                ProfileClaimReviewService(session, cipher=cipher, lookup=lookup).approve(actor, claim.id,
+                    ClaimDecisionInput(expected_version=claim.version, idempotency_key=uuid4(), identity_confirmed=True))
+                fixture.clock.after_claim_cooldown()
+                started = fixture.activation.start(email, f"127.87.1.{index}")
+                token = started.session_token.get_secret_value()
+                code = SecretStr(fixture.sender.messages[-1].code)
+                fixture.activation.verify(token, code)
+                fixture.activation.finish(token, code, SecretStr(PENDING_ACTIVATION_PASSWORD))
+            positions = list(session.scalars(select(PersonTeamStaffPosition).where(
+                PersonTeamStaffPosition.person_id == person_id).order_by(PersonTeamStaffPosition.id)))
+            assert len(positions) == 3, "identity_restore_initial_positions_missing"
+            service = PersonStaffService(session, lookup=lookup)
+            if name == "ended_history":
+                for position in positions:
+                    service.end(actor, position.id, PersonStaffEndInput(expected_version=position.version,
+                        reason="Synthetic restore end history", idempotency_key=uuid4()))
+            elif name == "reconfirmed_version":
+                roles = ActivationRoleService(session, lookup=lookup)
+                before = roles.get(actor, person_id)
+                roles.update(actor, person_id, ActivationRoleUpdate(role_keys=["coach", "team_manager"],
+                    expected_version=before.version, idempotency_key=uuid4()))
+                for position in positions:
+                    service.reconfirm(actor, position.id, PersonStaffReconfirmInput(expected_version=position.version,
+                        reason="Synthetic restore explicit reconfirmation", idempotency_key=uuid4()))
+            session.commit()
+            item = {"person": str(person_id), "teams": [str(team_a), str(team_b)]}
+            snapshot = collect_identity_staff_case(session, actor, person_id, cipher, lookup)
+            # Evidence JSON roundtrip matches the exact host/container boundary.
+            item["expected"] = json.loads(json.dumps(snapshot, default=str, sort_keys=True))
+            cases[name] = item
+        for revision in session.scalars(select(PersonnelIntakeRevision)):
+            raw = cipher.decrypt(revision.payload_ciphertext, field_name="personnel_intake_payload")
+            value = fingerprint(raw)
+            assert expected_plain_hashes.get(str(revision.id), value) == value
+            expected_plain_hashes[str(revision.id)] = value
+        for approval in session.scalars(select(AssistedApproval)):
+            own, guardians = authenticated_approval_facts(approval, cipher=cipher, lookup=lookup)
+            value = [fingerprint(canonical_json(own)), fingerprint(canonical_json(guardians))]
+            assert expected_plain_hashes.get(str(approval.id), value) == value
+            expected_plain_hashes[str(approval.id)] = value
+    return cases
+
+
+def wait_restore_fixture_clock(target, *, clock=None, sleeper=None, timer=None):
+    """Let real UTC catch up to synthetic cooldown time; never rewrite facts."""
+    import time
+
+    clock = clock or (lambda: datetime.now(UTC))
+    sleeper, timer = sleeper or time.sleep, timer or time.monotonic
+
+    def valid(value):
+        return isinstance(value, datetime) and value.tzinfo is not None and value.utcoffset() is not None
+
+    observed = clock()
+    if not valid(target) or not valid(observed):
+        raise ValueError("restore_fixture_clock_invalid")
+    remaining = (target - observed).total_seconds()
+    if remaining > 90:
+        raise ValueError("restore_fixture_clock_invalid")
+    deadline = timer() + 90
+    while remaining > 0:
+        if timer() >= deadline:
+            raise ValueError("restore_fixture_clock_stalled")
+        sleeper(min(.25, remaining))
+        current = clock()
+        if not valid(current):
+            raise ValueError("restore_fixture_clock_invalid")
+        if current < observed:
+            raise ValueError("restore_fixture_clock_backward")
+        if timer() > deadline:
+            raise ValueError("restore_fixture_clock_stalled")
+        observed = current
+        remaining = (target - observed).total_seconds()
+
+
+def probe_identity_staff_cases(engine, evidence, cipher, lookup):
+    """After exact restore equality, prove access, dedupe and maintenance behavior."""
+    from sqlalchemy import func, select
+    from sqlalchemy.orm import Session
+
+    from app.auth.models import UserAccount
+    from app.auth.service import AuthContext
+    from app.identity.models import Person
+    from app.rbac.models import Role, UserRole
+    from app.team_management.access import TeamAccessService
+    from app.team_management.models import TeamManagerAssignment, TeamStaffAssignment
+    from app.team_management.person_staff_models import PersonTeamStaffPosition
+    from app.team_management.person_staff_schemas import (
+        PersonStaffEndInput,
+        PersonStaffReconfirmInput,
+    )
+    from app.team_management.person_staff_service import PersonStaffService
+    from app.team_management.staff_service import active_staff_team_ids
+
+    cases = evidence["identity_staff_restore_cases"]
+    assert set(cases) == {"unactivated_multi_role", "realized_link", "ended_history", "reconfirmed_version"}, "identity_restore_cases_missing"
+    # The activation fixture advances61s for the real cross-purpose cooldown.
+    # Close this read-only session before the bounded actual-clock wait and the
+    # separate behavioral rollback transaction; don't backdate restored history.
+    person_ids = [UUID(item["person"]) for item in cases.values()]
+    with Session(engine) as timing:
+        position_time = timing.scalar(select(func.max(PersonTeamStaffPosition.started_at)).where(
+            PersonTeamStaffPosition.person_id.in_(person_ids)))
+        assignment_time = timing.scalar(select(func.max(TeamStaffAssignment.created_at)).join(
+            PersonTeamStaffPosition, PersonTeamStaffPosition.account_assignment_id == TeamStaffAssignment.id
+        ).where(PersonTeamStaffPosition.person_id.in_(person_ids)))
+    if position_time is None or assignment_time is None:
+        raise ValueError("restore_fixture_clock_invalid")
+    wait_restore_fixture_clock(max(position_time, assignment_time))
+    with Session(engine) as session, session.begin() as transaction:
+        account = session.get(UserAccount, UUID(evidence["legacy_account"]))
+        actor = AuthContext(account=account, person=session.get(Person, account.person_id), session=None)
+        for name, item in cases.items():
+            person_id = UUID(item["person"])
+            snapshot = collect_identity_staff_case(session, actor, person_id, cipher, lookup)
+            normalized = json.loads(json.dumps(snapshot, default=str, sort_keys=True))
+            assert_identity_staff_restored_case(normalized, item["expected"])
+            positions = list(session.scalars(select(PersonTeamStaffPosition).where(
+                PersonTeamStaffPosition.person_id == person_id).order_by(PersonTeamStaffPosition.id)))
+            current = [position for position in positions if position.ended_at is None]
+            target = session.scalar(select(UserAccount).where(UserAccount.person_id == person_id))
+            if name == "realized_link":
+                assert target is not None and all(position.account_assignment_id for position in current), "restored_activation_link_missing"
+                roles = set(session.scalars(select(Role.key).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == target.id)))
+                assert roles == {"registered_user", "coach", "team_manager"}, "restored_activation_roles_changed"
+                assert active_staff_team_ids(session, target.id, role_keys=roles) == {UUID(team) for team in item["teams"]}, "restored_staff_read_scope_changed"
+                assert session.scalar(select(TeamManagerAssignment.id).where(TeamManagerAssignment.account_id == target.id)) is None, "restored_staff_became_writable_manager"
+                who = AuthContext(account=target, person=session.get(Person, person_id), session=None)
+                context = TeamAccessService(session).context(who)
+                assert not context.can_assign_managers and not context.can_manage_catalog and not context.can_transfer, "restored_staff_writable_access"
+                assert len(snapshot["roster"]) == 3, "restored_realization_duplicate_roster"
+            else:
+                assert target is None and not snapshot["links"], "restored_unactivated_premature_access"
+            service = PersonStaffService(session, lookup=lookup)
+            if name == "ended_history":
+                assert not current and len(snapshot["roster"]) == 3, "restored_ended_history_revived"
+                # An unrelated role reapproval must not resurrect ended positions.
+                from app.personnel_intake.role_grants import ActivationRoleService
+                from app.personnel_intake.schemas import ActivationRoleUpdate
+
+                roles_service = ActivationRoleService(session, lookup=lookup)
+                before = roles_service.get(actor, person_id)
+                roles_service.update(actor, person_id, ActivationRoleUpdate(role_keys=["coach", "team_manager", "guardian"],
+                    expected_version=before.version, idempotency_key=uuid4()))
+                session.expire_all()
+                assert all(position.ended_at is not None for position in session.scalars(select(PersonTeamStaffPosition).where(
+                    PersonTeamStaffPosition.person_id == person_id))), "restored_role_regrant_revived_history"
+            else:
+                assert len(current) == 3, "restored_current_positions_changed"
+                if name == "reconfirmed_version":
+                    assert len(snapshot["proofs"]) == 6 and len(snapshot["plans"]) == 2, "restored_reconfirmation_history_lost"
+                chosen = current[0]
+                before_version = chosen.version
+                service.reconfirm(actor, chosen.id, PersonStaffReconfirmInput(expected_version=before_version,
+                    reason="Synthetic restored maintenance proof", idempotency_key=uuid4()))
+                service.end(actor, chosen.id, PersonStaffEndInput(expected_version=before_version + 1,
+                    reason="Synthetic restored maintenance end", idempotency_key=uuid4()))
+                session.refresh(chosen)
+                assert chosen.ended_at is not None, "restored_position_not_maintainable"
+        transaction.rollback()
 
 
 class PendingRestoreClock:
@@ -1422,6 +1759,9 @@ def produce(config, seed_business_rows, database_manifest):
     evidence["pending_restore_cases"] = produce_pending_cases(
         engine, cipher, lookup, actor, expected_plain_hashes
     )
+    evidence["identity_staff_restore_cases"] = produce_identity_staff_cases(
+        engine, cipher, lookup, actor, expected_plain_hashes
+    )
     engine.dispose()
     with psycopg.connect(DSN) as db:
         metadata = database_manifest(db)
@@ -1430,6 +1770,7 @@ def produce(config, seed_business_rows, database_manifest):
                 db,
                 old_tables
                 + list(TABLES)
+                + list(ADDITIVE_EMPTY_TABLES)
                 + [
                     "guardian_relationships",
                     "guardian_profiles",
@@ -1487,6 +1828,7 @@ def probe(config, evidence):
             for table in TABLES
         }
         assert all(counts.values()), "new_table_empty"
+        assert set(ADDITIVE_EMPTY_TABLES) <= set(evidence["rows"]), "role_intent_storage_missing"
         assert (
             db.execute(
                 "SELECT count(*) FROM student_profiles WHERE person_id=%s",
@@ -1527,6 +1869,13 @@ def probe(config, evidence):
                 db.execute("RELEASE SAVEPOINT rejection")
 
         pending_passport = evidence["pending_restore_cases"]["pending_passport"]
+        identity_case = evidence["identity_staff_restore_cases"]["reconfirmed_version"]
+        rejects("UPDATE intake_identity_selections SET primary_identity='finance' WHERE person_id=%s",
+                (identity_case["person"],), "23514", trigger="prevent_intake_identity_evidence_mutation")
+        rejects("UPDATE person_team_staff_authorizations SET evidence_digest=repeat('0',64) WHERE position_id=%s",
+                (identity_case["expected"]["positions"][0]["id"],), "23514", trigger="prevent_intake_identity_evidence_mutation")
+        rejects("DELETE FROM person_team_staff_positions WHERE person_id=%s",
+                (identity_case["person"],), "23514", trigger="protect_person_team_staff_position_history")
         rejects(
             "INSERT INTO user_accounts(id,person_id,password_hash,status,force_password_change,failed_login_count) VALUES (%s,%s,'synthetic-unusable-hash','disabled',false,0)",
             (uuid4(), pending_passport["person"]),
@@ -1847,6 +2196,7 @@ def probe(config, evidence):
                     pass
                 else:
                     raise AssertionError("nonapproved_claim_activation_binding_accepted")
+    probe_identity_staff_cases(engine, evidence, cipher, lookup)
     probe_pending_services(engine, evidence, cipher, lookup)
     engine.dispose()
     with psycopg.connect(DSN) as db:

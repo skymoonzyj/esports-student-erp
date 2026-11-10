@@ -807,6 +807,54 @@ def test_family_delegation_requires_global_authority_for_future_relationships(
         grant_reason="temporary family game account support",
     )
 
+    # Business access alone does not authorize permission administration.
+    for actor_key in ("guardian", "admin"):
+        actor = evaluation_scenario.accounts[actor_key]
+        assert not service.decide(
+            user_id=actor.id,
+            permission="permissions.manage",
+            resource_tokens={"global"},
+        ).allowed
+        with pytest.raises(PermissionDelegationDenied):
+            service.add_override(
+                actor_user_id=actor.id,
+                account_id=target_account.id,
+                input=delegated,
+            )
+        assert db.scalar(select(func.count()).select_from(UserPermissionOverride)) == before
+
+    # Only these delegates gain the current management prerequisite. Their
+    # distinct business-permission scopes still govern delegation below.
+    manager_permission = db.scalar(
+        select(Permission).where(Permission.key == "permissions.manage")
+    )
+    assert manager_permission is not None
+    for actor_key in ("guardian", "admin"):
+        db.add(UserPermissionOverride(
+            user_id=evaluation_scenario.accounts[actor_key].id,
+            permission_id=manager_permission.id,
+            effect="allow",
+            scope_kind="global",
+            scope_id=None,
+            valid_from=None,
+            valid_until=None,
+            created_by_user_id=evaluation_scenario.accounts["admin"].id,
+            grant_reason="family delegation test management prerequisite",
+        ))
+    db.commit()
+    for actor_key in ("guardian", "admin"):
+        actor = evaluation_scenario.accounts[actor_key]
+        assert set(db.scalars(
+            select(UserRole.role_id).where(UserRole.user_id == actor.id)
+        )) == {ROLES[actor_key].id}
+        assert not service.account_has_role(actor.id, "super_admin")
+        assert service.decide(
+            user_id=actor.id,
+            permission="permissions.manage",
+            resource_tokens={"global"},
+        ).allowed
+    before = db.scalar(select(func.count()).select_from(UserPermissionOverride))
+
     with pytest.raises(PermissionDelegationDenied):
         service.add_override(
             actor_user_id=evaluation_scenario.accounts["guardian"].id,

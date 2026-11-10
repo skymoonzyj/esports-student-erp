@@ -35,7 +35,10 @@ def test_esports_ranking_http_contract_and_private_deny(db_client, db, esports_p
         "overall_rank",
         "participant_count",
         "items",
+        "top_scores",
     }
+    assert payload["top_scores"] == []
+    assert all(item["top_scores"] == [] for item in payload["items"])
     assert payload["overall_rank"] == 2 and payload["participant_count"] == 2
     assert payload["best_report_id"] == str(report.id)
     assert str(other.id) not in str(payload)

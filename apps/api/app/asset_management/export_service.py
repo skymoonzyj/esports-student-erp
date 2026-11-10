@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.asset_management.models import Asset, AssetAssignment
@@ -37,6 +38,8 @@ _HEADERS = (
     "售后电话",
     "产品链接",
     "订单号",
+    "资产归属", "取得方式", "取得渠道", "取得说明", "租期开始", "租期到期", "退租日期",
+    "CPU", "内存容量", "GPU", "硬盘容量",
 )
 _STATUS_LABELS = {
     "available": "可用",
@@ -93,6 +96,17 @@ def _row_values(
         asset.warranty_contact_phone or "",
         asset.warranty_product_url or "",
         asset.warranty_order_number or "",
+        {"owned": "自有", "rented": "租用"}.get(asset.ownership_type or "", "待确认"),
+        {"purchase": "采购", "other": "其他"}.get(asset.acquisition_method or "", ""),
+        {"online": "线上", "offline": "线下"}.get(asset.acquisition_channel or "", ""),
+        asset.acquisition_note or "",
+        _date_only(asset.rental_started_on),
+        _date_only(asset.rental_expires_on),
+        _date_only(asset.rental_returned_on),
+        asset.cpu_model or "",
+        asset.memory_capacity or "",
+        asset.gpu_model or "",
+        asset.disk_capacity or "",
     )
 
 
@@ -148,9 +162,11 @@ def render_asset_export(
         22,
         42,
         26,
+        12, 12, 12, 28, 14, 14, 14,
+        28, 18, 28, 32,
     )
     for index, width in enumerate(widths, start=1):
-        sheet.column_dimensions[chr(64 + index)].width = width
+        sheet.column_dimensions[get_column_letter(index)].width = width
     xlsx_output = BytesIO()
     workbook.save(xlsx_output)
     return (

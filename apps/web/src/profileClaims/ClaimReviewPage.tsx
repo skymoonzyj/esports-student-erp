@@ -4,6 +4,7 @@ import { Navigate } from "react-router-dom"
 import { apiFetch, ProblemDetailsError } from "../api/client"
 import { useAuth } from "../auth/AuthProvider"
 import { formatDateOnly } from "../shared/date"
+import { documentNumberLabel, documentTypeLabel } from "../assistedPeople/documentFacts"
 import { claimAdminApi, claimAdminKeys, claimStatusSchema, useClaimAdminContext } from "./adminApi"
 import type { ClaimCompletionView, ClaimDetail, ClaimFilters } from "./adminApi"
 import "../registration/registration.css"
@@ -30,7 +31,7 @@ function CompletionRead({ value, previous = false }: { value: ClaimCompletionVie
       <p>监护资料仅用于人工核对，不代表已授予监护权限。</p>
       {!value.guardians.length ? <p>未提供监护资料</p> : value.guardians.map((guardian, index) => <section key={index} aria-label={`${previous ? "原档案" : "申请"}监护人 ${index + 1}`}>
         <h4>监护人 {index + 1}</h4><dl className="registrationDetailGrid">
-          <div><dt>姓名</dt><dd>{guardian.full_name}</dd></div><div><dt>身份证</dt><dd>{guardian.identity_number}</dd></div>
+          <div><dt>姓名</dt><dd>{guardian.full_name}</dd></div><div><dt>{documentNumberLabel(guardian.document_type)}</dt><dd>{guardian.identity_number}</dd></div>
           <div><dt>联系电话</dt><dd>{guardian.phone}</dd></div><div><dt>邮箱</dt><dd>{text(guardian.email)}</dd></div>
           <div><dt>关系</dt><dd>{guardian.relationship}</dd></div><div><dt>性别</dt><dd>{guardian.sex === "male" ? "男" : "女"}</dd></div>
           <div><dt>出生日期</dt><dd>{guardian.date_of_birth}</dd></div><div><dt>主要监护人</dt><dd>{guardian.is_primary ? "是" : "否"}</dd></div>
@@ -255,7 +256,7 @@ function AccountClaimReviewPage({ accountId }: { accountId: string }) {
       <p>请通过可信渠道核实申请人确为档案本人，再核对姓名、证件与已验证邮箱。系统匹配不代表已完成人工身份核对。</p>
       <dl className="registrationDetailGrid">
         <div><dt>申请人</dt><dd>{draft.applicant_masked_name}</dd></div><div><dt>申请证件（脱敏）</dt><dd>{draft.applicant_masked_identity}</dd></div><div><dt>申请邮箱</dt><dd>{draft.applicant_email}</dd></div>
-        {draft.applicant_document_type ? <div><dt>申请证件类型</dt><dd>{draft.applicant_document_type === "passport" ? "护照" : "中国居民身份证"}</dd></div> : null}
+        {draft.applicant_document_type ? <div><dt>申请证件类型</dt><dd>{documentTypeLabel(draft.applicant_document_type)}</dd></div> : null}
         {draft.applicant_document_type === "passport" ? <div><dt>申请签发国家</dt><dd>{draft.applicant_issuing_country ?? "未提供，须核对补齐后匹配"}</dd></div> : null}
         <div><dt>邮箱验证日期</dt><dd>{formatDateOnly(draft.verified_at)}</dd></div><div><dt>有效期</dt><dd>{formatDateOnly(draft.expires_at)}</dd></div><div><dt>状态／版本</dt><dd>{labels[draft.status]} · v{draft.version}</dd></div>
         <div><dt>原档案</dt><dd>{draft.profile_masked_name ?? "暂无可审核匹配档案"}</dd></div><div><dt>原档案证件</dt><dd>{canReveal && revealed ? revealed : draft.profile_masked_identity ?? "不可用"}</dd></div>

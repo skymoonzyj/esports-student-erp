@@ -247,7 +247,7 @@
 .foodPreferenceStatistics__state--error,
 .foodPreferenceStatistics__error { color: var(--color-danger-700, #b42318); }
 .foodPreferenceStatistics__notice { color: var(--color-success-900, #146c43); }
-.foodPreferenceStatistics__backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgb(0 0 0 / 45%); }
+.foodPreferenceStatistics__backdrop { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgb(0 0 0 / 45%); }
 .foodPreferenceStatistics__dialog { display: grid; width: min(32rem, 100%); gap: 1rem; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: .85rem; background: var(--color-surface); box-shadow: 0 1rem 3rem rgb(0 0 0 / 25%); }
 .foodPreferenceStatistics__dialog header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
 .foodPreferenceStatistics__dialog header h2,
@@ -285,7 +285,7 @@
 .foodCuisineSettings__state { display: grid; justify-items: center; gap: .5rem; padding: 2.5rem 1rem; border: 1px dashed var(--color-border); border-radius: .75rem; color: var(--color-text-muted); text-align: center; }
 .foodCuisineSettings__state p, .foodCuisineSettings__state strong { margin: 0; }
 .foodCuisineSettings__state--error, .foodCuisineSettings__error { color: var(--color-danger-700, #b42318); }
-.foodCuisineSettings__backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgb(0 0 0 / 45%); }
+.foodCuisineSettings__backdrop { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgb(0 0 0 / 45%); }
 .foodCuisineSettings__dialog { display: grid; width: min(30rem, 100%); gap: 1rem; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: .85rem; background: var(--color-surface); box-shadow: 0 1rem 3rem rgb(0 0 0 / 25%); }
 .foodCuisineSettings__dialog header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
 .foodCuisineSettings__dialog h2 { margin: 0; }
@@ -293,3 +293,81 @@
 .foodCuisineSettings__dialog input { width: 100%; min-height: 44px; padding: .5rem .7rem; border: 1px solid var(--color-border); border-radius: .5rem; background: var(--color-surface); color: var(--color-text); }
 .foodCuisineSettings__dialog footer { display: flex; justify-content: flex-end; gap: .5rem; }
 @media (max-width: 480px) { .foodCuisineSettings__item { align-items: flex-start; } .foodCuisineSettings__rowActions { width: 100%; } .foodCuisineSettings__rowActions button { flex: 1; } }
+
+/* Shared daily-work hierarchy; the theme changes density, not form state. */
+.foodProfilePage > .foodPreferencesPanel,
+.foodOnboardingPage > .foodPreferencesPanel {
+  padding: 24px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--ui-radius-lg, 14px);
+  background: var(--color-surface);
+}
+.foodPreferencesPanel { gap: 24px; }
+.foodPreferencesPanel__header { padding-bottom: 18px; border-bottom: 1px solid var(--color-border-soft); }
+.foodPreferencesPanel__header h2 { color: var(--color-text-strong); font-size: 18px; }
+.foodPreferencesPanel__header p { margin-top: 8px; font-size: 13px; line-height: 1.7; }
+.foodPreferencesEditor__group { padding: 20px; border-color: var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-canvas); }
+.foodPreferencesEditor__group legend { color: var(--color-text-strong); font-size: 14px; }
+.foodPreferencesEditor__choices button,
+.foodPreferencesEditor__suggestions button { border-radius: var(--ui-radius-sm, 8px); font-size: 13px; }
+.foodPreferencesEditor__choices button[aria-pressed="true"] { color: var(--color-accent-700); border-color: var(--color-accent-600); background: var(--color-accent-soft); }
+.foodPreferencesPanel__actions { padding-top: 18px; border-top: 1px solid var(--color-border-soft); }
+.foodPreferencesPanel button:focus-visible,
+.foodPreferencesPanel input:focus-visible,
+.foodPreferenceStatisticsPage :is(button, input, select):focus-visible,
+.foodCuisineSettingsPage :is(button, input, select):focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-soft)); outline-offset: 3px; }
+.foodPreferenceStatisticsPage,
+.foodCuisineSettingsPage { gap: 24px; }
+.foodPreferenceStatistics__header h1,
+.foodCuisineSettings__header h1 { color: var(--color-text-strong); font-size: clamp(24px, 2.3vw, 30px); line-height: 1.3; }
+.foodPreferenceStatistics__header p:not(.pageEyebrow),
+.foodCuisineSettings__header p:not(.pageEyebrow) { margin-top: 8px; font-size: 13px; line-height: 1.7; }
+.foodPreferenceStatistics__summary { gap: 16px; }
+.foodPreferenceStatistics__summary article { padding: 22px; border-color: var(--color-border-soft); border-radius: var(--ui-radius-lg, 14px); }
+.foodPreferenceStatistics__summary span { font-size: 12px; }
+.foodPreferenceStatistics__summary strong { margin-top: 8px; color: var(--color-text-strong); font-size: 30px; font-weight: 650; }
+.foodPreferenceStatistics__filters,
+.foodPreferenceStatistics__rank,
+.foodCuisineSettings__region { padding: 20px; border-color: var(--color-border-soft); border-radius: var(--ui-radius-lg, 14px); }
+.foodPreferenceStatistics__rank h2,
+.foodCuisineSettings__region h2 { font-size: 16px; }
+.foodPreferenceStatistics__tableWrap { border-color: var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); }
+.foodPreferenceStatistics__table th { background: var(--color-canvas); font-size: 12px; }
+.foodPreferenceStatistics__table td { padding: var(--ui-table-cell-y, 16px) 18px; color: var(--color-text-muted); font-size: 13px; }
+.foodPreferenceStatistics__table td strong { color: var(--color-text-strong); }
+.foodPreferenceStatistics__table tbody tr:last-child td { border-bottom: 0; }
+.foodPreferenceStatistics__table tbody tr:hover { background: var(--color-canvas); }
+.foodPreferenceStatistics__state button { min-height: 44px; min-width: 44px; padding-inline: 16px; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 8px); background: var(--color-surface); color: var(--color-text-strong); }
+.foodPreferenceStatistics__dialog,
+.foodCuisineSettings__dialog { max-height: calc(100dvh - 32px); overflow-y: auto; border-radius: var(--ui-radius-lg, 14px); }
+.foodPreferenceStatistics__dialog header > button,
+.foodCuisineSettings__dialog header > button { min-width: 44px; }
+.foodCuisineSettings__item { background: var(--color-canvas); border-color: var(--color-border-soft); border-radius: var(--ui-radius-sm, 8px); }
+html[data-ui-theme="command"] .foodPreferenceStatisticsPage,
+html[data-ui-theme="command"] .foodCuisineSettingsPage { gap: 18px; }
+html[data-ui-theme="command"] .foodPreferenceStatistics__summary { gap: 0; overflow: hidden; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 8px); background: var(--color-surface); }
+html[data-ui-theme="command"] .foodPreferenceStatistics__summary article { padding: 18px 20px; border: 0; border-radius: 0; }
+html[data-ui-theme="command"] .foodPreferenceStatistics__summary article + article { border-left: 1px solid var(--color-border-soft); }
+html[data-ui-theme="command"] .foodPreferencesEditor__group { padding: 16px; border-radius: var(--ui-radius-sm, 6px); background: var(--color-surface); }
+html[data-ui-theme="command"] .foodPreferenceStatistics__filters,
+html[data-ui-theme="command"] .foodPreferenceStatistics__rank,
+html[data-ui-theme="command"] .foodCuisineSettings__region { padding: 16px; border-radius: var(--ui-radius-md, 8px); }
+@media (max-width: 767px) {
+  .foodPreferenceStatistics__summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .foodPreferenceStatistics__summary article { padding: 18px 16px; }
+  html[data-ui-theme="command"] .foodPreferenceStatistics__summary article { padding: 16px; }
+  html[data-ui-theme="command"] .foodPreferenceStatistics__summary article + article { border-left: 0; }
+  html[data-ui-theme="command"] .foodPreferenceStatistics__summary article:nth-child(even) { border-left: 1px solid var(--color-border-soft); }
+  html[data-ui-theme="command"] .foodPreferenceStatistics__summary article:nth-child(n+3) { border-top: 1px solid var(--color-border-soft); }
+  .foodProfilePage > .foodPreferencesPanel,
+  .foodOnboardingPage > .foodPreferencesPanel { padding: 16px; }
+  .foodPreferencesEditor__group,
+  .foodPreferenceStatistics__filters,
+  .foodPreferenceStatistics__rank,
+  .foodCuisineSettings__region { padding: 16px; }
+  .foodPreferenceStatistics__filters label:not(.foodPreferenceStatistics__check) { min-width: 0; width: 100%; }
+  .foodPreferenceStatistics__cards article { border-radius: var(--ui-radius-md, 12px); }
+  .foodPreferenceStatistics__pagination { flex-wrap: wrap; }
+  .foodPreferenceStatistics__backdrop,
+  .foodCuisineSettings__backdrop { padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+}

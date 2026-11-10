@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   getTeamContext: vi.fn(), listTeams: vi.fn(), listMemberships: vi.fn(), candidates: vi.fn(),
   managerCandidates: vi.fn(), myTeam: vi.fn(), listAssignments: vi.fn(),
   join: vi.fn(), leave: vi.fn(), transfer: vi.fn(), assign: vi.fn(), unassign: vi.fn(),
+  staffCandidates: vi.fn(), listStaffPositions: vi.fn(), personStaffCandidates: vi.fn(), assignPersonStaff: vi.fn(), endPersonStaff: vi.fn(), reconfirmPersonStaff: vi.fn(), assignStaff: vi.fn(), endStaffAssignment: vi.fn(),
 }))
 const auth = vi.hoisted(() => ({ isSuperAdmin: false }))
 vi.mock("./api", () => api)
@@ -44,8 +45,19 @@ beforeEach(() => {
     { account_id: "account-2", person_id: "person-b", full_name: "王明", nickname: "阿明", age: 19, is_minor: false },
   ], next_cursor: null })
   api.listAssignments.mockResolvedValue(page([]))
+  api.listStaffPositions.mockResolvedValue(page([]))
   api.managerCandidates.mockResolvedValue({ items: [], next_cursor: null })
   api.join.mockResolvedValue({ operation_id: "operation-a", membership_id: "membership-a", closed_membership_id: null, assignment_id: null })
+})
+
+it("separates read-only staff and legacy roster-management bindings for actual assignment capability", async () => {
+  api.getTeamContext.mockResolvedValue({ can_open_management: true, can_read_self: false, can_manage_catalog: false, can_assign_managers: true, can_transfer: false })
+  api.listTeams.mockResolvedValue(page([{ ...team, allowed_actions: ["read", "assign_managers"] }]))
+  renderPage()
+  await userEvent.click(await screen.findByRole("button", { name: "查看 一队" }))
+  expect(await screen.findByRole("region", { name: "队内工作人员（只读）" })).toBeVisible()
+  expect(screen.getByRole("region", { name: "旧名单管理绑定" })).toBeVisible()
+  expect(screen.queryByRole("button", { name: "添加队员" })).not.toBeInTheDocument()
 })
 
 it.each([403, 404, "reconcile"])("clears all denied team data without reload after mutation %s", async (status) => {
@@ -166,6 +178,18 @@ it("lets a pure superadmin see only resource-authorized actions and a capable ca
   expect(await screen.findByRole("button", { name: "添加队员" })).toBeInTheDocument()
   expect(screen.getByRole("button", { name: "调队 王明" })).toBeInTheDocument()
   expect(screen.getByRole("button", { name: "分配管理人员" })).toBeInTheDocument()
+})
+
+it("lets a non-superadmin administration user open the catalog by server capability", async () => {
+  api.getTeamContext.mockResolvedValue({ can_open_management: true, can_read_self: false, can_manage_catalog: true, can_assign_managers: true, can_transfer: true })
+  renderPage()
+  expect(await screen.findByRole("link", { name: "编辑目录" })).toHaveAttribute("href", "/teaching/catalog")
+})
+
+it("keeps the catalog hidden from a coach without catalog capability", async () => {
+  renderPage()
+  await screen.findByRole("button", { name: "查看 一队" })
+  expect(screen.queryByRole("link", { name: "编辑目录" })).not.toBeInTheDocument()
 })
 
 it("does not turn global superadmin context into actions absent from this team's capability list", async () => {

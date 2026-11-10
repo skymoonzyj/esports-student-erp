@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, DecimalException
 from typing import Literal
 from uuid import UUID
 
 from app.core.time import BUSINESS_TIME_ZONE
 
 RefundPolicy = Literal["prorated_remaining_days", "full_remaining_paid"]
+MAX_CNY_AMOUNT = Decimal("92233720368547758.07")
 
 
 class InvalidMoney(ValueError):
@@ -48,20 +49,20 @@ class WithdrawalCalculation:
 def parse_cny(value: str) -> int:
     try:
         decimal = Decimal(value)
-    except (InvalidOperation, ValueError):
+        exponent = decimal.as_tuple().exponent
+        if (
+            not decimal.is_finite()
+            or decimal <= 0
+            or decimal > MAX_CNY_AMOUNT
+            or not isinstance(exponent, int)
+            or exponent < -2
+        ):
+            raise ValueError
+        return int((decimal * 100).to_integral_exact())
+    except (DecimalException, ValueError):
         raise InvalidMoney(
-            "CNY amount must be positive with at most two decimals"
+            "CNY amount must be positive with at most two decimals and fit signed-bigint cents"
         ) from None
-
-    exponent = decimal.as_tuple().exponent
-    if (
-        not decimal.is_finite()
-        or decimal <= 0
-        or not isinstance(exponent, int)
-        or exponent < -2
-    ):
-        raise InvalidMoney("CNY amount must be positive with at most two decimals")
-    return int((decimal * 100).to_integral_exact())
 
 
 def calculate_withdrawal(

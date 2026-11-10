@@ -9,6 +9,10 @@ export interface FpsStageError {
 
 export interface FpsStageProps {
   readonly scene: FpsSceneSnapshot | null
+  /** Display-only runtime window; trial scenes are not full formal attempts. */
+  readonly durationMs?: 20000 | 60000
+  /** The Host reserves a stable toolbar slot for fixed-board feedback. */
+  readonly feedbackOutsideCanvas?: boolean
   readonly viewport: Size
   readonly dpr: number
   readonly canvasRef: Ref<HTMLCanvasElement>
@@ -29,6 +33,16 @@ function checkpointHint(scene: FpsSceneSnapshot | null): string | null {
   const forward = dx * Math.sin(yaw) - dz * Math.cos(yaw)
   const direction = Math.abs(right) >= Math.abs(forward) ? right >= 0 ? '右侧 →' : '← 左侧' : forward >= 0 ? '前方 ↑' : '后方 ↓'
   return `移动检查点：${direction} · ${Math.hypot(dx, dz).toFixed(2)} m`
+}
+
+export function FpsFeedback({ scene, durationMs = 60000, outsideCanvas = false }: { scene: FpsSceneSnapshot | null; durationMs?: 20000 | 60000; outsideCanvas?: boolean }) {
+  const feedback = scene?.feedback
+  if (!feedback || !scene) return null
+  return <p aria-label="FPS 实时反馈" style={{ ...(outsideCanvas ? { fontSize: '.75rem', lineHeight: '18px' } : { position: 'absolute' as const, top: 12, left: 12, padding: '6px 12px' }), color: feedback.kind === 'spheretrack90' && !feedback.covered ? '#ff675e' : '#7cf5c7', background: '#0b1220cc', margin: 0, pointerEvents: 'none' }}>
+    {(scene.at_ms / 1000).toFixed(1)} / {(durationMs / 1000).toFixed(1)} 秒 · {feedback.kind === 'multi_target'
+      ? `命中 ${feedback.hits} · 射击 ${feedback.shots} · 准确率 ${feedback.shots ? Math.round(feedback.hits / feedback.shots * 100) : 0}%`
+      : feedback.covered ? '瞄准中' : '离靶'}
+  </p>
 }
 
 export function FpsStage(props: FpsStageProps) {
@@ -100,6 +114,7 @@ export function FpsStage(props: FpsStageProps) {
     <canvas ref={attach} {...props.inputHandlers} aria-label="FPS 测试场景" style={{ display: 'block', width: '100%', height: '100%', touchAction: 'none' }} />
     {props.scene && !error && <span aria-hidden="true" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: '#fff', pointerEvents: 'none', font: '20px monospace' }}>+</span>}
     {checkpoint && !error && <p aria-label="移动检查点提示" style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', color: '#fff', background: '#0b1220cc', padding: '6px 12px', margin: 0, pointerEvents: 'none', whiteSpace: 'nowrap' }}>{checkpoint}</p>}
+    {!props.feedbackOutsideCanvas && !error && <FpsFeedback scene={props.scene} durationMs={props.durationMs} />}
     {error && <p role="alert" style={{ position: 'absolute', inset: 16, color: '#fff', pointerEvents: 'none' }}>{error.message}</p>}
   </div>
 }

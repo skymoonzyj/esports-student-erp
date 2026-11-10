@@ -10,6 +10,25 @@ import { PeoplePage } from "./PeoplePage"
 function LocationProbe() { const location = useLocation(); return <output aria-label="当前查询">{location.search}</output> }
 const allocationPerson = { id: "pending-person", full_name: "待划分测试", nickname: "草稿昵称", person_types: ["staff"], roles: [], team: { visibility: "denied", current: null }, identity_number: "****", phone: null, email: null, sex: null, date_of_birth: null, staff_type: "other", created_at: "2026-10-21T00:00:00+08:00", age_status: "unknown", guardian_status: "pending", account_status: "not_activated", assisted_kind: null, team_allocation: { visibility: "allowed", status: "pending", version: 3, can_update: true } }
 
+it("filters primary team staff counts separately from account manager roles and preserves URL selections", async () => {
+  const requests: string[] = []
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async url => {
+    requests.push(String(url))
+    return Response.json(String(url).endsWith("counts") ? { total: 2, student: 0, guardian: 0, staff: 2, coach: 0, staff_team_manager: 1, assistant_coach: 1, life_teacher: 0, customer_service: 0, administration: 0, other_staff: 0, visitor: 0, team_member: 0, team_manager: 0, in_team: 0, pending_team_allocation: null, assigned_team_allocation: null } : { items: [{ ...allocationPerson, staff_type: "assistant_coach" }], total: 1, page: 1, page_size: 20 })
+  }))
+  render(<MemoryRouter initialEntries={["/people?staff_type=assistant_coach"]}><QueryClientProvider client={new QueryClient()}><PeoplePage /><LocationProbe /></QueryClientProvider></MemoryRouter>)
+  await screen.findByRole("link", { name: "待划分测试" })
+  expect(requests.some(url => url.includes("staff_type=assistant_coach"))).toBe(true)
+  expect(screen.getByText("工作人员 · 助教")).toBeVisible()
+  const counts = within(screen.getByRole("region", { name: "人员数量统计" }))
+  expect(counts.getByRole("button", { name: "队伍管理0" })).toBeVisible()
+  await userEvent.click(counts.getByRole("button", { name: "战队经理1" }))
+  await waitFor(() => expect(requests.some(url => url.includes("staff_type=team_manager") && !url.includes("role="))).toBe(true))
+  expect(screen.getByLabelText("当前查询")).toHaveTextContent("staff_type=team_manager")
+  await userEvent.click(counts.getByRole("button", { name: "助教1" }))
+  expect(screen.getByLabelText("当前查询")).toHaveTextContent("staff_type=assistant_coach")
+})
+
 it("does not reuse a formerly authorized unfiltered cache after allocation visibility is revoked", async () => {
   let denied = false
   const response = (value: unknown) => new Response(JSON.stringify(value), { headers: { "Content-Type": "application/json" } })

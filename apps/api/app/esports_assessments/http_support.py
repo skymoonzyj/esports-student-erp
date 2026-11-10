@@ -102,7 +102,9 @@ class EsportsAssessmentRoute(APIRoute):
                 return _response(
                     409,
                     code,
-                    "当前评测状态不允许此操作，请刷新后重试",
+                    "请选择近战或远程人物"
+                    if code == "esports_attack_mode_required"
+                    else "当前评测状态不允许此操作，请刷新后重试",
                     active_session_id=exc.active_session_id,
                 )
             except (AssessmentError, ValidationError, ValueError):

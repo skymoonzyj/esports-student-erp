@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
@@ -10,7 +11,9 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.asset_management.hardware import HARDWARE_FIELDS, validate_computer_hardware
 from app.asset_management.models import Asset, AssetAssignment
+from app.asset_management.rental_schemas import RentalFacts
 from app.asset_management.schemas import (
     AssetAssignRequest,
     AssetCreate,
@@ -52,6 +55,10 @@ class AssetStatusConflict(AssetServiceError):
 
 class AssetWarrantyRangeInvalid(AssetServiceError):
     code = "asset_warranty_range_invalid"
+
+
+class AssetHardwareInvalid(AssetServiceError):
+    code = "asset_hardware_invalid"
 
 
 class AssetCodeGenerationFailed(AssetServiceError):
@@ -115,7 +122,9 @@ class AssetService:
             brand=input.brand,
             model=input.model,
             serial_number=input.serial_number,
+            **{key: getattr(input, key) for key in HARDWARE_FIELDS},
             location=input.location,
+            **{key: getattr(input, key) for key in RentalFacts.model_fields},
             purchase_date=input.purchase_date,
             warranty_expires_on=input.warranty_expires_on,
             **self._warranty_values(input),
@@ -167,8 +176,13 @@ class AssetService:
         category: str | None,
         page: int,
         page_size: int,
+        ownership_type: str | None = None,
     ) -> AssetListResult:
         base = select(Asset)
+        if ownership_type == "unconfirmed":
+            base = base.where(Asset.ownership_type.is_(None))
+        elif ownership_type is not None:
+            base = base.where(Asset.ownership_type == ownership_type)
         if status is not None:
             base = base.where(Asset.status == status)
         if category:
@@ -235,12 +249,46 @@ class AssetService:
             .all()
         )
 
-    def update(self, asset_id: UUID, input: AssetUpdate, *, actor_user_id: UUID) -> Asset:
+    def update(
+        self,
+        asset_id: UUID,
+        input: AssetUpdate,
+        *,
+        actor_user_id: UUID,
+        reauthorize: Callable[[], None] | None = None,
+        rental_audit: Callable[[dict[str, object]], None] | None = None,
+    ) -> Asset:
+        from app.asset_management.rental_service import RentalService, validate_asset_rental_update
+
+        rental_fields = bool(set(RentalFacts.model_fields) & input.model_fields_set)
         try:
             with write_transaction(self.db):
-                asset = self.db.scalar(select(Asset).where(Asset.id == asset_id).with_for_update())
+                # Retain authenticated identity locks before waiting for an asset,
+                # including ordinary (non-rental) updates.
+                if reauthorize is not None:
+                    reauthorize()
+                if rental_fields:
+                    # Lock the authenticated identity before the asset, just as
+                    # renewal/return do; keep those locks through required audit.
+                    RentalService(self.db)._authorize(actor_user_id)
+                asset = self.db.scalar(select(Asset).where(Asset.id == asset_id).with_for_update().execution_options(populate_existing=True))
                 if asset is None:
                     raise AssetNotFound("asset not found")
+                if reauthorize is not None:
+                    reauthorize()
+                if rental_fields:
+                    RentalService(self.db)._authorize(actor_user_id)
+                next_category = input.category if "category" in input.model_fields_set else asset.category
+                hardware_mutation = bool(set(HARDWARE_FIELDS) & input.model_fields_set)
+                if hardware_mutation or next_category != asset.category:
+                    try:
+                        validate_computer_hardware(next_category, {
+                            key: getattr(input, key) if key in input.model_fields_set else getattr(asset, key)
+                            for key in HARDWARE_FIELDS
+                        })
+                    except ValueError as exc:
+                        raise AssetHardwareInvalid(str(exc)) from exc
+                rental_metadata = validate_asset_rental_update(self.db, asset, input)
                 active = self.current_assignment(asset_id)
                 if input.status == "assigned" and active is None:
                     raise AssetStatusConflict("assigned status requires an active assignment")
@@ -269,6 +317,7 @@ class AssetService:
                     "category",
                     "brand",
                     "model",
+                    *HARDWARE_FIELDS,
                     "serial_number",
                     "status",
                     "location",
@@ -291,6 +340,8 @@ class AssetService:
                     for key, value in self._warranty_values(warranty).items():
                         setattr(asset, key, value)
                 self.db.flush()
+                if rental_fields and rental_audit is not None:
+                    rental_audit(rental_metadata)
                 return asset
         except IntegrityError as exc:
             raise AssetStatusConflict("asset update conflicted with current state") from exc
@@ -301,12 +352,17 @@ class AssetService:
         input: AssetAssignRequest,
         *,
         actor_user_id: UUID,
+        reauthorize: Callable[[], None] | None = None,
     ) -> AssetAssignment:
         with write_transaction(self.db):
-            asset = self.db.scalar(select(Asset).where(Asset.id == asset_id).with_for_update())
+            if reauthorize is not None:
+                reauthorize()
+            asset = self.db.scalar(select(Asset).where(Asset.id == asset_id).with_for_update().execution_options(populate_existing=True))
             if asset is None:
                 raise AssetNotFound("asset not found")
-            if asset.status in {"maintenance", "retired"}:
+            if reauthorize is not None:
+                reauthorize()
+            if asset.status in {"maintenance", "retired"} or asset.rental_returned_on is not None:
                 raise AssetNotAssignable("maintenance or retired assets cannot be assigned")
             if self.current_assignment(asset_id) is not None:
                 raise AssetAlreadyAssigned("asset already has an active assignment")
@@ -336,11 +392,16 @@ class AssetService:
         input: AssetReturnRequest,
         *,
         actor_user_id: UUID,
+        reauthorize: Callable[[], None] | None = None,
     ) -> AssetAssignment:
         with write_transaction(self.db):
-            asset = self.db.scalar(select(Asset).where(Asset.id == asset_id).with_for_update())
+            if reauthorize is not None:
+                reauthorize()
+            asset = self.db.scalar(select(Asset).where(Asset.id == asset_id).with_for_update().execution_options(populate_existing=True))
             if asset is None:
                 raise AssetNotFound("asset not found")
+            if reauthorize is not None:
+                reauthorize()
             assignment = self.db.scalar(
                 select(AssetAssignment)
                 .where(

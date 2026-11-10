@@ -9,7 +9,9 @@ export const personTypeLabels: Record<PersonType, string> = {
 }
 
 export const staffTypeLabels: Record<StaffType, string> = {
+  team_manager: "战队经理",
   coach: "教练",
+  assistant_coach: "助教",
   life_teacher: "生活老师",
   customer_service: "客服",
   administration: "行政",

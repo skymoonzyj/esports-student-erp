@@ -1,12 +1,13 @@
 """Discover before locking; merge/sort these quota and credential keys ONCE.
 
 Lifecycle order: merged advisory keys -> membership/request -> guardian graph ->
-sorted people/accounts -> directory -> claim/session -> challenge. Discovery is
+sorted people/accounts -> optional activation Roles -> directory -> claim/session -> challenge. Discovery is
 read-only; any changed set/fingerprint rejects the transaction for a fresh retry.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -21,11 +22,16 @@ from app.personnel_intake.claims.errors import ProfileClaimError
 from app.personnel_intake.guardian_records import guardian_graph_component
 from app.personnel_intake.locks import person_credential_fingerprint
 from app.personnel_intake.models import AssistedPersonProfile, PersonnelIntakeRequest
+from app.rbac.models import Role
 from app.registration.verification_service import (
     registration_advisory_lock_key,
     registration_credential_lock_keys,
 )
 from app.security.encryption import EncryptedFieldError, EnvelopeCipher, LookupDigest
+from app.team_management.person_staff_service import (
+    PreparedPersonStaffLocks,
+    lock_person_staff_positions,
+)
 from app.team_management.write_support import lock_directory, lock_participants
 
 
@@ -66,6 +72,8 @@ class ClaimLockContext:
     team_ids: set[UUID]
     membership_keys: list[int]
     credential_keys: list[int]
+    role_plans: dict[UUID, tuple[object, ...] | None]
+    staff_locks: dict[UUID, PreparedPersonStaffLocks]
 
 
 def discover_claim_lock_context(
@@ -95,6 +103,13 @@ def discover_claim_lock_context(
         )
     )
     ids = graph_ids | {p for row in requests for p in row.target_coach_person_ids}
+    from app.personnel_intake.role_grants import latest_plan, plan_fingerprint
+
+    plans = {identifier: latest_plan(db, identifier) for identifier in candidates}
+    staff = {identifier: PreparedPersonStaffLocks.discover(db, identifier) for identifier in candidates}
+    ids.update(pid for item in staff.values() for pid in item.person_ids)
+    authorizers = {plan.authorizer_user_id for plan in plans.values() if plan is not None}
+    ids.update(db.scalars(select(UserAccount.person_id).where(UserAccount.id.in_(authorizers))))
     people = list(
         db.scalars(
             select(Person).where(Person.id.in_(ids)).execution_options(populate_existing=True)
@@ -136,18 +151,27 @@ def discover_claim_lock_context(
             p.person_id: (p.version, p.current_approval_id, p.activation_requirement)
             for p in profiles
         },
-        {r.target_team_id for r in requests if r.target_team_id},
+        {r.target_team_id for r in requests if r.target_team_id}
+        | {tid for item in staff.values() for tid in item.team_ids},
         person_membership_lock_keys(
             identity_digests=identities,
             phone_digests={p.phone_digest for p in people if p.phone_digest},
             email_digests={p.email_digest for p in people if p.email_digest},
         ),
         registration_credential_lock_keys(emails, identity_digests=identities),
+        {identifier: plan_fingerprint(plan) for identifier, plan in plans.items()},
+        staff,
     )
 
 
-def lock_claim_business_context(db: Session, context: ClaimLockContext) -> None:
-    """Caller already owns the full merged/sorted advisory set, including quota keys."""
+def lock_claim_business_context(
+    db: Session,
+    context: ClaimLockContext,
+    *,
+    before_directory: Callable[[], None] | None = None,
+    role_ids: set[UUID] | None = None,
+) -> None:
+    """Caller owns advisory keys; activation's complete Role set precedes directory locks."""
     lock_person_memberships(db, context.membership_keys)
     if context.requests:
         list(
@@ -163,7 +187,26 @@ def lock_claim_business_context(db: Session, context: ClaimLockContext) -> None:
     for identifier in sorted(context.graph_ids):
         guardians.lock_guardian_relationships(identifier)
     lock_participants(db, sorted(context.people), sorted(context.account_ids))
+    from app.personnel_intake.role_grants import latest_plan, plan_fingerprint
+
+    if any(
+        plan_fingerprint(latest_plan(db, identifier)) != fingerprint
+        for identifier, fingerprint in context.role_plans.items()
+    ):
+        raise _retry()
+    if before_directory is not None:
+        before_directory()
+    if any(PreparedPersonStaffLocks.discover(db, pid) != prepared
+           for pid, prepared in context.staff_locks.items()):
+        raise _retry()
+    complete_roles = (role_ids or set()) | {rid for item in context.staff_locks.values() for rid in item.role_ids}
+    list(db.scalars(select(Role).where(Role.id.in_(complete_roles)).order_by(Role.id)
+                    .with_for_update().execution_options(populate_existing=True)))
     lock_directory(db, sorted(context.team_ids))
+    for pid, prepared in sorted(context.staff_locks.items()):
+        lock_person_staff_positions(db, pid)
+        if PreparedPersonStaffLocks.discover(db, pid) != prepared:
+            raise _retry()
     if (
         set(db.scalars(select(Person.id).where(Person.identity_digest == context.identity_digest)))
         | ({context.stable_person_id} if context.stable_person_id else set())

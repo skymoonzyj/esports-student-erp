@@ -5,8 +5,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import { setCsrfToken } from '../api/client'
 import { useAssessmentSession } from './useAssessmentSession'
-import { fixtureAttempt, fixturePending, fixtureQuality, fixtureRaw, fixtureSuiteConfig } from './testSupport/fixtures'
+import { fixtureAttempt, fixturePending, fixtureQuality, fixtureRaw, fixtureSettings, fixtureSuiteConfig } from './testSupport/fixtures'
 import { clearAssessmentPending, loadPending, savePending } from './pending'
+import { fixtureMobaV4Config, fixtureMobaV4Raw } from './testSupport/fixturesMobaV4'
+import type { AttackMode, TaskConfig } from './contracts'
 
 const auth = vi.hoisted(() => ({ user: { account_id: '11111111-1111-4111-8111-111111111111' } as { account_id: string } | null }))
 vi.mock('../auth/AuthProvider', () => ({ useAuth: () => auth }))
@@ -25,6 +27,71 @@ beforeEach(() => {
   setCsrfToken('test')
 })
 afterEach(() => { clearAssessmentPending(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+
+it('retains one practice mode and operation key on retry, but invalidates the request on a mode identity change', async () => {
+  const posts: Array<{ attack_mode: string; operation_key: string }> = []
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
+    if (String(input).includes('/recovery?')) return json({ items: [], next_cursor: null, visible_total: 0 })
+    posts.push(JSON.parse(String(init?.body)))
+    return json({ detail: 'retry' }, 500)
+  }))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const { result, rerender } = renderHook(({ attack_mode }: { attack_mode: AttackMode }) => useAssessmentSession({ mode: 'practice', suite_id: 'pc-moba', test_id: 'last-hit', attack_mode }), {
+    initialProps: { attack_mode: 'melee' }, wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><MemoryRouter>{children}</MemoryRouter></QueryClientProvider>,
+  })
+  await waitFor(() => expect(result.current.ready).toBe(true))
+  const start = (attack_mode: AttackMode) => result.current.start({ test_id: 'last-hit', settings: { ...view.settings, mouse_mode: null }, environment: view.environment, difficulty: fixtureMobaV4Config(attack_mode).difficulty, attack_mode })
+  await act(() => start('melee'))
+  await act(() => start('melee'))
+  rerender({ attack_mode: 'ranged' })
+  await waitFor(() => expect(result.current.ready).toBe(true))
+  await act(() => start('ranged'))
+  expect(posts.map(post => post.attack_mode)).toEqual(['melee', 'melee', 'ranged'])
+  expect(posts[0].operation_key).toBe(posts[1].operation_key)
+  expect(posts[2].operation_key).not.toBe(posts[0].operation_key)
+})
+
+it.each(['cache', 'recovery'] as const)('adopts a frozen melee or legacy practice from %s despite a ranged new-request selection', async source => {
+  // Both the new lane and a legacy last-hit record remain authoritative.
+  for (const config of [fixtureMobaV4Config('melee'), fixtureSuiteConfig('pc-moba', 'v1').tasks['last-hit']!] as TaskConfig[]) {
+    clearAssessmentPending()
+    const attempt = fixtureAttempt({ mode: 'practice', session_id: null, suite_id: 'pc-moba', test_id: 'last-hit', config, settings: fixtureSettings('pc-moba') })
+    const pending = fixturePending({ mode: 'practice', session_id: null, suite_id: 'pc-moba', test_id: 'last-hit', created_at: new Date().toISOString(),
+      raw: config.params.kind === 'lane_last_hit' ? fixtureMobaV4Raw(false) : fixtureRaw('pc-moba', 'last-hit', false), quality: { ...fixtureQuality(), duration_ms: config.duration_ms } })
+    if (source === 'cache') expect(savePending(pending).persisted).toBe(true)
+    const posts: Array<{ operation_key: string }> = []
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).includes('/recovery?')) return json({ items: [{ mode: 'practice', attempt_id: attempt.id, session_id: null, suite_id: 'pc-moba', test_id: 'last-hit', state: 'running', issued_at: attempt.issued_at, run_until: attempt.run_until, submit_until: attempt.submit_until }], next_cursor: null, visible_total: 1 })
+      if (String(input).endsWith('/result')) { posts.push(JSON.parse(String(init?.body))); return json({ mode: 'practice', result_id: saved.result_id, session: null, scored: { metrics: {}, score: null, grade: null, quality_flags: [] } }) }
+      return json({ attempt, saved: null })
+    }))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const mounted = renderHook(() => useAssessmentSession({ mode: 'practice', suite_id: 'pc-moba', test_id: 'last-hit', attack_mode: 'ranged' }), { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><MemoryRouter>{children}</MemoryRouter></QueryClientProvider> })
+    await waitFor(() => expect(mounted.result.current.ready).toBe(true))
+    expect(mounted.result.current.serverView?.config).toEqual(config)
+    expect(mounted.result.current.error).toBeNull()
+    expect(mounted.result.current.busy).toBe(false)
+    if (source === 'cache') {
+      await act(() => mounted.result.current.retry())
+      expect(posts).toEqual([expect.objectContaining({ operation_key: pending.operation_key })])
+      expect(mounted.result.current.saved?.mode).toBe('practice')
+    }
+    mounted.unmount()
+  }
+})
+
+it('still rejects a newly created practice response whose mode differs from the frozen request', async () => {
+  const attempt = fixtureAttempt({ mode: 'practice', session_id: null, suite_id: 'pc-moba', test_id: 'last-hit', config: fixtureMobaV4Config('melee'), settings: fixtureSettings('pc-moba') })
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>(async input => String(input).includes('/recovery?') ? json({ items: [], next_cursor: null, visible_total: 0 }) : json(attempt)))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const { result } = renderHook(() => useAssessmentSession({ mode: 'practice', suite_id: 'pc-moba', test_id: 'last-hit', attack_mode: 'ranged' }), { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><MemoryRouter>{children}</MemoryRouter></QueryClientProvider> })
+  await waitFor(() => expect(result.current.ready).toBe(true))
+  let response: unknown
+  await act(async () => { response = await result.current.start({ test_id: 'last-hit', settings: { ...view.settings, mouse_mode: null }, environment: view.environment, difficulty: 3, attack_mode: 'ranged' }) })
+  expect(response).toBeNull()
+  expect(result.current.serverView).toBeNull()
+  expect(result.current.error).not.toBeNull()
+})
 
 it('restarts delayed recovery across real StrictMode effect replay and rejects the obsolete response', async () => {
   const replies: Array<(response: Response) => void> = []

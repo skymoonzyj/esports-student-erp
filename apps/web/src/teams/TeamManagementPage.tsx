@@ -1,7 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
-import { useOptionalAuth } from "../auth/AuthProvider"
 import { formatDateOnly } from "../shared/date"
 import { getTeamContext, listMemberships, listTeams } from "./api"
 import type { TeamAction, TeamMemberView, TeamSummary } from "./api"
@@ -10,6 +9,7 @@ import { clearDeniedTeamResource, isDeniedResource } from "./resourceDenial"
 import { accountStatusLabels, membershipEndLabels } from "./presentation"
 import { TeamActionDialogs } from "./TeamActionDialogs"
 import { TeamManagerPanel } from "./TeamManagerPanel"
+import { TeamStaffPanel } from "./TeamStaffPanel"
 import "./teams.css"
 
 async function allAuthorizedTeams(): Promise<TeamSummary[]> {
@@ -28,7 +28,6 @@ export function TeamManagementPage({ accountId }: { accountId: string }) {
 }
 
 function AccountTeamManagementPage({ accountId }: { accountId: string }) {
-  const auth = useOptionalAuth()
   const client = useQueryClient()
   const keys = useMemo(() => teamKeys(accountId), [accountId])
   const [projectId, setProjectId] = useState("")
@@ -79,7 +78,7 @@ function AccountTeamManagementPage({ accountId }: { accountId: string }) {
       if (event.type !== "updated" || !isDeniedResource(event.query.state.error)) return
       const queryKey = event.query.queryKey
       if (queryKey[0] !== "teams" || queryKey[1] !== accountId || queryKey[3] !== selectedTeamId) return
-      if (!["members", "assignments", "candidates", "manager-candidates"].includes(String(queryKey[2]))) return
+      if (!["members", "assignments", "candidates", "manager-candidates", "staff-assignments", "staff-candidates"].includes(String(queryKey[2]))) return
       onDenied(selectedTeamId)
     })
   }, [accountId, client, onDenied, selectedTeamId])
@@ -128,7 +127,7 @@ function AccountTeamManagementPage({ accountId }: { accountId: string }) {
   return (
     <main className="teamManagementPage">
       <header className="teamPageHeader"><div><p>人员中心</p><h1>队伍管理</h1></div>
-        {context.data?.can_manage_catalog && auth?.user?.is_super_admin ? <a href="/teaching/catalog">编辑目录</a> : null}
+        {context.data?.can_manage_catalog ? <a href="/teaching/catalog">编辑目录</a> : null}
       </header>
       {context.isLoading ? <p>正在确认队伍权限…</p> : null}
       {context.isError ? <p role="alert">暂时无法确认队伍权限。</p> : null}
@@ -170,7 +169,10 @@ function AccountTeamManagementPage({ accountId }: { accountId: string }) {
             </li>)}
           </ul>
           {members.data ? <nav className="teamPager" aria-label="名单分页"><button type="button" disabled={memberPage <= 1} onClick={() => setMemberPage(memberPage - 1)}>上一页</button><span>第 {memberPage} 页，共 {members.data.total} 条</span><button type="button" disabled={memberPage * members.data.page_size >= members.data.total} onClick={() => setMemberPage(memberPage + 1)}>下一页</button></nav> : null}
-          {permits("assign_managers") ? <TeamManagerPanel key={`${accountId}:${selectedTeam.id}`} accountId={accountId} teamId={selectedTeam.id} teamIsActive={selectedTeam.is_active} allowedActions={selectedTeam.allowed_actions} onChanged={onChanged} onDenied={onDenied} /> : null}
+          {context.data?.can_assign_managers && permits("assign_managers") ? <>
+            <TeamStaffPanel accountId={accountId} teamId={selectedTeam.id} teamIsActive={selectedTeam.is_active} allowedActions={selectedTeam.allowed_actions} onChanged={onChanged} onDenied={onDenied} />
+            <section aria-label="旧名单管理绑定"><h3>旧名单管理绑定</h3><p>保留原名单管理功能，与只读队内岗位独立。</p><TeamManagerPanel key={`${accountId}:${selectedTeam.id}`} accountId={accountId} teamId={selectedTeam.id} teamIsActive={selectedTeam.is_active} allowedActions={selectedTeam.allowed_actions} onChanged={onChanged} onDenied={onDenied} /></section>
+          </> : null}
         </section> : null}
       </> : null}
       {selectedTeam && dialog ? <TeamActionDialogs key={`${selectedTeam.id}-${dialog.action}-${dialog.member?.id ?? "new"}`} accountId={accountId} team={selectedTeam} member={dialog.member} action={dialog.action} allowedActions={selectedTeam.allowed_actions} onClose={() => setDialog(null)} onChanged={onChanged} onDenied={onDenied} /> : null}

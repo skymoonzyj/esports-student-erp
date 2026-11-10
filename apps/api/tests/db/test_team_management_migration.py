@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -31,6 +32,38 @@ NEW_GRANTS = {
     ("super_admin", "team_memberships.transfer", "global"),
     ("super_admin", "team_manager_assignments.manage", "global"),
 }
+
+
+@pytest.fixture(autouse=True)
+def prepare_historical_team_grants(postgres_engine: Engine) -> Iterator[None]:
+    # 0090 conservatively retains grants on downgrade. These 0061 regressions
+    # explicitly revoke only its five later defaults as fixture preparation;
+    # the real nondefault-grant and business-history guards remain unchanged.
+    clear_grants = text(
+        "DELETE FROM role_permissions rp USING roles r,permissions p "
+        "WHERE rp.role_id=r.id AND rp.permission_id=p.id "
+        "AND r.key='administration' AND rp.scope_kind='global' "
+        "AND p.key IN ('professional_teams.manage','team_memberships.read',"
+        "'team_memberships.manage','team_memberships.transfer',"
+        "'team_manager_assignments.manage') "
+        "RETURNING rp.role_id,rp.permission_id,rp.scope_kind"
+    )
+    with postgres_engine.begin() as connection:
+        initial_head = connection.scalar(text("SELECT version_num FROM alembic_version"))
+        original_grants = [dict(row) for row in connection.execute(clear_grants).mappings()]
+    try:
+        yield
+    finally:
+        with postgres_engine.begin() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == initial_head
+            # Tests may recreate defaults via upgrade, or remain at head after
+            # rejecting a downgrade. Restore exactly the prior subset in both cases.
+            connection.execute(clear_grants)
+            if original_grants:
+                connection.execute(text(
+                    "INSERT INTO role_permissions(role_id,permission_id,scope_kind) "
+                    "VALUES (:role_id,:permission_id,:scope_kind)"
+                ), original_grants)
 
 
 @pytest.mark.parametrize(
@@ -590,7 +623,14 @@ def test_preserves_existing_catalog_and_profiles(postgres_engine: Engine) -> Non
                 "team_member": UUID("10000000-0000-4000-8000-000000000012"),
                 "team_manager": UUID("10000000-0000-4000-8000-000000000013"),
             }
-            assert _new_grants(postgres_engine) == NEW_GRANTS
+            assert _new_grants(postgres_engine) == NEW_GRANTS | {
+                ("coach", "team_memberships.read", "assigned_team"),
+                ("assistant_coach", "team_memberships.read", "assigned_team"),
+                ("administration", "team_memberships.read", "global"),
+                ("administration", "team_memberships.manage", "global"),
+                ("administration", "team_memberships.transfer", "global"),
+                ("administration", "team_manager_assignments.manage", "global"),
+            }
     finally:
         command.upgrade(config, "head")
         with postgres_engine.begin() as connection:

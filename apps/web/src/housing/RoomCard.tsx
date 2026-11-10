@@ -1,7 +1,9 @@
 import { Eye, Pencil, ShieldCheck, Trash2 } from "lucide-react"
 
 import type { HousingRoom } from "./api"
+import { roomCleaningFrequencyLabel } from "./api"
 import { RoomOccupancySlots } from "./RoomOccupancySlots"
+import { isHousingRoomSelectable } from "./selection"
 
 type RoomCardProps = {
   room: HousingRoom
@@ -48,13 +50,16 @@ export function RoomCard({
 }: RoomCardProps) {
   const tone = cardTone(room)
   const occupiedText = `已入住 ${room.current_occupants} / ${room.capacity}`
-  const displayStatus = room.current_occupants > 0 ? occupiedText : room.cleaning_status === "pending" ? "待保洁，不可入住" : room.status_text
+  const displayStatus = room.current_occupants > 0 ? occupiedText : room.cleaning_status === "pending" ? "退房待保洁，不可入住" : room.status_text
   const pendingFunctional =
     room.verification_status === "pending_verification" && room.room_type === "functional"
 
   return (
     <article
       className={`housingRoomCard housingRoomCard--${tone}`}
+      data-service-status={room.service_status}
+      data-verification-status={room.verification_status}
+      data-cleaning-status={room.cleaning_status}
       aria-label={`房间 ${room.room_number}：${displayStatus}`}
     >
       <header className="housingRoomCard__header">
@@ -62,11 +67,11 @@ export function RoomCard({
           <p>{room.building_name} · {room.floor_name}</p>
           <h3>{room.room_number}</h3>
         </div>
-        {room.verification_status === "pending_verification" && room.allowed_actions.verify ? (
+        {isHousingRoomSelectable(room) ? (
           <label className="housingRoomCard__selection">
             <input
               type="checkbox"
-              aria-label={`选择房间 ${room.room_number}进行核对`}
+              aria-label={`选择房间 ${room.room_number}`}
               checked={selected}
               disabled={pending}
               onChange={(event) => onSelectedChange(event.currentTarget.checked)}
@@ -88,8 +93,8 @@ export function RoomCard({
       {room.service_status === "problem" ? (
         <span className="housingRoomCard__problem">问题房</span>
       ) : null}
-      {room.cleaning_status === "pending" ? <span className="housingRoomCard__cleaning">待保洁</span> : null}
-      {room.daily_cleaning_enabled ? <span className="housingRoomCard__care">每日保洁</span> : null}
+      {room.cleaning_status === "pending" ? <span className="housingRoomCard__cleaning">退房待保洁</span> : null}
+      <span className="housingRoomCard__care">{roomCleaningFrequencyLabel(room)}</span>
       {room.pending_transfer_count > 0 ? (
         <span className="housingRoomCard__pendingTransfer">
           待调房 {room.pending_transfer_count} 人

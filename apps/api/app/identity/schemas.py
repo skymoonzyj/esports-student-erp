@@ -15,7 +15,10 @@ AssistedKind = Literal["student", "player", "both", "staff"]
 IntakeMode = Literal["strict", "pending"]
 TeamAllocationStatus = Literal["untracked", "pending", "assigned", "not_required"]
 AccountStatus = Literal["active", "disabled", "deleted", "not_activated"]
-StaffType = Literal["coach", "life_teacher", "customer_service", "administration", "other"]
+StaffType = Literal[
+    "coach", "team_manager", "assistant_coach", "life_teacher",
+    "customer_service", "administration", "other",
+]
 Sex = Literal["male", "female"]
 StudentStatus = Literal["draft", "active", "inactive"]
 GuardianRelationshipStatus = Literal["scheduled", "active", "expired", "ended"]
@@ -144,6 +147,8 @@ class PersonCounts(BaseModel):
     guardian: int
     staff: int
     coach: int
+    staff_team_manager: int
+    assistant_coach: int
     life_teacher: int
     customer_service: int
     administration: int

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import unicodedata
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -26,7 +27,9 @@ from app.housing.history_void_access import require_history_void_authority
 from app.housing.history_void_models import HousingStayVoidOperation
 from app.housing.history_void_schemas import StayHistoryVoidRequest, StayHistoryVoidResult
 from app.housing.models import HousingRoom, HousingStay
+from app.identity.document_identity import normalize_hk_id, normalize_hk_mo_permit
 from app.identity.models import Person
+from app.identity.normalization import IdentityValidationError
 from app.security.encryption import EncryptedFieldError, EnvelopeCipher, LookupDigest
 
 
@@ -151,15 +154,33 @@ class HousingHistoryVoidService:
             resident = people.get(stay.person_id)
             if resident is None:
                 raise HousingResourceNotFound("housing resident not found")
-            if resident.document_type == "passport":
+            if resident.document_type in {"passport", "hk_id", "hk_mo_permit"}:
                 try:
-                    passport = self.cipher.decrypt(
+                    number = self.cipher.decrypt(
                         resident.identity_ciphertext, field_name="identity_number"
                     )
-                except EncryptedFieldError:
+                    if resident.document_type == "hk_id":
+                        number = normalize_hk_id(number)
+                        # Compare only the known target. Strip presentation differences
+                        # in free text too, so brackets/case/spacing cannot leak the ID.
+                        compared_reason = (
+                            "".join(reason.split())
+                            .upper()
+                            .translate(str.maketrans("", "", "()（）"))
+                        )
+                    elif resident.document_type == "hk_mo_permit":
+                        number = normalize_hk_mo_permit(number)
+                        # Disclosure aliases are broader than accepted identity input.
+                        # Only compare the known target; do not classify arbitrary text.
+                        compared_reason = "".join(
+                            unicodedata.normalize("NFKC", reason).split()
+                        ).upper()
+                    else:
+                        compared_reason = reason
+                except (EncryptedFieldError, IdentityValidationError):
                     raise HousingSensitiveDataUnavailable("identity data unavailable") from None
                 # Exact known target document only, not an unreliable universal passport regex.
-                if passport.strip() and passport.strip() in reason:
+                if number.strip() and number.strip() in compared_reason:
                     raise HousingVoidReasonInvalid("reason contains a complete document number")
             old_version = stay.version
             stay.voided_at = self.occurred_at

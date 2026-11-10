@@ -4,6 +4,11 @@
   margin: 0 auto;
 }
 
+/* Payment and admission surfaces follow the shared dual-theme geometry. */
+.paymentsPage .admissionsTabs { gap: 8px; padding: 4px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: white; overflow-x: auto; }
+.paymentsPage .admissionsTabs button { flex: 0 0 auto; min-height: 44px; padding: 0 16px; border-bottom: 0; border-radius: var(--ui-radius-sm, 8px); }
+.paymentsPage .admissionsTabs button[aria-selected="true"] { color: var(--color-accent-800); background: var(--color-accent-soft); }
+
 .admissionsPageHeader {
   align-items: center;
 }
@@ -1497,4 +1502,78 @@
     flex-direction: column;
     gap: 4px;
   }
+}
+
+.paymentsPage :is(.admissionsFilterMenu, .admissionsDataTable),
+.admissionCaseFilters { border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: white; }
+.admissionsPageHeader h1 { font-size: clamp(26px, 3vw, 34px); letter-spacing: -.025em; }
+.admissionsFilterMenu .admissionsFilters { padding: 18px; }
+.admissionCaseFilters { padding: 16px; }
+.paymentsPage .admissionsTableHeader { padding-block: 15px; background: var(--ui-header-bg, var(--color-canvas)); }
+.paymentsPage .admissionsTableRow { padding-block: var(--ui-table-cell-y, 16px); }
+.admissionsTableRow:hover { background: color-mix(in srgb, var(--color-accent-soft) 34%, white); }
+.admissionsRowButton { min-height: 44px; padding-inline: 12px; border-radius: var(--ui-radius-sm, 8px); }
+.admissionsIconButton,
+.caseActions .admissionsIconButton { width: 44px; height: 44px; }
+.admissionsFilters input,
+.admissionsFilters select,
+.admissionsInlineFilters select,
+.admissionCaseFilters select,
+.admissionCaseFilters input,
+.candidateSearch input,
+.cohortStudentStatusFilter select,
+.admissionsDialogForm input:not([type="radio"]):not([type="checkbox"]),
+.admissionsDialogForm select,
+.enrollmentConfirmForm input:not([type="radio"]):not([type="checkbox"]) { min-height: 44px; border-radius: var(--ui-radius-sm, 8px); }
+.amountCell,
+.enrollmentAmountSummary,
+.cohortStudentBalance,
+.enrollmentFinancialGrid dd,
+.withdrawalPreviewSummary dd,
+.offlineOrderDialogSummary dd,
+.refundSummary dd { font-variant-numeric: tabular-nums; }
+.admissionsTableRow .amountCell { white-space: nowrap; text-align: right; }
+.paymentsTable .admissionsTableHeader > :nth-child(3) { text-align: right; }
+.enrollmentDetailBand { margin-top: 18px; padding: 22px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: white; }
+.enrollmentFinancialGrid { gap: 12px; border: 0; background: transparent; overflow: visible; }
+.enrollmentFinancialGrid > div { border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-sm, 8px); background: var(--color-canvas); }
+.enrollmentFinancialGrid dd { font-size: 18px; font-weight: 650; }
+.enrollmentActionBar { gap: 18px; }
+.enrollmentActionBar button,
+.admissionDialogActions button,
+.admissionsDialogForm footer button,
+.withdrawalConfirmation footer button { min-height: 44px; }
+.admissionsDialog { max-height: calc(100dvh - 40px); padding: 26px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-lg, 18px); }
+.admissionsDialog > header { padding-bottom: 16px; border-bottom: 1px solid var(--color-border-soft); margin-bottom: 18px; }
+.admissionDialogActions,
+.admissionsDialogForm footer { padding-top: 18px; border-top: 1px solid var(--color-border-soft); }
+.admissionStudentSummary { border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-sm, 8px); background: var(--color-canvas); }
+.enrollmentOptionSummary div { padding: 14px; border-radius: var(--ui-radius-sm, 8px); }
+.paymentsPage button:focus-visible,
+.admissionsDialog button:focus-visible,
+.admissionsFilterMenu summary:focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }
+.admissionFlowDialog { height: 100dvh; max-height: 100dvh; border-radius: 0; }
+
+html[data-ui-theme="command"] .paymentsPage .admissionsTabs { gap: 0; padding: 0; border-radius: var(--ui-radius-sm, 6px); }
+html[data-ui-theme="command"] .paymentsPage .admissionsTabs button { border-right: 1px solid var(--color-border-soft); border-radius: 0; }
+html[data-ui-theme="command"] .enrollmentFinancialGrid { gap: 0; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 6px); overflow: hidden; }
+html[data-ui-theme="command"] .enrollmentFinancialGrid > div { border: 0; border-right: 1px solid var(--color-border-soft); border-radius: 0; }
+html[data-ui-theme="command"] .enrollmentFinancialGrid > div:last-child { border-right: 0; }
+html[data-ui-theme="command"] .enrollmentDetailBand { margin-top: 12px; padding: 18px; }
+
+@media (max-width: 900px) {
+  .paymentsPage .admissionsDataTable { border: 0; background: transparent; }
+  .paymentsPage .admissionsTableRow { border-radius: var(--ui-radius-md, 12px); }
+  .admissionsTableRow .amountCell { text-align: left; }
+  html[data-ui-theme="command"] .enrollmentFinancialGrid > div { border-bottom: 1px solid var(--color-border-soft); }
+}
+@media (max-width: 600px) {
+  .paymentsPage .admissionsTabs { gap: 0; }
+  .paymentsPage .admissionsTabs button { padding-inline: 12px; }
+  .admissionsDialog { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; padding: 20px 16px calc(24px + env(safe-area-inset-bottom)); }
+  .enrollmentDetailBand { padding: 18px 16px; }
+  .paymentsPage .admissionsTableRow [role="cell"] { overflow-wrap: anywhere; }
+  .paymentsPage .admissionsTableRow .amountCell { white-space: normal; }
+  html[data-ui-theme="command"] .enrollmentFinancialGrid > div { border-right: 0; }
+  html[data-ui-theme="command"] .enrollmentFinancialGrid > div:last-child { border-bottom: 0; }
 }

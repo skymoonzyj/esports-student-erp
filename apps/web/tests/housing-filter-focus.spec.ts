@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test"
 import type { Page } from "@playwright/test"
 import type { HousingCatalog, HousingOverview, HousingRoom } from "../src/housing/api"
 
-// Synthetic API data only; never reach an actual account, database or NAS.
+// This file's tab-return regression uses synthetic API data only. Actual-data
+// instant-filter acceptance lives in housing-room-status-foundation.spec.ts.
 test.use({ trace: "off", screenshot: "off", video: "off" })
 test.beforeEach(async ({ page }, info) => {
   void page
@@ -26,14 +27,15 @@ function room(index: number): HousingRoom {
     verification_status: "verified", service_status: "available", notes: "合成房间数据",
     version: 1, current_occupants: 0, remaining_capacity: 2, current_gender: null,
     has_future_reservation: false, occupancy_status: "unoccupied", is_assignable: true,
-    status_text: "可入住", allowed_actions: { edit: false, delete: false, verify: false, create_stay: false, report_issue: false, view_detail: true },
+    status_text: "可入住", allowed_actions: { edit: false, delete: false, verify: false, create_stay: false, report_issue: false, view_detail: true, manage_care: false, complete_cleaning: false, manage_photos: false },
+    daily_cleaning_enabled: false, cleaning_status: "ready", cleaning_pending_at: null, cleaning_completed_at: null, photo_count: 0,
     occupants: [], future_reservation_count: 0, open_issue_summary: null, pending_transfer_count: 0,
     created_at: timestamp, updated_at: timestamp,
   }
 }
 
 async function fixtureApi(page: Page) {
-  const control = { holdContext: false, contextPending: false, releaseContext: () => {} }
+  const control = { holdContext: false, contextPending: false, releaseContext: () => {}, overviewRequests: [] as URLSearchParams[] }
   await page.route("**/api/v1/**", async route => {
     const url = new URL(route.request().url())
     const json = (value: unknown) => route.fulfill({ status: 200, contentType: "application/json", headers: { "Cache-Control": "no-store" }, body: JSON.stringify(value) })
@@ -49,10 +51,11 @@ async function fixtureApi(page: Page) {
     if (url.pathname.endsWith("/team-management/context")) return json({ can_open_management: false, can_read_self: false, can_manage_catalog: false, can_assign_managers: false, can_transfer: false })
     if (url.pathname.endsWith("/housing/catalog")) return json(catalog)
     if (url.pathname.endsWith("/housing/overview")) {
+      control.overviewRequests.push(url.searchParams)
       const pageNumber = Number(url.searchParams.get("page") ?? 1)
       const response: HousingOverview = {
         access_revision: "fictional-access-v1", as_of: timestamp, page: pageNumber, page_size: 20, total: 25,
-        summary: { total_rooms: 25, occupied_rooms: 0, unoccupied_rooms: 25, assignable_rooms: 25, unassignable_rooms: 0, problem_rooms: 0, pending_verification_rooms: 0, total_capacity: 50, current_occupants: 0, remaining_capacity: 50, occupancy_rate: "0", single_rooms: 0, double_rooms: 25, triple_rooms: 0, custom_rooms: 0, functional_rooms: 0 },
+        summary: { total_rooms: 25, occupied_rooms: 0, unoccupied_rooms: 25, assignable_rooms: 25, unassignable_rooms: 0, full_rooms: 0, problem_rooms: 0, pending_verification_rooms: 0, pending_cleaning_rooms: 0, total_capacity: 50, current_occupants: 0, remaining_capacity: 50, occupancy_rate: "0", single_rooms: 0, double_rooms: 25, triple_rooms: 0, custom_rooms: 0, functional_rooms: 0 },
         rooms: Array.from({ length: pageNumber === 2 ? 5 : 20 }, (_, offset) => room((pageNumber - 1) * 20 + offset + 1)),
       }
       return json(response)
@@ -83,6 +86,8 @@ test("housing tab-return reauthorization hides rooms while pending and preserves
   await page.goto("/housing")
   await expect(page.getByRole("heading", { name: "住宿房态", exact: true })).toBeVisible()
   await expect(page.getByRole("article").first()).toBeVisible()
+  await page.getByRole("button", { name: "按空房筛选房间", exact: true }).click()
+  await expect(page.getByRole("article").first()).toBeVisible()
   if (mobile) await page.getByRole("button", { name: "打开筛选" }).click()
   await page.getByRole("combobox", { name: "楼栋", exact: true }).selectOption("building-focus")
   await page.getByRole("combobox", { name: "楼层", exact: true }).selectOption("floor-focus")
@@ -90,9 +95,12 @@ test("housing tab-return reauthorization hides rooms while pending and preserves
   await page.getByRole("checkbox", { name: "双人间", exact: true }).check()
   await page.getByRole("checkbox", { name: "已核对", exact: true }).check()
   await page.getByRole("checkbox", { name: "正常", exact: true }).check()
-  await page.getByRole("combobox", { name: "入住状态", exact: true }).selectOption("unoccupied")
   await page.getByRole("combobox", { name: "可入住状态", exact: true }).selectOption("assignable")
-  await page.getByRole("button", { name: "应用筛选", exact: true }).click()
+  await expect.poll(() => control.overviewRequests.at(-1)?.get("assignability")).toBe("assignable")
+  // A pending search debounce is itself a new base-filter change and resets
+  // pagination; finish that real request before testing page retention.
+  await expect.poll(() => control.overviewRequests.at(-1)?.get("query")).toBe("回焦")
+  if (mobile) await page.getByRole("button", { name: "关闭筛选", exact: true }).click()
   await page.getByRole("navigation", { name: "房态分页" }).getByRole("button", { name: "下一页" }).click()
   const pagination = page.getByRole("navigation", { name: "房态分页" })
   await expect(pagination).toContainText("第 2 / 2 页")
@@ -116,6 +124,8 @@ test("housing tab-return reauthorization hides rooms while pending and preserves
   await expect(page.getByRole("checkbox", { name: "双人间", exact: true })).toBeChecked()
   await expect(page.getByRole("checkbox", { name: "已核对", exact: true })).toBeChecked()
   await expect(page.getByRole("checkbox", { name: "正常", exact: true })).toBeChecked()
-  await expect(page.getByRole("combobox", { name: "入住状态", exact: true })).toHaveValue("unoccupied")
+  // Changing any sidebar condition clears the previous vacant shortcut.
+  await expect.poll(() => control.overviewRequests.at(-1)?.get("quick_filter")).toBeNull()
+  await expect.poll(() => control.overviewRequests.at(-1)?.get("occupancy")).toBeNull()
   await expect(page.getByRole("combobox", { name: "可入住状态", exact: true })).toHaveValue("assignable")
 })

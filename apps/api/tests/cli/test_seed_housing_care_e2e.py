@@ -5,7 +5,9 @@ import json
 import os
 import subprocess
 import sys
+from contextlib import nullcontext
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 
@@ -45,6 +47,7 @@ def test_care_fixture_roles_are_actual_roles_not_permission_only_impersonation()
         "administration",
         "super_admin",
         "coach",
+        "property",
     }
     assert module.CARE_SCENARIOS == {
         "single": "4-201",
@@ -54,6 +57,52 @@ def test_care_fixture_roles_are_actual_roles_not_permission_only_impersonation()
         "pending_verification": "4-205",
         "long_term": "4-206",
     }
+
+
+def test_care_seed_sets_real_property_actor_and_explicit_frequencies(monkeypatch):
+    module = seed()
+    from sqlalchemy.sql import Select
+
+    values = [
+        SimpleNamespace(
+            id=UUID(int=index), building_id=UUID(int=100), room_number=number,
+            cleaning_frequency="weekly",
+        )
+        for index, number in enumerate(module.CARE_SCENARIOS.values(), 1)
+    ]
+    other = SimpleNamespace(
+        id=UUID(int=90), building_id=UUID(int=100), room_number="other",
+        cleaning_frequency="on_demand",
+    )
+    added = []
+
+    class SyntheticSession:
+        def scalars(self, _statement):
+            return [*values, other]
+
+        def execute(self, statement):
+            if isinstance(statement, Select):
+                return [(value, "Synthetic floor", "Synthetic building") for value in values]
+            return None
+
+        def add(self, value):
+            added.append(value)
+
+    monkeypatch.setattr(module, "require_care_database", lambda _settings: None)
+    monkeypatch.setattr(module, "write_transaction", lambda _db: nullcontext())
+    module.seed_housing_care(SyntheticSession(), None)
+    assert {value.room_number: value.cleaning_frequency for value in [*values, other]} == {
+        "4-201": "daily", "4-202": "daily", "4-203": "unspecified",
+        "4-204": "weekly", "4-205": "on_demand", "4-206": "daily",
+        "other": "unspecified",
+    }
+    assert all(value.daily_cleaning_enabled == (value.cleaning_frequency == "daily") for value in values)
+    assert any(
+        isinstance(value, module.UserRole)
+        and value.user_id == module.base.E2E_VISITOR_ACCOUNT_ID
+        and value.role_id == module.ROLES["property"].id
+        for value in added
+    )
 
 
 def test_seed_accepts_explicit_exact_owned_ledger_and_rejects_mismatch(tmp_path, monkeypatch):

@@ -2,7 +2,9 @@ import { useState } from "react"
 import type { RefObject, ReactNode } from "react"
 import { ProblemDetailsError } from "../api/client"
 import type { HousingCatalog, HousingFiltersValue, HousingRoomStatusExportInput } from "./api"
+import { CLEANING_FREQUENCY_OPTIONS } from "./api"
 import { HousingDialogShell } from "./HousingDialogShell"
+import { HousingQuickFilterSelect } from "./HousingQuickFilterSelect"
 
 export type SnapshotDialogProps = {
   catalog: HousingCatalog
@@ -19,11 +21,11 @@ export function HousingRoomStatusExportDialog({ catalog, filters, pending, error
   const [draft, setDraft] = useState<HousingRoomStatusExportInput>(() => ({
     format: "xlsx", purpose: "", building_ids: filters.buildingId ? [filters.buildingId] : [], floor_ids: filters.floorId ? [filters.floorId] : [],
     query: filters.query, room_types: [...(filters.roomTypes ?? [])], verification_statuses: [...(filters.verificationStatuses ?? [])], service_statuses: [...(filters.serviceStatuses ?? [])],
-    current_gender: filters.currentGender, occupancy: filters.occupancy, assignability: filters.assignability, cleaning_statuses: [...(filters.cleaningStatuses ?? [])], daily_cleaning_enabled: filters.dailyCleaningEnabled,
+    current_gender: filters.currentGender, occupancy: filters.occupancy, assignability: filters.assignability, quick_filter: filters.quickFilter, cleaning_statuses: [...(filters.cleaningStatuses ?? [])], daily_cleaning_enabled: filters.dailyCleaningEnabled, cleaning_frequencies: [...(filters.cleaningFrequencies ?? [])],
   }))
   const [formError, setFormError] = useState<string | null>(null)
   const floors = catalog.floors.filter((floor) => !draft.building_ids.length || draft.building_ids.includes(floor.building_id))
-  function multi(key: "room_types" | "verification_statuses" | "service_statuses" | "cleaning_statuses", label: string, options: [string, string][]): ReactNode {
+  function multi(key: "room_types" | "verification_statuses" | "service_statuses" | "cleaning_statuses" | "cleaning_frequencies", label: string, options: ReadonlyArray<readonly [string, string]>): ReactNode {
     return <label>{label}<select aria-label={label} multiple value={draft[key]} disabled={pending} onChange={(event) => setDraft({ ...draft, [key]: Array.from(event.target.selectedOptions, (option) => option.value) })}>{options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></label>
   }
   function single(key: "occupancy" | "assignability" | "current_gender", label: string, options: [string, string][]): ReactNode {
@@ -43,12 +45,15 @@ export function HousingRoomStatusExportDialog({ catalog, filters, pending, error
     }}>{catalog.buildings.map((building) => <option key={building.id} value={building.id}>{building.name}</option>)}</select></label>
     <label>导出楼层<select multiple aria-label="导出楼层" value={draft.floor_ids} disabled={pending} onChange={(event) => setDraft({ ...draft, floor_ids: Array.from(event.target.selectedOptions, (option) => option.value) })}>{floors.map((floor) => <option key={floor.id} value={floor.id}>{floor.building_name} · {floor.name}</option>)}</select></label>
     <label>导出房号搜索<input aria-label="导出房号搜索" value={draft.query ?? ""} disabled={pending} onChange={(event) => setDraft({ ...draft, query: event.target.value })} /></label>
+    <HousingQuickFilterSelect label="导出快捷筛选" value={draft.quick_filter} pending={pending} onChange={(quick_filter) => setDraft({ ...draft, quick_filter })} />
     {single("occupancy", "导出入住状态", [["occupied", "已入住"], ["unoccupied", "未入住"]])}
-    {single("assignability", "导出可入住性", [["assignable", "可入住"], ["unassignable", "不可入住"]])}
+    {single("assignability", "导出可入住性", [["assignable", "可入住"], ["full", "满房"], ["unassignable", "不可安排（含核对、保洁等限制）"]])}
     {single("current_gender", "导出入住性别", [["male", "男住"], ["female", "女住"], ["unspecified", "未指定"]])}
     {multi("verification_statuses", "导出核对状态", [["verified", "已核对"], ["pending_verification", "待核对"]])}
-    {multi("cleaning_statuses", "导出保洁状态", [["pending", "待保洁"], ["ready", "无待保洁"]])}
-    <label>导出每日保洁<select aria-label="导出每日保洁" value={draft.daily_cleaning_enabled === undefined ? "" : String(draft.daily_cleaning_enabled)} disabled={pending} onChange={(event) => setDraft({ ...draft, daily_cleaning_enabled: event.target.value === "" ? undefined : event.target.value === "true" })}><option value="">全部</option><option value="true">是</option><option value="false">否</option></select></label>
+    {multi("cleaning_statuses", "导出保洁状态", [["pending", "退房待保洁"], ["ready", "无退房待保洁"]])}
+    {multi("cleaning_frequencies", "导出保洁频率", CLEANING_FREQUENCY_OPTIONS)}
+    {draft.daily_cleaning_enabled !== undefined ? <p>兼容筛选：{draft.daily_cleaning_enabled ? "仅每日保洁" : "非每日保洁"}</p> : null}
+    <button type="button" disabled={pending} onClick={() => setDraft({ ...draft, cleaning_frequencies: [], daily_cleaning_enabled: undefined, quick_filter: draft.quick_filter?.startsWith("cleaning_") ? undefined : draft.quick_filter })}>清除导出保洁频率筛选</button>
     {multi("room_types", "导出房型", [["single", "单人间"], ["double", "双人间"], ["triple", "三人间"], ["custom", "自定义"], ["functional", "功能间"]])}
     {multi("service_statuses", "导出服务状态", [["available", "正常"], ["problem", "问题房"], ["maintenance", "维修中"], ["disabled", "停用"]])}
     <label>导出用途（必填）<input aria-label="导出用途（必填）" minLength={2} maxLength={200} value={draft.purpose} disabled={pending} onChange={(event) => setDraft({ ...draft, purpose: event.target.value })} /></label>

@@ -97,6 +97,16 @@ function renderCard(value: HousingRoom, selected = false, pending = false) {
   return callbacks
 }
 
+it.each([
+  [undefined, false, "未设置"], [undefined, true, "每日保洁"],
+  ["unspecified", true, "未设置"], ["daily", false, "每日保洁"],
+  ["weekly", false, "每周保洁"], ["on_demand", false, "按需保洁"],
+] as const)("renders frequency %s with legacy daily %s as %s without inferring on-demand", (frequency, daily, label) => {
+  renderCard(room({ cleaning_frequency: frequency, daily_cleaning_enabled: daily }))
+  expect(screen.getByText(label)).toBeVisible()
+  if (label !== "按需保洁") expect(screen.queryByText("按需保洁")).not.toBeInTheDocument()
+})
+
 it("labels unknown resident sex without inferring female", () => {
   renderCard(room({ occupants: [stay({ sex: null })], current_occupants: 1 }))
   expect(screen.getByText("学员 · 性别待补")).toBeVisible()
@@ -107,7 +117,7 @@ it("keeps occupied pending-cleaning rooms red without offering remaining beds", 
   renderCard(room({ cleaning_status: "pending", daily_cleaning_enabled: true, photo_count: 2,
     current_occupants: 1, capacity: 2, remaining_capacity: 1, occupancy_status: "occupied" }))
   expect(screen.getByRole("article")).toHaveClass("housingRoomCard--occupied")
-  expect(screen.getByText("待保洁")).toBeVisible()
+  expect(screen.getByText("退房待保洁")).toBeVisible()
   expect(screen.getByText("每日保洁")).toBeVisible()
   expect(screen.getByText("照片 2 张")).toBeVisible()
   expect(screen.queryByText(/可继续入住/)).not.toBeInTheDocument()
@@ -116,7 +126,7 @@ it("keeps occupied pending-cleaning rooms red without offering remaining beds", 
 it("never colors an empty pending-cleaning room as available", () => {
   renderCard(room({ cleaning_status: "pending", is_assignable: true }))
   expect(screen.getByRole("article")).toHaveClass("housingRoomCard--unavailable")
-  expect(screen.getByText("待保洁")).toBeVisible()
+  expect(screen.getByText("退房待保洁")).toBeVisible()
 })
 
 it("shows a verified empty assignable room as available with full metadata and actions", async () => {
@@ -131,7 +141,7 @@ it("shows a verified empty assignable room as available with full metadata and a
   expect(within(card).getByText("容量 1 位")).toBeVisible()
   expect(within(card).getByText("有未来预订")).toBeVisible()
   expect(within(card).getByText("靠近电梯")).toBeVisible()
-  expect(within(card).queryByRole("checkbox")).not.toBeInTheDocument()
+  expect(within(card).getByRole("checkbox", { name: "选择房间 409" })).not.toBeChecked()
 
   const user = userEvent.setup()
   await user.click(within(card).getByRole("button", { name: "查看房间 409 详情" }))
@@ -264,7 +274,7 @@ it("shows a pending functional room as unavailable and only permits verification
   expect(within(card).getByText("待核对")).toBeVisible()
   expect(within(card).getByText("功能间，不可入住")).toBeVisible()
   expect(within(card).getByText("面积未录入")).toBeVisible()
-  const checkbox = within(card).getByRole("checkbox", { name: "选择房间 活动室进行核对" })
+  const checkbox = within(card).getByRole("checkbox", { name: "选择房间 活动室" })
   expect(checkbox).toBeChecked()
 
   const user = userEvent.setup()
@@ -297,7 +307,7 @@ it("disables every selection and mutation entry while a shared mutation is pendi
   }), true, true)
   const card = screen.getByRole("article", { name: /房间 409/ })
 
-  expect(within(card).getByRole("checkbox", { name: "选择房间 409进行核对" })).toBeDisabled()
+  expect(within(card).getByRole("checkbox", { name: "选择房间 409" })).toBeDisabled()
   expect(within(card).getByRole("button", { name: "编辑房间 409" })).toBeDisabled()
   expect(within(card).getByRole("button", { name: "核对房间 409" })).toBeDisabled()
   expect(within(card).getByRole("button", { name: "删除房间 409" })).toBeDisabled()

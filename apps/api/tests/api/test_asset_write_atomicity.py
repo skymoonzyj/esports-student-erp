@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 from datetime import UTC, date, datetime
 from uuid import uuid4
 
@@ -13,9 +16,7 @@ from app.asset_management.schemas import AssetAssignRequest, AssetCreate
 from app.asset_management.service import AssetService
 from app.audit.models import AuditEvent
 from app.audit.service import AuditService
-from app.auth.dependencies import require_standard_account
-from app.auth.models import UserAccount
-from app.auth.service import AuthContext
+from app.auth.models import AuthSession, UserAccount
 from app.core.database import get_db
 from app.identity.models import Person
 from app.main import create_app
@@ -50,6 +51,14 @@ def test_asset_audit_failure_rolls_back_committed_request(
         setup.add(actor)
         setup.flush()
         setup.add(UserRole(user_id=actor.id, role_id=ROLES["super_admin"].id))
+        session_token, csrf_token = uuid4().hex, uuid4().hex
+        pepper = base64.urlsafe_b64decode(test_settings.session_token_pepper.get_secret_value())
+        setup.add(AuthSession(
+            user_id=actor.id,
+            token_digest=hmac.new(pepper, session_token.encode(), hashlib.sha256).hexdigest(),
+            csrf_digest=hmac.new(pepper, csrf_token.encode(), hashlib.sha256).hexdigest(),
+            expires_at=datetime(2099, 1, 1, tzinfo=UTC),
+        ))
         setup.commit()
         asset_id = None
         if operation != "create":
@@ -77,12 +86,6 @@ def test_asset_audit_failure_rolls_back_committed_request(
                 yield request_session
 
         app.dependency_overrides[get_db] = request_db
-        app.dependency_overrides[require_standard_account] = lambda: AuthContext(
-            session=None,
-            account=actor,
-            person=person,
-        )
-
         def audit_failure(*args, **kwargs):
             raise RuntimeError("test-only unavailable audit")
 
@@ -108,6 +111,8 @@ def test_asset_audit_failure_rolls_back_committed_request(
         }
         method, path, payload = paths[operation]
         with TestClient(app, raise_server_exceptions=False) as client:
+            client.cookies.set("erp_session", session_token, path="/api")
+            client.headers["X-CSRF-Token"] = csrf_token
             response = client.request(method, path, json=payload)
         assert response.status_code == 500
         with Session(postgres_engine) as observer:
@@ -143,6 +148,7 @@ def test_asset_audit_failure_rolls_back_committed_request(
             asset_ids = select(Asset.id).where(Asset.created_by_user_id == actor.id)
             cleanup.execute(delete(AssetAssignment).where(AssetAssignment.asset_id.in_(asset_ids)))
             cleanup.execute(delete(Asset).where(Asset.created_by_user_id == actor.id))
+            cleanup.execute(delete(AuthSession).where(AuthSession.user_id == actor.id))
             cleanup.execute(delete(UserRole).where(UserRole.user_id == actor.id))
             cleanup.execute(delete(UserAccount).where(UserAccount.id == actor.id))
             cleanup.execute(delete(Person).where(Person.id == person.id))

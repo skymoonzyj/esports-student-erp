@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Link } from "react-router-dom"
+import { ItemRankingPanel } from "../assessmentRankings/ItemRankingPanel"
+import { useTalentItemRanking } from "./api"
 
 import { AimGame } from "./games/aim/AimGame"
 import { ChimpGame } from "./games/chimp/ChimpGame"
@@ -121,6 +123,7 @@ export function GameHost({
 
   const copy = COPY[testId]
   const saved = session?.results.find((result) => result.test_id === testId)
+  const itemRanking = useTalentItemRanking(accountId, personId, saved?.id)
   const sessionIncludesTest = session?.rules.test_ids.includes(testId) ?? false
   const activeRule = sessionIncludesTest ? session?.rules.tests[testId] : undefined
   const actualVersion = activeRule?.engine_version
@@ -282,6 +285,12 @@ export function GameHost({
           ) : null}
           <Link className="secondaryButton" to="/talent-tests">返回项目列表</Link>
         </nav>
+        {saved ? <ItemRankingPanel
+          view={itemRanking.data}
+          loading={itemRanking.isFetching}
+          error={itemRanking.error}
+          onRetry={() => { void itemRanking.refetch() }}
+        /> : null}
       </div>
     </GameChrome>
   )

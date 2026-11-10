@@ -1487,3 +1487,73 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Administration stays on the light working canvas in both global themes. */
+.settingsPage { min-width: 0; color: var(--color-text); }
+.settingsHeading h1 { font-size: clamp(24px, 2.5vw, 30px); font-weight: 680; letter-spacing: -.025em; }
+.settingsHeading > div { min-width: 0; }
+.settingsHeading p:not(.pageEyebrow) { line-height: 1.7; margin-top: 8px; }
+.settingsToolbar,
+.auditFilters,
+.settingsCard,
+.settingsTable,
+.settingsState,
+.securityPrinciple,
+.mailSettingsStatus { border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); box-shadow: none; }
+.settingsToolbar,
+.auditFilters { margin-top: 22px; padding: 18px; }
+.settingsCard { padding: 22px; }
+.settingsCardHeader p { font-size: 12px; line-height: 1.6; }
+.settingsTableHeader { background: var(--ui-header-bg, var(--color-canvas)); font-size: 11px; letter-spacing: 0; }
+.settingsTableRow { padding-block: var(--ui-table-cell-y, 14px); }
+.settingsTableRow:hover { background: var(--color-canvas); }
+.settingsPage :is(button, input, select):not([type="checkbox"]):not([type="radio"]),
+.settingsDialog :is(button, input, select):not([type="checkbox"]):not([type="radio"]),
+.assignmentList button { min-height: 44px; }
+.settingsPage :is(button, input, select, textarea),
+.settingsDialog :is(button, input, select, textarea) { max-width: 100%; border-radius: var(--ui-radius-sm, 8px); }
+.settingsPage :is(input, select, textarea),
+.settingsDialog :is(input, select, textarea) { min-width: 0; }
+.settingsPage :is(button, input, select, textarea):focus-visible,
+.settingsDialog :is(button, input, select, textarea):focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }
+.settingsDialog { border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-lg, 16px); padding: 24px; background: var(--color-surface); overscroll-behavior: contain; }
+.settingsRowActions button,
+.assignmentList button { font-size: 12px; }
+.settingsRowActions .dangerButton,
+.assignmentList .dangerButton { color: var(--color-danger-700); background: var(--color-danger-soft); }
+.settingsRowActions .dangerButton:hover:not(:disabled),
+.assignmentList .dangerButton:hover:not(:disabled) { color: var(--color-danger-700); border-color: var(--color-danger-700); background: var(--color-danger-soft); }
+.mailTemplateTokens,
+.mailTemplatePreviewPanel { border-radius: var(--ui-radius-sm, 8px); }
+html[data-ui-theme="command"] .settingsToolbar,
+html[data-ui-theme="command"] .auditFilters { padding: 14px 16px; margin-top: 18px; }
+html[data-ui-theme="command"] .settingsCard { padding: 18px; }
+html[data-ui-theme="command"] .permissionColumns { gap: 0; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 8px); overflow: clip; background: var(--color-surface); }
+html[data-ui-theme="command"] .permissionColumns > .settingsCard { border: 0; border-radius: 0; border-right: 1px solid var(--color-border-soft); }
+html[data-ui-theme="command"] .settingsToolbar + .settingsTable { margin-top: 0; border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+html[data-ui-theme="command"] .settingsToolbar:has(+ .settingsTable) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+@media (max-width: 900px) and (min-width: 768px) {
+  .settingsTableHeader,
+  .settingsTableRow { grid-template-columns: minmax(110px, 1fr) minmax(70px, .65fr) minmax(140px, 1.2fr) 70px minmax(130px, 1fr); gap: 10px; padding-inline: 14px; }
+  .settingsTableRow.auditRow,
+  .settingsTableHeader.auditRow { grid-template-columns: minmax(120px, .9fr) minmax(150px, 1.2fr) minmax(100px, .8fr) minmax(130px, 1fr); }
+}
+@media (max-width: 1180px) and (min-width: 768px) {
+  html[data-ui-theme="command"] .permissionColumns > .settingsCard + .settingsCard { border-top: 1px solid var(--color-border-soft); }
+}
+@media (max-width: 767px) {
+  .settingsTable { border: 0; background: transparent; }
+  .settingsTableRow,
+  .settingsTableRow.auditRow { border-radius: var(--ui-radius-md, 12px); padding: 16px; }
+  .settingsTableRow:hover { background: var(--color-surface); }
+  .settingsToolbar,
+  .auditFilters,
+  .settingsCard { padding: 16px; }
+  .settingsDialog { max-height: 92dvh; padding: 20px 16px max(20px, env(safe-area-inset-bottom)); }
+  .settingsCardHeader { flex-wrap: wrap; }
+  .settingsTableRow strong,
+  .settingsTableRow small { white-space: normal; overflow-wrap: anywhere; }
+  html[data-ui-theme="command"] .permissionColumns { gap: 12px; border: 0; overflow: visible; background: transparent; }
+  html[data-ui-theme="command"] .permissionColumns > .settingsCard { border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 8px); }
+  html[data-ui-theme="command"] .settingsToolbar + .settingsTable { margin-top: 12px; }
+}

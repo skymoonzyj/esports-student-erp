@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 from typing import cast
+from uuid import UUID
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from starlette.types import Scope
 
-from app.operations.metrics import RequestMetricsStore, normalized_route
+from app.core.errors import install_exception_handlers
+from app.operations.metrics import RequestMetricsMiddleware, RequestMetricsStore, normalized_route
 
 
 class Clock:
@@ -180,3 +185,185 @@ def test_mounted_route_templates_keep_the_public_api_prefix() -> None:
     )
 
     assert normalized_route(scope) == "/api/v1/auth/me"
+
+
+def test_error_details_are_error_only_safe_and_bounded() -> None:
+    store = RequestMetricsStore(max_pending_errors=2, clock=lambda: 1_000)
+    account_id = UUID("00000000-0000-4000-8000-000000000123")
+    store.record(method="GET", route="/safe", status_code=200, duration_ms=1,
+                 account_id=account_id, source_ip="203.0.113.1")
+    store.record(method="GET", route="/safe", status_code=401, duration_ms=1,
+                 source_ip="203.0.113.1", occurred_at=1_001)
+    store.record(method="POST", route="/safe", status_code=403, duration_ms=1,
+                 account_id=account_id, source_ip="203.0.113.2", occurred_at=1_002)
+    store.record(method="GET", route="/safe", status_code=500, duration_ms=1,
+                 source_ip="203.0.113.3", occurred_at=1_003)
+
+    batch = store.pending_batch()
+    assert batch is not None
+    assert [(event.status_code, event.account_id, event.reason) for event in batch.errors] == [
+        (401, None, "未登录或登录已失效"),
+        (403, account_id, "没有访问权限"),
+    ]
+    assert store.dropped_error_details == 1
+    assert store.error_pressure_recent(now=1_003)
+    assert store.pending_batch() is batch
+    store.acknowledge_batch(batch.id)
+    assert store.pending_batch() is None
+    store.record(method="GET", route="/safe", status_code=500, duration_ms=1,
+                 occurred_at=1_004)
+    recovered = store.pending_batch()
+    assert recovered is not None and len(recovered.errors) == 1
+    assert store.dropped_error_details == 1
+    assert not store.error_pressure_recent(now=1_604)
+
+
+def test_middleware_records_authenticated_template_and_untrusted_proxy_source() -> None:
+    store = RequestMetricsStore(clock=lambda: 1_000)
+    account_id = UUID("00000000-0000-4000-8000-000000000123")
+
+    class Route:
+        path = "/people/{person_id}"
+
+    class Settings:
+        trusted_proxy_cidrs = "10.0.0.0/8"
+
+    class App:
+        state = type("State", (), {"settings": Settings()})()
+
+    async def endpoint(scope, receive, send) -> None:
+        del receive
+        scope["route"] = Route()
+        scope["state"]["operations_authenticated_account_id"] = account_id
+        await send({"type": "http.response.start", "status": 422, "headers": []})
+        await send({"type": "http.response.body", "body": b"secret body"})
+
+    scope = cast(Scope, {
+        "type": "http", "method": "PATCH", "path": "/api/v1/people/private-uuid",
+        "query_string": b"password=secret", "headers": [(b"x-forwarded-for", b"1.1.1.1")],
+        "client": ("198.51.100.5", 1234), "state": {"request_id": "safe-id"}, "app": App(),
+    })
+    sent = []
+
+    async def receive():
+        return {"type": "http.request", "body": b""}
+
+    async def send(message):
+        sent.append(message)
+
+    asyncio.run(RequestMetricsMiddleware(endpoint, store=store)(scope, receive, send))
+    batch = store.pending_batch()
+    assert batch is not None
+    assert len(batch.errors) == 1
+    event = batch.errors[0]
+    assert event.account_id == account_id
+    assert event.source_ip == "198.51.100.5"
+    assert event.route == "/api/v1/people/{person_id}"
+    assert event.request_id == "safe-id"
+    assert event.reason == "请求数据校验失败"
+    assert "secret" not in repr(event)
+
+
+def test_denied_monitoring_read_is_recorded_without_monitoring_itself() -> None:
+    store = RequestMetricsStore()
+
+    async def endpoint(scope, receive, send) -> None:
+        del scope, receive
+        await send({"type": "http.response.start", "status": 403, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    scope = cast(Scope, {
+        "type": "http", "method": "GET", "path": "/api/v1/operations/overview",
+        "headers": [], "client": ("127.0.0.1", 1), "state": {},
+        "app": type("App", (), {"state": type("State", (), {"settings": type("Settings", (), {"trusted_proxy_cidrs": ""})()})()})(),
+    })
+
+    async def receive():
+        return {"type": "http.request", "body": b""}
+
+    async def send(message):
+        del message
+
+    asyncio.run(RequestMetricsMiddleware(endpoint, store=store)(scope, receive, send))
+    batch = store.pending_batch()
+    assert batch is not None
+    assert batch.rows == {}
+    assert len(batch.errors) == 1
+    assert batch.errors[0].status_code == 403
+
+
+def test_unhandled_request_error_read_is_private() -> None:
+    app = FastAPI()
+    app.state.settings = type("Settings", (), {"trusted_proxy_cidrs": ""})()
+    store = RequestMetricsStore()
+    app.add_middleware(RequestMetricsMiddleware, store=store)
+    install_exception_handlers(app)
+
+    @app.get("/api/v1/operations/request-errors")
+    def fail() -> None:
+        raise RuntimeError("private infrastructure detail")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/v1/operations/request-errors")
+    assert response.status_code == 500
+    assert response.headers["cache-control"] == "no-store, private"
+    assert "private infrastructure detail" not in response.text
+
+
+def test_scoped_ipv6_from_trusted_forwarder_cannot_poison_error_batch() -> None:
+    store = RequestMetricsStore()
+
+    class Settings:
+        trusted_proxy_cidrs = "10.0.0.0/8"
+
+    class App:
+        state = type("State", (), {"settings": Settings()})()
+
+    async def endpoint(scope, receive, send) -> None:
+        del scope, receive
+        await send({"type": "http.response.start", "status": 404, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    scope = cast(Scope, {
+        "type": "http", "method": "GET", "path": "/private/unmatched",
+        "headers": [(b"x-forwarded-for", ("fe80::1%" + "a" * 100).encode())],
+        "client": ("10.0.0.2", 9999), "state": {}, "app": App(),
+    })
+
+    async def receive():
+        return {"type": "http.request", "body": b""}
+
+    async def send(message):
+        del message
+
+    asyncio.run(RequestMetricsMiddleware(endpoint, store=store)(scope, receive, send))
+    batch = store.pending_batch()
+    assert batch is not None
+    assert len(batch.errors) == 1
+    assert batch.errors[0].source_ip is None
+    assert batch.errors[0].route == "/{unmatched}"
+
+
+def test_scoped_or_oversize_ip_is_rejected_by_record_boundary() -> None:
+    store = RequestMetricsStore()
+    store.record(method="GET", route="/safe", status_code=500, duration_ms=1,
+                 source_ip="fe80::1%" + "a" * 100)
+    store.record(method="GET", route="/safe", status_code=500, duration_ms=1,
+                 source_ip="192.0.2.3")
+    batch = store.pending_batch()
+    assert batch is not None
+    assert [event.source_ip for event in batch.errors] == [None, "192.0.2.3"]
+
+
+def test_pressure_warning_stays_active_while_old_batch_remains_saturated() -> None:
+    store = RequestMetricsStore(max_pending_errors=1)
+    store.record(method="GET", route="/safe", status_code=500, duration_ms=1,
+                 occurred_at=1_000)
+    store.record(method="GET", route="/safe", status_code=500, duration_ms=1,
+                 occurred_at=1_001)
+    batch = store.pending_batch()
+    assert batch is not None and len(batch.errors) == 1
+    assert store.error_pressure_recent(now=1_601)
+    store.acknowledge_batch(batch.id)
+    assert not store.error_pressure_recent(now=1_601)
+    assert store.dropped_error_details == 1

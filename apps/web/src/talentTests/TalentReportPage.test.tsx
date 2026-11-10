@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { act, render, screen, waitFor, within } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { readFileSync } from "node:fs"
 import { afterEach, expect, it, vi } from "vitest"
@@ -70,6 +70,111 @@ function rankableReport(id = rankingReportId) {
 function renderRankingReport(accountId = "ranking-reader", reportId = rankingReportId, client = new QueryClient()) {
   return render(<MemoryRouter><QueryClientProvider client={client}><TalentReportPage accountId={accountId} reportId={reportId} /></QueryClientProvider></MemoryRouter>)
 }
+
+it("loads each historical item's current ranking by saved result IDs while retaining the overall ranking", async () => {
+  const savedIds = ["a1000000-0000-4000-8000-000000000001", "a1000000-0000-4000-8000-000000000002"]
+  const value = rankableReport()
+  value.results = value.results.slice(0, 2)
+  const urls: string[] = []
+  const itemView = { status: "ranked", reason: null, group_label: "单项同规则组", calculated_at: "2026-10-31T02:00:00Z", participant_count: 1,
+    metrics: [{ key: "score", label: "评分", unit: "分", better: "higher", decimals: 0 }],
+    current: { rank: 1, values: { score: 75 } }, best: { rank: 1, values: { score: 75 } },
+    top_three: [{ rank: 1, values: { score: 75 }, is_self: true, tie_count: 1, gaps: [{ key: "score", amount: 0, state: "equal" }] }],
+  }
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async input => {
+    const url = String(input)
+    urls.push(url)
+    if (url.includes("/results/")) return new Response(JSON.stringify(itemView))
+    if (url.includes("/sessions/")) return new Response(JSON.stringify({ id: value.session_id, person_id: value.person.id, status: "completed", report_id: value.id,
+      results: value.results.map((result, index) => ({ ...result, id: savedIds[index] })),
+    }))
+    return new Response(JSON.stringify(url.endsWith("/ranking") ? rankingFixture() : value))
+  }))
+  renderRankingReport()
+  await waitFor(() => expect(screen.getAllByText(/本次成绩：第 1 名/)).toHaveLength(2))
+  expect(screen.getAllByRole("heading", { name: "当前数据库排名" })).toHaveLength(2)
+  expect(screen.getByRole("region", { name: "反应速度单项排名" })).toBeVisible()
+  expect(screen.getByRole("region", { name: "瞄准速度单项排名" })).toBeVisible()
+  expect(screen.getByText("80.29 分")).toBeVisible()
+  expect(screen.getByText("188毫秒")).toBeVisible()
+  expect(urls.filter(url => url.includes("/sessions/"))).toEqual(["/api/v1/talent-tests/sessions/session-one"])
+  expect(urls.filter(url => url.includes("/results/"))).toEqual(savedIds.map(id => `/api/v1/talent-tests/results/${id}/ranking`))
+})
+
+it("does not fabricate empty item rankings when the saved-result lookup fails and can retry", async () => {
+  let lookups = 0
+  const urls: string[] = []
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async input => {
+    const url = String(input)
+    urls.push(url)
+    if (url.includes("/sessions/")) {
+      lookups++
+      return new Response(JSON.stringify({ status: 503 }), { status: 503 })
+    }
+    return new Response(JSON.stringify(url.endsWith("/ranking") ? rankingFixture() : rankableReport()))
+  }))
+  renderRankingReport()
+  expect(await screen.findByText(/无法读取已保存项目/)).toBeVisible()
+  expect(screen.getByText("188毫秒")).toBeVisible()
+  expect(await screen.findByText("80.29 分")).toBeVisible()
+  expect(urls.some(url => url.includes("/results/"))).toBe(false)
+  await userEvent.click(screen.getByRole("button", { name: "重新读取已保存项目" }))
+  await waitFor(() => expect(lookups).toBe(2))
+})
+
+it("never uses result IDs from a session belonging to another person", async () => {
+  const urls: string[] = []
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async input => {
+    const url = String(input)
+    urls.push(url)
+    if (url.includes("/sessions/")) return new Response(JSON.stringify({ id: report.session_id, person_id: "another-person", status: "completed", report_id: rankingReportId, results: [{ test_id: "aim", id: "private-result" }] }))
+    return new Response(JSON.stringify(url.endsWith("/ranking") ? rankingFixture() : rankableReport()))
+  }))
+  renderRankingReport()
+  expect(await screen.findByText(/无法读取已保存项目/)).toBeVisible()
+  expect(urls.some(url => url.includes("/results/"))).toBe(false)
+})
+
+it.each(["account", "route"])("aborts historical item ranking on %s change and ignores the late old response", async change => {
+  const nextReportId = "33333333-3333-4333-8333-333333333333"
+  const resultId = "a1000000-0000-4000-8000-000000000001"
+  let changed = false
+  let oldSignal: AbortSignal | undefined
+  let resolveOld!: (response: Response) => void
+  let resolveNext!: (response: Response) => void
+  const itemView = { status: "ranked", reason: null, group_label: "旧身份不得显示", calculated_at: "2026-10-31T02:00:00Z", participant_count: 1,
+    metrics: [{ key: "score", label: "评分", unit: "分", better: "higher", decimals: 0 }],
+    current: { rank: 1, values: { score: 75 } }, best: { rank: 1, values: { score: 75 } },
+    top_three: [{ rank: 1, values: { score: 75 }, is_self: true, tie_count: 1, gaps: [{ key: "score", amount: 0, state: "equal" }] }],
+  }
+  vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input, init) => {
+    const url = String(input)
+    const id = changed && change === "route" ? nextReportId : rankingReportId
+    if (url.includes("/results/")) {
+      if (!changed) oldSignal = init?.signal as AbortSignal
+      return new Promise<Response>(resolve => { if (changed) resolveNext = resolve; else resolveOld = resolve })
+    }
+    if (url.includes("/sessions/")) return new Response(JSON.stringify({ id: "session-one", person_id: "person-one", status: "completed", report_id: id,
+      results: [{ test_id: "reactiontime", id: resultId }],
+    }))
+    if (url.endsWith("/ranking")) return new Response(JSON.stringify({ ...rankingFixture(), report_id: id }))
+    const value = rankableReport(id)
+    value.results = value.results.slice(0, 1)
+    return new Response(JSON.stringify(value))
+  }))
+  const client = new QueryClient()
+  const page = renderRankingReport("old-reader", rankingReportId, client)
+  await waitFor(() => expect(resolveOld).toBeTypeOf("function"))
+  changed = true
+  page.rerender(<MemoryRouter><QueryClientProvider client={client}><TalentReportPage accountId={change === "account" ? "new-reader" : "old-reader"} reportId={change === "route" ? nextReportId : rankingReportId} /></QueryClientProvider></MemoryRouter>)
+  expect(oldSignal?.aborted).toBe(true)
+  await waitFor(() => expect(resolveNext).toBeTypeOf("function"))
+  await act(async () => resolveOld(new Response(JSON.stringify(itemView))))
+  expect(screen.queryByText("旧身份不得显示")).not.toBeInTheDocument()
+  await act(async () => resolveNext(new Response(JSON.stringify({ ...itemView, group_label: "新身份当前榜" }))))
+  expect(await screen.findByText("新身份当前榜")).toBeVisible()
+  expect(screen.queryByText("旧身份不得显示")).not.toBeInTheDocument()
+})
 
 it("separates current best whole-round ranking from this historical report and uses item names", async () => {
   vi.stubGlobal("fetch", vi.fn<typeof fetch>(async input => new Response(JSON.stringify(String(input).endsWith("/ranking") ? rankingFixture() : rankableReport()), { headers: { "Content-Type": "application/json" } })))

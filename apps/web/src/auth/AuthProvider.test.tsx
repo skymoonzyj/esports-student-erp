@@ -7,6 +7,7 @@ import { afterEach, expect, it, vi } from "vitest"
 
 import { apiFetch } from "../api/client"
 import { portalKeys } from "../portal/api"
+import { departureKeys } from "../portal/departureApi"
 import { usePortalAccessError } from "../portal/usePortalAccessError"
 import {
   guardedPortalQueryOptions,
@@ -477,6 +478,8 @@ it("refreshes current permissions and clears cached private data", async () => {
   vi.stubGlobal("fetch", fetchMock)
   const queryClient = new QueryClient()
   queryClient.setQueryData(["audit-events"], { private: true })
+  const departureKey = departureKeys.page(accountId, 1, "today", 1, 20)
+  queryClient.setQueryData(departureKey, { items: [{ full_name: "旧提醒姓名" }] })
   const user = userEvent.setup()
 
   render(
@@ -493,6 +496,7 @@ it("refreshes current permissions and clears cached private data", async () => {
   expect(await screen.findByText("authenticated:平台管理员")).toBeVisible()
   expect(screen.queryByText("audit.read")).not.toBeInTheDocument()
   expect(queryClient.getQueryData(["audit-events"])).toBeUndefined()
+  expect(queryClient.getQueryData(departureKey)).toBeUndefined()
 })
 
 it("clears private cache before a failed permission refresh while preserving the authenticated session", async () => {
@@ -569,6 +573,9 @@ it("clears cached data and in-memory auth state before a delayed logout response
   vi.stubGlobal("fetch", fetchMock)
   const queryClient = new QueryClient()
   queryClient.setQueryData(["private-person"], { full_name: "不应保留" })
+  const departureKey = departureKeys.page(accountId, 1, "three_days", 1, 20)
+  queryClient.setQueryData(departureKey, { items: [{ full_name: "不应保留的提醒" }] })
+  queryClient.setQueryData(["portal", accountId, "departure-window"], "today")
   const user = userEvent.setup()
 
   render(
@@ -584,6 +591,8 @@ it("clears cached data and in-memory auth state before a delayed logout response
 
   expect(await screen.findByText("anonymous:none")).toBeVisible()
   expect(queryClient.getQueryData(["private-person"])).toBeUndefined()
+  expect(queryClient.getQueryData(departureKey)).toBeUndefined()
+  expect(queryClient.getQueryData(["portal", accountId, "departure-window"])).toBeUndefined()
   const logoutCall = fetchMock.mock.calls.find(([input]) =>
     String(input).endsWith("/auth/logout"),
   )
@@ -867,6 +876,8 @@ it("revokes only portal data on a permission-denied response", async () => {
     items: [{ student_name: "旧门户姓名" }],
   })
   queryClient.setQueryData(["other-private"], { full_name: "仍保留" })
+  const departureKey = departureKeys.page(accountId, 1, "three_days", 1, 20)
+  queryClient.setQueryData(departureKey, { items: [{ full_name: "已撤权提醒" }] })
   const user = userEvent.setup()
 
   render(
@@ -886,6 +897,7 @@ it("revokes only portal data on a permission-denied response", async () => {
   expect(screen.getByText("authenticated:平台管理员")).toBeVisible()
   expect(queryClient.getQueryData(portalKeys.students(accountId))).toBeUndefined()
   expect(queryClient.getQueryData(["other-private"])).toEqual({ full_name: "仍保留" })
+  expect(queryClient.getQueryData(departureKey)).toBeUndefined()
 })
 
 it.each([

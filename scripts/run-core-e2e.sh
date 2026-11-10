@@ -27,6 +27,7 @@ api_origin="http://127.0.0.1:${api_port}"
 web_origin="http://127.0.0.1:${web_port}"
 talent_artifact_dir=${TALENT_E2E_ARTIFACT_DIR:-$repo_root/.superpowers/sdd/2026-09-20-talent-tests/task-16-artifacts}
 esports_artifact_dir=${ESPORTS_E2E_ARTIFACT_DIR:-$repo_root/.superpowers/sdd/2026-09-21-talent-assessment-2/task-18-artifacts}
+reactionx_artifact_dir=${REACTIONX_E2E_ARTIFACT_DIR:-$repo_root/.superpowers/sdd/2026-10-31-reactionx-erp-integration/task-6-artifacts}
 e2e_mode=${E2E_CORE_MODE:-core}
 invited_artifact_dir=${INVITED_HOUSING_E2E_ARTIFACT_DIR:-$repo_root/.superpowers/sdd/2026-10-10-invited-housing-visibility/task-4-artifacts/real}
 if [[ "$e2e_mode" == "invited-housing" ]]; then
@@ -36,10 +37,10 @@ if [[ "$e2e_mode" == "invited-housing" ]]; then
 fi
 
 case "$e2e_mode" in
-  core|talent|esports|invited-housing|all)
+  core|talent|esports|reactionx|invited-housing|all)
     ;;
   *)
-    echo "E2E_CORE_MODE 只允许 core、talent、esports、invited-housing 或 all" >&2
+    echo "E2E_CORE_MODE 只允许 core、talent、esports、reactionx、invited-housing 或 all" >&2
     exit 2
     ;;
 esac
@@ -92,6 +93,10 @@ tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/core-e2e.XXXXXX")
 pids=()
 talent_log_suppression=0
 esports_log_suppression=0
+reactionx_log_suppression=0
+if [[ "$e2e_mode" == reactionx || "$e2e_mode" == all ]]; then
+  reactionx_log_suppression=1
+fi
 
 terminate_children() {
   local any_alive
@@ -128,7 +133,9 @@ redact_log() {
 cleanup() {
   local status=$?
   if (( status != 0 )); then
-    if (( esports_log_suppression == 1 )); then
+    if (( reactionx_log_suppression == 1 )); then
+      echo "reactionx-sensitive-acceptance-failure: 原始服务与浏览器日志已隔离并删除" >&2
+    elif (( esports_log_suppression == 1 )); then
       echo "esports-sensitive-browser-failure: 原始服务与浏览器日志已隔离并删除" >&2
     elif (( talent_log_suppression == 1 )); then
       echo "Talent E2E 失败；原始服务与浏览器日志已隔离并删除" >&2
@@ -170,6 +177,8 @@ wait_http() {
 
 run_erp_cli() {
   env \
+    -u REACTIONX_SYNTHETIC_FORMAL_ENABLED_FILE \
+    REACTIONX_SYNTHETIC_FORMAL_ENABLED=false \
     APP_ENV=test \
     DATABASE_URL="$TEST_DATABASE_URL" \
     SESSION_COOKIE_SECURE=false \
@@ -185,8 +194,13 @@ run_erp_cli() {
 cd "$repo_root/apps/api"
 run_erp_cli -m alembic upgrade head
 
-cd "$repo_root"
-env \
+start_api() {
+  local synthetic=$1
+  cd "$repo_root"
+  env \
+  -u REACTIONX_SYNTHETIC_FORMAL_ENABLED_FILE \
+  REACTIONX_SYNTHETIC_FORMAL_ENABLED="$synthetic" \
+  ERP_WEB_BASE_URL="$web_origin" \
   APP_ENV=test \
   DATABASE_URL="$TEST_DATABASE_URL" \
   SESSION_COOKIE_SECURE=false \
@@ -200,11 +214,34 @@ env \
   "$python_bin" -m uvicorn app.main:app --app-dir apps/api \
     --host 127.0.0.1 --port "$api_port" --no-use-colors \
     >"$tmp_dir/api.log" 2>&1 &
-api_pid=$!
-pids+=("$api_pid")
+  api_pid=$!
+  pids+=("$api_pid")
+}
+
+stop_api() {
+  local pid
+  local -a remaining=()
+  kill "$api_pid" >/dev/null 2>&1 || true
+  for _ in {1..40}; do
+    kill -0 "$api_pid" >/dev/null 2>&1 || break
+    sleep 0.1
+  done
+  if kill -0 "$api_pid" >/dev/null 2>&1; then
+    kill -KILL "$api_pid" >/dev/null 2>&1 || true
+  fi
+  wait "$api_pid" >/dev/null 2>&1 || true
+  for pid in "${pids[@]}"; do
+    [[ "$pid" == "$api_pid" ]] || remaining+=("$pid")
+  done
+  pids=("${remaining[@]}")
+}
+
+start_api false
 
 cd "$repo_root/apps/web"
 env \
+  -u REACTIONX_SYNTHETIC_FORMAL_ENABLED \
+  -u REACTIONX_SYNTHETIC_FORMAL_ENABLED_FILE \
   -u TEST_DATABASE_URL \
   -u DATABASE_URL \
   -u FIELD_ENCRYPTION_MASTER_KEY \
@@ -235,6 +272,8 @@ run_playwright() {
   local summary_file="$talent_artifact_dir/${project}-${spec%.spec.ts}-summary.json"
   local -a playwright_args=("$spec" "--project=$project")
   local -a playwright_env=(
+    -u REACTIONX_SYNTHETIC_FORMAL_ENABLED
+    -u REACTIONX_SYNTHETIC_FORMAL_ENABLED_FILE
     -u TEST_DATABASE_URL
     -u DATABASE_URL
     -u FIELD_ENCRYPTION_MASTER_KEY
@@ -273,6 +312,12 @@ run_playwright() {
     summary_file="$esports_artifact_dir/${project}-${spec%.spec.ts}-summary.json"
     playwright_env+=(PLAYWRIGHT_JSON_OUTPUT_NAME="$report_file")
     playwright_args+=("--reporter=json")
+  elif [[ "$spec" == reactionx-integration.spec.ts ]]; then
+    reactionx_log_suppression=1
+    log_file="$tmp_dir/playwright-${project}-${spec%.spec.ts}.raw"
+    summary_file="$reactionx_artifact_dir/${project}-summary.json"
+    playwright_env+=(PLAYWRIGHT_JSON_OUTPUT_NAME="$report_file")
+    playwright_args+=("--reporter=json")
   fi
   set +e
   env "${playwright_env[@]}" \
@@ -296,6 +341,11 @@ run_playwright() {
       --output "$summary_file" \
       --spec "$spec" \
       --project "$project"
+    summary_status=$?
+  elif [[ "$spec" == reactionx-integration.spec.ts ]]; then
+    PYTHONPATH="$repo_root/apps/api" "$python_bin" \
+      -m app.cli.summarize_reactionx_playwright \
+      --report "$report_file" --output "$summary_file"
     summary_status=$?
   elif (( status == 0 )); then
     redact_log <"$log_file"
@@ -324,6 +374,10 @@ specs=(
   housing-filter-focus.spec.ts
 )
 cloud_authorization_projects=(desktop-1440 mobile-360 touch-mobile-390)
+request_error_mock_projects=(desktop-1440 desktop-1024 tablet-768 mobile-360 touch-mobile-390)
+asset_rental_mock_projects=(desktop-1440 desktop-1024 tablet-768 mobile-360 touch-mobile-390)
+person_profile_mock_projects=(desktop-1440 mobile-360)
+ui_theme_mock_projects=(desktop-1440 desktop-1024 tablet-768 mobile-360 touch-mobile-390)
 
 esports_matrix=(
   "esports-pc.spec.ts|esports-desktop-1440|pc"
@@ -351,6 +405,10 @@ run_seeded_spec() {
     TALENT_E2E_VERIFY_MODE=dynamic run_erp_cli -m "$seed_module"
   elif [[ "$spec" == "talent-tests.spec.ts" ]]; then
     TALENT_E2E_VERIFY_MODE=double-full run_erp_cli -m "$seed_module"
+  elif [[ "$spec" == "talent-item-ranking.spec.ts" ]]; then
+    # Partial-round spec rereads persisted unique result IDs, live ranking
+    # snapshots, and logout denials itself; full-round verification is inapplicable.
+    :
   elif [[ "$spec" == talent-*.spec.ts ]]; then
     TALENT_E2E_VERIFY_MODE=full run_erp_cli -m "$seed_module"
   fi
@@ -377,7 +435,40 @@ run_cloud_authorization_specs() {
   done
 }
 
+run_request_error_mock_specs() {
+  local project
+  for project in "${request_error_mock_projects[@]}"; do
+    run_playwright operations-request-errors.spec.ts "$project"
+  done
+}
+
+run_asset_rental_mock_specs() {
+  local project
+  for project in "${asset_rental_mock_projects[@]}"; do
+    run_playwright asset-rentals.spec.ts "$project"
+    run_playwright asset-batch-hardware.spec.ts "$project"
+  done
+}
+
+run_person_profile_mock_specs() {
+  local project
+  for project in "${person_profile_mock_projects[@]}"; do
+    run_playwright person-detail-chunk.spec.ts "$project"
+    run_playwright person-profile-assignments.spec.ts "$project"
+    run_playwright personnel-documents.spec.ts "$project"
+  done
+}
+
+run_ui_theme_mock_specs() {
+  local project
+  for project in "${ui_theme_mock_projects[@]}"; do
+    run_playwright ui-themes.spec.ts "$project"
+    run_playwright ui-theme-foundation.spec.ts "$project"
+  done
+}
+
 run_talent_specs() {
+  run_seeded_spec talent-item-ranking.spec.ts desktop-1440 app.cli.seed_talent_e2e
   run_seeded_spec talent-tests.spec.ts desktop-1440 app.cli.seed_talent_e2e
   run_seeded_spec talent-touch.spec.ts touch-mobile-390 app.cli.seed_talent_e2e
   local project
@@ -416,10 +507,58 @@ run_invited_housing_specs() {
   done
 }
 
+private_reactionx_cli() {
+  local phase=seed
+  if [[ "$*" == *--probe-closed* ]]; then
+    phase=closed_probe
+  elif [[ "$*" == *--verify* ]]; then
+    phase=persisted_verify
+  fi
+  if ! run_erp_cli "$@" >"$tmp_dir/reactionx-cli.raw" 2>&1; then
+    echo "reactionx-cli-failed:$phase: 原始异常已隔离并删除" >&2
+    # These are fixed application diagnostics, never arbitrary exception text.
+    while IFS= read -r diagnostic; do
+      case "$diagnostic" in
+        'ReactionX acceptance refused: closed_probe_login'|\
+        'ReactionX acceptance refused: closed_probe_modes'|\
+        'ReactionX acceptance refused: default_formal_open')
+          echo "$diagnostic" >&2
+          ;;
+      esac
+    done <"$tmp_dir/reactionx-cli.raw"
+    return 1
+  fi
+}
+
+run_reactionx_specs() {
+  reactionx_log_suppression=1
+  cd "$repo_root/apps/api"
+  private_reactionx_cli -m app.cli.seed_reactionx_e2e
+  private_reactionx_cli -m app.cli.seed_reactionx_e2e --probe-closed "$api_origin"
+  stop_api
+  start_api true
+  wait_http "$api_origin/api/v1/health/live" "$api_pid" "ReactionX synthetic API" "$tmp_dir/api.log" \
+    "Uvicorn running on http://127.0.0.1:${api_port} ("
+  cd "$repo_root"
+  run_playwright reactionx-integration.spec.ts reactionx-desktop-1440
+  cd "$repo_root/apps/api"
+  private_reactionx_cli -m app.cli.seed_reactionx_e2e --verify
+  echo "reactionx-persisted-evidence-passed"
+  stop_api
+  start_api false
+  wait_http "$api_origin/api/v1/health/live" "$api_pid" "API closed policy" "$tmp_dir/api.log" \
+    "Uvicorn running on http://127.0.0.1:${api_port} ("
+  cd "$repo_root"
+}
+
 case "$e2e_mode" in
   core)
     run_core_matrix
     run_cloud_authorization_specs
+    run_request_error_mock_specs
+    run_asset_rental_mock_specs
+    run_person_profile_mock_specs
+    run_ui_theme_mock_specs
     run_invited_housing_specs
     ;;
   talent)
@@ -428,18 +567,26 @@ case "$e2e_mode" in
   esports)
     run_esports_specs
     ;;
+  reactionx)
+    run_reactionx_specs
+    ;;
   invited-housing)
     run_invited_housing_specs
     ;;
   all)
     run_core_matrix
     run_cloud_authorization_specs
+    run_request_error_mock_specs
+    run_asset_rental_mock_specs
+    run_person_profile_mock_specs
+    run_ui_theme_mock_specs
     run_invited_housing_specs
     run_talent_specs
     run_esports_specs
+    run_reactionx_specs
     ;;
   *)
-    echo "E2E_CORE_MODE 只允许 core、talent、esports、invited-housing 或 all" >&2
+    echo "E2E_CORE_MODE 只允许 core、talent、esports、reactionx、invited-housing 或 all" >&2
     exit 2
     ;;
 esac

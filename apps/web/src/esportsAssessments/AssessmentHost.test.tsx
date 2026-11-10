@@ -1,20 +1,35 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { AssessmentHost } from './AssessmentHost'
 import type { AssessmentSessionController } from './useAssessmentSession'
 import { fixtureAttempt, fixtureConfig, fixtureCurrentConfig, fixtureSuiteConfig } from './testSupport/fixtures'
+import { fixtureV5Config } from './testSupport/fixturesV5'
+import { fixtureMobaV4Config } from './testSupport/fixturesMobaV4'
+import { fixtureMobaV5Config } from './testSupport/fixturesMobaV5'
+import { laneWorldToScreen } from './lane/projection'
+import type { TaskConfig } from './contracts'
 import { pcMobaFactory } from './suites/pcMoba'
 import { pcFpsFactory } from './suites/pcFps'
 import { mobileMobaFactory } from './suites/mobileMoba'
 import { mobileFpsFactory } from './suites/mobileFps'
 import type { GameEngine, GameFactory, InputAction } from './engineRuntime/types'
+import type * as FpsStageExports from './fps/FpsStage'
+
+const fpsStageDuration = vi.hoisted(() => vi.fn<(durationMs?: number) => void>())
+const laneStageFailure = vi.hoisted(() => ({ fail: false }))
+vi.mock('./lane/LaneStage', () => ({ LaneStage: ({ canvasRef, inputHandlers, onReady, onError }: { canvasRef: React.Ref<HTMLCanvasElement>; inputHandlers: object; onReady: () => void; onError: (error: { message: string }) => void }) => {
+  useEffect(() => { if (laneStageFailure.fail) onError({ message: 'WebGL 初始化失败' }); else onReady() }, [onReady])
+  return <canvas ref={canvasRef} aria-label="MOBA 测评场景" data-lane-stage="true" {...inputHandlers} />
+} }))
 
 vi.mock('./moba/MobaStage', () => ({ MobaStage: ({ canvasRef, inputHandlers, onReady }: { canvasRef: React.Ref<HTMLCanvasElement>; inputHandlers: object; onReady: () => void }) => {
   useEffect(() => { onReady() }, [onReady])
   return <canvas ref={canvasRef} aria-label="MOBA 测评场景" {...inputHandlers} />
 } }))
-vi.mock('./fps/FpsStage', () => ({ FpsStage: ({ canvasRef, inputHandlers, onReady }: { canvasRef: React.Ref<HTMLCanvasElement>; inputHandlers: object; onReady: () => void }) => {
+vi.mock('./fps/FpsStage', async importOriginal => ({ ...await importOriginal<typeof FpsStageExports>(), FpsStage: ({ canvasRef, inputHandlers, onReady, durationMs }: { canvasRef: React.Ref<HTMLCanvasElement>; inputHandlers: object; onReady: () => void; durationMs?: number }) => {
+  fpsStageDuration(durationMs)
   useEffect(() => { onReady() }, [onReady])
   return <canvas ref={canvasRef} aria-label="FPS 测试场景" {...inputHandlers} />
 } }))
@@ -24,9 +39,362 @@ function controller(): AssessmentSessionController {
     start: vi.fn(async () => ({ attempt: fixtureAttempt({ suite_id: config.suite_id, test_id: config.test_id, config, settings: { sensitivity: 1, input_kind: 'mouse', mouse_mode: null, controls: [] } }), leaseMs: 90000 })), submit: vi.fn(), interrupt: vi.fn(), leave: vi.fn(async () => true), reconcile: vi.fn(), retry: vi.fn() }
 }
 beforeEach(() => {
+  fpsStageDuration.mockClear()
+  laneStageFailure.fail = false
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, width: 1000, height: 562.5, top: 0, left: 0, right: 1000, bottom: 562.5, toJSON: () => ({}) })
 })
-afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); Reflect.deleteProperty(document, 'pointerLockElement'); Reflect.deleteProperty(document, 'exitPointerLock') })
+afterEach(() => {
+  vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals()
+  for (const key of ['pointerLockElement', 'exitPointerLock', 'fullscreenElement', 'exitFullscreen']) Reflect.deleteProperty(document, key)
+  Reflect.deleteProperty(HTMLElement.prototype, 'requestFullscreen')
+  Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView')
+})
+
+function fullscreenHarness(protectedNavigation = false, task: TaskConfig = fixtureCurrentConfig('pc-fps', 'precision'), mode: 'formal' | 'practice' = 'formal') {
+  let fullscreen: Element | null = null
+  let locked: Element | null = null
+  let rect = { x: 0, y: 0, width: 1000, height: 562.5 }
+  let frameId = 0
+  const frames = new Map<number, FrameRequestCallback>()
+  vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => { frames.set(++frameId, frame); return frameId })
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id) })
+  vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockImplementation(() => ({ ...rect, top: rect.y, left: rect.x, right: rect.x + rect.width, bottom: rect.y + rect.height, toJSON: () => ({}) }))
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({} as WebGL2RenderingContext)
+  Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => fullscreen })
+  Object.defineProperty(document, 'pointerLockElement', { configurable: true, get: () => locked })
+  Object.defineProperty(document, 'exitPointerLock', { configurable: true, value: () => { locked = null } })
+  const changeFullscreen = (element: Element | null) => { fullscreen = element; document.dispatchEvent(new Event('fullscreenchange')) }
+  const exit = vi.fn(async () => { changeFullscreen(null) })
+  Object.defineProperty(document, 'exitFullscreen', { configurable: true, value: exit })
+  const request = vi.fn(async function (this: HTMLElement) { changeFullscreen(this) })
+  Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', { configurable: true, value: request })
+  const session = controller()
+  if (protectedNavigation) {
+    session.serverView = fixtureAttempt({ suite_id: task.suite_id, test_id: task.test_id, config: task })
+    vi.mocked(session.leave).mockResolvedValue(false)
+  }
+  vi.mocked(session.start).mockImplementation(async value => {
+    session.serverView = fixtureAttempt({ suite_id: task.suite_id, test_id: task.test_id, config: task, settings: value.settings, environment: value.environment })
+    return { attempt: session.serverView, leaseMs: 90000 }
+  })
+  let refresh = () => {}
+  function HostView() {
+    const [, setRevision] = useState(0)
+    refresh = () => setRevision(revision => revision + 1)
+    return <AssessmentHost config={task} factory={pcFpsFactory} session={session} mode={mode} onBack={vi.fn()} />
+  }
+  const element = <HostView />
+  const router = protectedNavigation ? createMemoryRouter([{ path: '/test', element }, { path: '/list', element: <h1>项目列表</h1> }], { initialEntries: ['/test'] }) : null
+  const view = render(router ? <RouterProvider router={router} /> : element)
+  const canvas = screen.getByLabelText('FPS 测试场景')
+  const pointerRequest = vi.fn(async () => { locked = canvas })
+  Object.defineProperty(canvas, 'requestPointerLock', { configurable: true, value: pointerRequest })
+  return {
+    ...view, router, session, request, exit, pointerRequest, host: screen.getByRole('region', { name: '测试场景' }),
+    refresh() { act(refresh) },
+    change(element: Element | null) { act(() => { changeFullscreen(element) }) },
+    resize(width: number, height: number) { rect = { ...rect, width, height } },
+    async settle() {
+      for (let i = 0; i < 4; i++) await act(async () => { const batch = [...frames.values()]; frames.clear(); for (const frame of batch) frame(performance.now()) })
+    },
+  }
+}
+
+it.each(['formal', 'practice'] as const)('rejects an invalid v5 actual canvas before the %s allocation boundary', async mode => {
+  const host = fullscreenHarness(false, fixtureV5Config('gridshot'), mode)
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' })) })
+  fireEvent.click(screen.getByRole('button', { name: '结束试练' }))
+  host.resize(1000, 600)
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: mode === 'formal' ? '开始正式测试' : '开始练习' })) })
+  expect(screen.getByRole('alert')).toHaveTextContent(/viewport|16:9|视野/)
+  expect(host.host).toHaveAttribute('data-host-phase', 'preflight')
+  expect(host.session.start).not.toHaveBeenCalled()
+})
+
+it.each([false, true])('uses the valid v5 canvas, not outer screen geometry (fullscreen=%s)', async fullscreen => {
+  const host = fullscreenHarness(false, fixtureV5Config('sixshot'))
+  if (fullscreen) {
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '进入全屏' })) })
+    host.resize(1440, 810)
+    await host.settle()
+  }
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' })) })
+  expect(host.host).toHaveAttribute('data-host-phase', 'trial')
+  fireEvent.click(screen.getByRole('button', { name: '结束试练' }))
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '开始正式测试' })) })
+  expect(host.session.start).toHaveBeenCalledWith(expect.objectContaining({ environment: expect.objectContaining({ width_css_px: fullscreen ? 1440 : 1000, height_css_px: fullscreen ? 810 : 562.5 }) }))
+  expect(host.host).toHaveAttribute('data-host-phase', 'countdown')
+  host.resize(1200, 675)
+  fireEvent(window, new Event('resize'))
+  expect(host.host).toHaveAttribute('data-host-phase', 'interrupted')
+  expect(host.session.interrupt).toHaveBeenCalledOnce()
+  expect(host.session.submit).not.toHaveBeenCalled()
+})
+
+it('reserves a stable outside-canvas toolbar slot for v5 shooting feedback before and during trial', async () => {
+  const host = fullscreenHarness(false, fixtureV5Config('gridshot'))
+  const toolbar = screen.getByRole('banner')
+  expect(toolbar).toHaveStyle({ height: '64px', flexWrap: 'nowrap' })
+  const slot = screen.getByLabelText('固定靶区反馈栏')
+  expect(slot).toHaveStyle({ height: '44px' })
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' })) })
+  const feedback = screen.getByLabelText('FPS 实时反馈')
+  expect(toolbar.contains(feedback)).toBe(true)
+  expect(feedback).not.toHaveStyle({ position: 'absolute' })
+  expect(feedback).toHaveTextContent('0.0 / 20.0 秒')
+  expect(host.host).toHaveAttribute('data-host-phase', 'trial')
+  expect(slot).toHaveStyle({ height: '44px' })
+})
+
+it.each([
+  ['pc-fps', 'precision', pcFpsFactory, true], ['pc-moba', 'dodge', pcMobaFactory, false],
+  ['mobile-fps', 'move-fire', mobileFpsFactory, false], ['mobile-moba', 'skill-aim', mobileMobaFactory, false],
+] as const)('only_pc_fps_has_fullscreen_action: %s', (suite, testId, factory, visible) => {
+  render(<AssessmentHost config={fixtureCurrentConfig(suite, testId)} factory={factory} session={controller()} onBack={vi.fn()} />)
+  expect(Boolean(screen.queryByRole('button', { name: '进入全屏' }))).toBe(visible)
+})
+
+it('request_does_not_start_attempt and captures only settled stage dimensions', async () => {
+  const host = fullscreenHarness()
+  fireEvent.click(screen.getByRole('button', { name: '进入全屏' }))
+  expect(host.request).toHaveBeenCalledOnce()
+  expect(host.request.mock.instances[0]).toBe(host.host)
+  expect(host.pointerRequest).not.toHaveBeenCalled()
+  expect(host.session.start).not.toHaveBeenCalled()
+  expect(host.session.interrupt).not.toHaveBeenCalled()
+  expect(screen.getByRole('button', { name: '检查设备并进入试练' })).toBeDisabled()
+  host.resize(1440, 810)
+  await host.settle()
+  expect(screen.getByRole('button', { name: '退出全屏' })).toBeEnabled()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' })) })
+  fireEvent.click(screen.getByRole('button', { name: '结束试练' }))
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '开始正式测试' })) })
+  expect(host.session.start).toHaveBeenCalledWith(expect.objectContaining({ environment: expect.objectContaining({ width_css_px: 1440, height_css_px: 810 }) }))
+})
+
+it('denial_keeps_window_mode usable without creating an attempt', async () => {
+  const host = fullscreenHarness()
+  host.request.mockRejectedValueOnce(new Error('denied'))
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '进入全屏' })) })
+  await host.settle()
+  expect(screen.getByRole('alert')).toHaveTextContent('全屏')
+  expect(screen.getByRole('button', { name: '进入全屏' })).toBeEnabled()
+  expect(host.session.start).not.toHaveBeenCalled()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' })) })
+  expect(host.host).toHaveAttribute('data-host-phase', 'trial')
+})
+
+it('pending_blocks_duplicate_and_start until both native request and layout settle', async () => {
+  const host = fullscreenHarness()
+  let resolve!: () => void
+  host.request.mockImplementationOnce(() => new Promise<void>(done => { resolve = done }))
+  const button = screen.getByRole('button', { name: '进入全屏' })
+  fireEvent.click(button); fireEvent.click(button)
+  fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' }))
+  await host.settle()
+  expect(button).toBeDisabled()
+  expect(host.request).toHaveBeenCalledOnce()
+  expect(host.pointerRequest).not.toHaveBeenCalled()
+  host.change(host.host)
+  await host.settle()
+  expect(screen.getByRole('button', { name: '检查设备并进入试练' })).toBeDisabled()
+  await act(async () => resolve())
+  await host.settle()
+  expect(screen.getByRole('button', { name: '检查设备并进入试练' })).toBeEnabled()
+})
+
+it('active_phase_blocks_toggle and fullscreen_exit_interrupts_once_without_submit', async () => {
+  const host = fullscreenHarness()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '进入全屏' })) })
+  await host.settle()
+  host.host.scrollTop = 500
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' })) })
+  expect(host.host.scrollTop).toBe(0)
+  expect(screen.getByRole('button', { name: '退出全屏' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: '退出全屏' }))
+  expect(host.exit).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: '结束试练' }))
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '开始正式测试' })) })
+  expect(host.host).toHaveAttribute('data-host-phase', 'countdown')
+  expect(screen.getByRole('button', { name: '退出全屏' })).toBeDisabled()
+  host.change(null)
+  fireEvent(document, new Event('pointerlockchange')); fireEvent(window, new Event('resize')); host.change(null)
+  expect(host.host).toHaveAttribute('data-host-phase', 'interrupted')
+  expect(host.session.interrupt).toHaveBeenCalledOnce()
+  expect(host.session.submit).not.toHaveBeenCalled()
+})
+
+it.each([true, false])('late_request_after_unmount_is_owner_scoped (own=%s)', async own => {
+  const host = fullscreenHarness()
+  let resolve!: () => void
+  host.request.mockImplementationOnce(() => new Promise<void>(done => { resolve = done }))
+  fireEvent.click(screen.getByRole('button', { name: '进入全屏' }))
+  host.unmount()
+  host.change(own ? host.host : document.body)
+  await act(async () => resolve())
+  expect(host.exit).toHaveBeenCalledTimes(own ? 1 : 0)
+  expect(host.session.start).not.toHaveBeenCalled()
+  expect(host.session.interrupt).not.toHaveBeenCalled()
+})
+
+it('exits fullscreen before allocation without starting, and waits for window layout', async () => {
+  const host = fullscreenHarness()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '进入全屏' })) })
+  await host.settle()
+  fireEvent.click(screen.getByRole('button', { name: '退出全屏' }))
+  expect(screen.getByRole('button', { name: '检查设备并进入试练' })).toBeDisabled()
+  await host.settle()
+  expect(screen.getByRole('button', { name: '进入全屏' })).toBeEnabled()
+  expect(host.session.start).not.toHaveBeenCalled()
+  expect(host.session.interrupt).not.toHaveBeenCalled()
+})
+
+it('cancels preparation when fullscreen exits while pointer-lock acquisition is pending', async () => {
+  const host = fullscreenHarness()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '进入全屏' })) })
+  await host.settle()
+  let resolve!: () => void
+  host.pointerRequest.mockImplementationOnce(() => new Promise<void>(done => { resolve = done }))
+  fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' }))
+  expect(screen.getByRole('button', { name: '退出全屏' })).toBeDisabled()
+  host.change(null)
+  await act(async () => resolve())
+  expect(host.host).toHaveAttribute('data-host-phase', 'interrupted')
+  expect(host.session.start).not.toHaveBeenCalled()
+  expect(host.session.interrupt).not.toHaveBeenCalled()
+})
+
+it('defers a starting-phase fullscreen interruption until allocation settles, then interrupts once', async () => {
+  const host = fullscreenHarness()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '进入全屏' })) })
+  await host.settle()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' })) })
+  expect(screen.getByRole('button', { name: '结束试练' }).closest('header')).not.toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '结束试练' }))
+  let resolve!: (value: Awaited<ReturnType<typeof host.session.start>>) => void
+  vi.mocked(host.session.start).mockImplementationOnce(() => new Promise(done => { resolve = done }))
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '开始正式测试' })) })
+  expect(host.host).toHaveAttribute('data-host-phase', 'starting')
+  host.change(null); fireEvent(document, new Event('pointerlockchange'))
+  expect(host.session.interrupt).not.toHaveBeenCalled()
+  await act(async () => resolve({ attempt: fixtureAttempt(), leaseMs: 90000 }))
+  expect(host.session.interrupt).toHaveBeenCalledOnce()
+  expect(host.session.submit).not.toHaveBeenCalled()
+})
+
+it.each([true, false])('holds a cancelled fullscreen operation through settlement and cleanup after failed leave (own=%s)', async own => {
+  const host = fullscreenHarness(true)
+  let resolve!: () => void
+  host.request.mockImplementationOnce(() => new Promise<void>(done => { resolve = done }))
+  fireEvent.click(screen.getByRole('button', { name: '进入全屏' }))
+  await act(async () => { void host.router!.navigate('/list') })
+  fireEvent.click(screen.getByRole('button', { name: '确认退出' }))
+  await screen.findByText('退出未完成，请保留本页并重新对账。')
+  expect(host.session.leave).toHaveBeenCalledOnce()
+  expect(host.router!.state.location.pathname).toBe('/test')
+  fireEvent.click(screen.getByRole('button', { name: '继续测试' }))
+  await host.settle()
+  expect(screen.getByRole('button', { name: '进入全屏' })).toBeDisabled()
+
+  // Reconciliation clears recovery while the obsolete native request is still pending.
+  vi.mocked(host.session.reconcile).mockImplementation(async () => { host.session.serverView = null; return null })
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '重新对账' })) })
+  host.refresh()
+  expect(screen.getByRole('button', { name: '检查设备并进入试练' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: '进入全屏' }))
+  fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' }))
+  expect(host.request).toHaveBeenCalledOnce()
+  expect(host.pointerRequest).not.toHaveBeenCalled()
+  let resolveExit!: () => void
+  if (own) host.exit.mockImplementationOnce(() => new Promise<void>(done => { resolveExit = () => { host.change(null); done() } }))
+  host.change(own ? host.host : document.body)
+  await act(async () => resolve())
+  if (own) {
+    await host.settle()
+    expect(host.exit).toHaveBeenCalledOnce()
+    expect(screen.getByRole('button', { name: '检查设备并进入试练' })).toBeDisabled()
+    await act(async () => resolveExit())
+  }
+  await host.settle()
+  expect(host.exit).toHaveBeenCalledTimes(own ? 1 : 0)
+  expect(screen.getByRole('button', { name: '检查设备并进入试练' })).toBeEnabled()
+  expect(host.session.start).not.toHaveBeenCalled()
+  expect(host.session.interrupt).not.toHaveBeenCalled()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '进入全屏' })) })
+  await host.settle()
+  expect(host.request).toHaveBeenCalledTimes(2)
+  expect(screen.getByRole('button', { name: '退出全屏' })).toBeEnabled()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' })) })
+  fireEvent.click(screen.getByRole('button', { name: '结束试练' }))
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '开始正式测试' })) })
+  expect(host.host).toHaveAttribute('data-host-phase', 'countdown')
+  expect(host.session.start).toHaveBeenCalledOnce()
+  expect(host.exit).toHaveBeenCalledTimes(own ? 1 : 0)
+  expect(host.session.interrupt).not.toHaveBeenCalled()
+})
+
+it('holds an acquired fullscreen cleanup exit through failed leave until native exit settles', async () => {
+  const host = fullscreenHarness(true)
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '进入全屏' })) })
+  await host.settle()
+  expect(screen.getByRole('button', { name: '退出全屏' })).toBeEnabled()
+  let resolveExit!: () => void
+  host.exit.mockImplementationOnce(() => new Promise<void>(done => { resolveExit = () => { host.change(null); done() } }))
+  await act(async () => { void host.router!.navigate('/list') })
+  fireEvent.click(screen.getByRole('button', { name: '确认退出' }))
+  await screen.findByText('退出未完成，请保留本页并重新对账。')
+  fireEvent.click(screen.getByRole('button', { name: '继续测试' }))
+  await host.settle()
+  expect(host.exit).toHaveBeenCalledOnce()
+  expect(screen.getByRole('button', { name: '退出全屏' })).toBeDisabled()
+  vi.mocked(host.session.reconcile).mockImplementation(async () => { host.session.serverView = null; return null })
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '重新对账' })) })
+  host.refresh()
+  expect(screen.getByRole('button', { name: '检查设备并进入试练' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: '退出全屏' }))
+  fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' }))
+  expect(host.exit).toHaveBeenCalledOnce()
+  expect(host.pointerRequest).not.toHaveBeenCalled()
+  await act(async () => resolveExit())
+  await host.settle()
+  expect(screen.getByRole('button', { name: '进入全屏' })).toBeEnabled()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '进入全屏' })) })
+  await host.settle()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' })) })
+  fireEvent.click(screen.getByRole('button', { name: '结束试练' }))
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '开始正式测试' })) })
+  expect(host.request).toHaveBeenCalledTimes(2)
+  expect(host.exit).toHaveBeenCalledOnce()
+  expect(host.host).toHaveAttribute('data-host-phase', 'countdown')
+  expect(host.session.start).toHaveBeenCalledOnce()
+  expect(host.session.interrupt).not.toHaveBeenCalled()
+})
+
+it.each([
+  ['pc-fps', 'precision', pcFpsFactory],
+  ['pc-moba', 'dodge', pcMobaFactory],
+  ['mobile-fps', 'move-fire', mobileFpsFactory],
+  ['mobile-moba', 'skill-aim', mobileMobaFactory],
+] as const)('keeps real %s control settings disabled until recovery is ready and during busy work', (suite, testId, factory) => {
+  const task = fixtureCurrentConfig(suite, testId)
+  const session = controller()
+  const onBack = vi.fn()
+  const view = (ready: boolean, busy: boolean) => <AssessmentHost config={task} factory={factory} session={{ ...session, ready, busy }} onBack={onBack} />
+  const { rerender } = render(view(false, false))
+  const controls = () => {
+    const fields = screen.getByRole('region', { name: '操作设置' }).querySelectorAll('input, select, textarea')
+    expect(fields.length).toBeGreaterThan(0)
+    return fields
+  }
+
+  for (const control of controls()) expect(control).toBeDisabled()
+  rerender(view(false, true))
+  for (const control of controls()) expect(control).toBeDisabled()
+  rerender(view(true, false))
+  for (const control of controls()) expect(control).toBeEnabled()
+  rerender(view(true, true))
+  for (const control of controls()) expect(control).toBeDisabled()
+})
 
 it('suppresses browser nonprimary down/up defaults only inside the active PC MOBA canvas and routes right-click once', async () => {
   const inputs: InputAction[] = []
@@ -217,6 +585,37 @@ it('does not allocate until trial ends and preserves the canvas through starting
   await waitFor(() => expect(screen.getByRole('region', { name: '测试场景' })).toHaveAttribute('data-host-phase', 'countdown'))
   expect(screen.getByLabelText('MOBA 测评场景')).toBe(canvas)
 })
+it('passes the actual 20-second trial then 60-second formal duration to the FPS stage', async () => {
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('iPhone')
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({} as WebGL2RenderingContext)
+  vi.stubGlobal('innerWidth', 844)
+  vi.stubGlobal('innerHeight', 390)
+  let now = 0
+  let frame: FrameRequestCallback | undefined
+  vi.spyOn(performance, 'now').mockImplementation(() => now)
+  vi.stubGlobal('requestAnimationFrame', (next: FrameRequestCallback) => { frame = next; return 1 })
+  vi.stubGlobal('cancelAnimationFrame', () => { frame = undefined })
+  const task = fixtureCurrentConfig('mobile-fps', 'precision')
+  const session = controller()
+  vi.mocked(session.start).mockImplementation(async request => {
+    session.serverView = fixtureAttempt({ suite_id: task.suite_id, test_id: task.test_id, config: task, settings: request.settings, environment: request.environment })
+    return { attempt: session.serverView, leaseMs: 90000 }
+  })
+  render(<AssessmentHost config={task} factory={mobileFpsFactory} session={session} onBack={vi.fn()} />)
+  const enter = screen.getByText('检查设备并进入试练')
+  fireEvent(enter, Object.assign(new Event('pointerdown', { bubbles: true }), { pointerId: 1, pointerType: 'touch' }))
+  await act(async () => { fireEvent.click(enter, { detail: 1 }) })
+  expect(screen.getByRole('region', { name: '测试场景' })).toHaveAttribute('data-host-phase', 'trial')
+  expect(fpsStageDuration).toHaveBeenLastCalledWith(20000)
+  expect(session.start).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByText('结束试练'))
+  expect(fpsStageDuration).toHaveBeenLastCalledWith(20000)
+  await act(async () => { fireEvent.click(screen.getByText('开始正式测试')) })
+  for (now = 200; now <= 3000; now += 200) act(() => { frame?.(now) })
+  expect(screen.getByRole('region', { name: '测试场景' })).toHaveAttribute('data-host-phase', 'running')
+  expect(fpsStageDuration).toHaveBeenLastCalledWith(60000)
+  expect(task.duration_ms).toBe(60000)
+})
 it('refuses a 62-second lease and reconciles instead of starting a clock', async () => {
   const session = controller()
   vi.mocked(session.start).mockResolvedValue({ attempt: fixtureAttempt(), leaseMs: 62000 })
@@ -276,6 +675,147 @@ it('finishes exactly one 60-second run, releases held controls before offering s
   expect(screen.getByRole('region', { name: '测试场景' })).toHaveAttribute('data-run-finish-ms', '63300')
   expect(screen.getByRole('region', { name: '测试场景' })).toHaveAttribute('data-host-phase', 'pending')
   expect(session.interrupt).not.toHaveBeenCalled()
+})
+
+it.each([['v4', 'melee'], ['v4', 'ranged'], ['v5', 'melee'], ['v5', 'ranged']] as const)('runs signed %s %s lane for exactly five minutes, inverse-projects late left input, and retains frame quality', async (version, attackMode) => {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({} as WebGL2RenderingContext)
+  let now = 0
+  let frame: FrameRequestCallback | undefined
+  vi.spyOn(performance, 'now').mockImplementation(() => now)
+  vi.stubGlobal('requestAnimationFrame', (next: FrameRequestCallback) => { frame = next; return 1 })
+  vi.stubGlobal('cancelAnimationFrame', () => { frame = undefined })
+  const task = version === 'v4' ? fixtureMobaV4Config(attackMode) : fixtureMobaV5Config(attackMode)
+  const session = controller()
+  const inputs: InputAction[] = []
+  const factory: GameFactory = { create(...args) {
+    const engine = pcMobaFactory.create(...args)
+    return { advanceTo: time => engine.advanceTo(time), scene: () => engine.scene(), finish: () => engine.finish(), input: action => { inputs.push(action); engine.input(action) } }
+  } }
+  vi.mocked(session.start).mockImplementation(async value => {
+    session.serverView = fixtureAttempt({ suite_id: task.suite_id, test_id: task.test_id, config: task, settings: value.settings, environment: value.environment })
+    return { attempt: session.serverView, leaseMs: 330000 }
+  })
+  render(<AssessmentHost config={task} factory={factory} session={session} onBack={vi.fn()} />)
+  expect(screen.getByLabelText('MOBA 测评场景')).toHaveAttribute('data-lane-stage', 'true')
+  expect(screen.getByLabelText('兵线实时反馈')).toHaveTextContent(version === 'v4' ? '波次 0 / 10' : '波次 0 / 15')
+  if (version === 'v5') expect(screen.getByLabelText('兵线实时反馈')).toHaveTextContent('生命 1000 / 1000')
+  else expect(screen.getByLabelText('兵线实时反馈')).not.toHaveTextContent('生命')
+  await act(async () => { fireEvent.click(screen.getByText('检查设备并进入试练')) })
+  act(() => { now = 100; frame?.(now) })
+  fireEvent.click(screen.getByText('结束试练'))
+  await act(async () => { fireEvent.click(screen.getByText('开始正式测试')) })
+  expect(session.start).toHaveBeenCalledWith(expect.objectContaining({ attack_mode: attackMode }))
+  expect(session.start).toHaveBeenCalledWith(expect.objectContaining({ environment: expect.objectContaining({ webgl2_supported: true }) }))
+  for (now = 300; now <= 303100; now += 200) {
+    act(() => { frame?.(now) })
+    if (now === 123100) {
+      expect(session.submit).not.toHaveBeenCalled()
+      expect(screen.getByLabelText('兵线实时反馈')).toHaveTextContent('剩余 3:00')
+      const point = laneWorldToScreen({ x: 400, y: 420 })
+      fireEvent.pointerDown(screen.getByLabelText('MOBA 测评场景'), { pointerId: 1, pointerType: 'mouse', button: 0, clientX: point.x, clientY: point.y })
+    }
+  }
+  expect(inputs).toContainEqual(expect.objectContaining({ kind: 'point', at_ms: 120000, x: 400, y: 420, button: 0 }))
+  expect(session.submit).toHaveBeenCalledOnce()
+  const [raw, quality] = vi.mocked(session.submit).mock.calls[0]
+  expect(raw.kind).toBe(version === 'v4' ? 'lane_last_hit' : 'lane_last_hit_towers')
+  expect(quality).toMatchObject({ duration_ms: 300000, long_frame_gap_total_ms: 300000, input_kind: 'mouse' })
+  expect(screen.getByRole('region', { name: '测试场景' })).toHaveAttribute('data-run-deadline-ms', '303100')
+  expect(session.interrupt).not.toHaveBeenCalled()
+})
+
+it('never allocates a formal lane ticket when its WebGL stage fails before readiness', () => {
+  laneStageFailure.fail = true
+  const session = controller()
+  render(<AssessmentHost config={fixtureMobaV4Config()} factory={pcMobaFactory} session={session} onBack={vi.fn()} />)
+  expect(screen.getByRole('alert')).toHaveTextContent('WebGL 初始化失败')
+  expect(screen.getByRole('button', { name: '检查设备并进入试练' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' }))
+  expect(session.start).not.toHaveBeenCalled()
+})
+
+it('keeps formal v5 running through actual tower damage, death and five-second respawn without replaying dead input', async () => {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({} as WebGL2RenderingContext)
+  let now = 0
+  let frame: FrameRequestCallback | undefined
+  let engine: GameEngine | undefined
+  vi.spyOn(performance, 'now').mockImplementation(() => now)
+  vi.stubGlobal('requestAnimationFrame', (next: FrameRequestCallback) => { frame = next; return 1 })
+  vi.stubGlobal('cancelAnimationFrame', () => { frame = undefined })
+  const task = fixtureMobaV5Config()
+  const session = controller()
+  const factory: GameFactory = { create(...args) { engine = pcMobaFactory.create(...args); return engine } }
+  vi.mocked(session.start).mockImplementation(async value => {
+    session.serverView = fixtureAttempt({ suite_id: 'pc-moba', test_id: 'last-hit', config: task, settings: value.settings, environment: value.environment })
+    return { attempt: session.serverView, leaseMs: 330000 }
+  })
+  render(<AssessmentHost config={task} factory={factory} session={session} onBack={vi.fn()} />)
+  const feedback = screen.getByLabelText('兵线实时反馈')
+  const slotCount = feedback.children.length
+  expect(feedback).toHaveTextContent('生命 1000 / 1000')
+  await act(async () => { fireEvent.click(screen.getByText('检查设备并进入试练')) })
+  fireEvent.click(screen.getByText('结束试练'))
+  await act(async () => { fireEvent.click(screen.getByText('开始正式测试')) })
+  for (now = 20; now <= 3000; now += 20) act(() => { frame?.(now) })
+  expect(screen.getByRole('region', { name: '测试场景' })).toHaveAttribute('data-host-phase', 'running')
+  const canvas = screen.getByLabelText('MOBA 测评场景')
+  const point = laneWorldToScreen({ x: 930, y: 400 })
+  const move = () => fireEvent.pointerDown(canvas, { pointerId: 1, pointerType: 'mouse', button: 0, clientX: point.x, clientY: point.y })
+  move()
+  let deathAt = 0
+  for (; now < 30000; now += 20) {
+    act(() => { frame?.(now) })
+    if (feedback.textContent?.includes('生命 0 / 1000')) { deathAt = now; break }
+  }
+  expect(deathAt, JSON.stringify(engine!.scene())).toBeGreaterThan(3000)
+  expect(feedback).toHaveTextContent('死亡 1')
+  expect(feedback).toHaveTextContent('复活倒计时 5 秒')
+  expect(feedback.children).toHaveLength(slotCount)
+  expect(screen.getByRole('region', { name: '测试场景' })).toHaveAttribute('data-host-phase', 'running')
+  move()
+  for (now = deathAt + 20; now <= deathAt + 5000; now += 20) act(() => { frame?.(now) })
+  expect(feedback).toHaveTextContent('生命 1000 / 1000')
+  expect(feedback).not.toHaveTextContent('复活倒计时')
+  for (; now <= deathAt + 10000; now += 20) act(() => { frame?.(now) })
+  const scene = engine!.scene()
+  expect(scene.kind === 'moba' && scene.player.position).toEqual({ x: 180, y: 420 })
+  expect(feedback).toHaveTextContent('死亡 1')
+  expect(feedback.children).toHaveLength(slotCount)
+  expect(session.interrupt).not.toHaveBeenCalled()
+  expect(session.submit).not.toHaveBeenCalled()
+})
+
+it('focuses the complete lane stage synchronously before trial and formal environment allocation, never after running starts', async () => {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({} as WebGL2RenderingContext)
+  const events: string[] = []
+  const focus = vi.fn(() => { events.push('focus') })
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: focus })
+  const task = fixtureMobaV4Config()
+  const session = controller()
+  vi.mocked(session.start).mockImplementation(async value => {
+    events.push('allocate')
+    session.serverView = fixtureAttempt({ suite_id: task.suite_id, test_id: task.test_id, config: task, settings: value.settings, environment: value.environment })
+    return { attempt: session.serverView, leaseMs: 330000 }
+  })
+  render(<AssessmentHost config={task} factory={pcMobaFactory} session={session} onBack={vi.fn()} />)
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' })) })
+  expect(focus).toHaveBeenCalledWith({ block: 'start', inline: 'nearest', behavior: 'instant' })
+  expect(screen.getByLabelText('兵线实时反馈')).toHaveTextContent('试练 ≤20秒')
+  expect(focus.mock.instances[0]).toBe(screen.getByRole('region', { name: '测试场景' }))
+  fireEvent.click(screen.getByRole('button', { name: '结束试练' }))
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '开始正式测试' })) })
+  expect(events).toEqual(['focus', 'focus', 'allocate'])
+})
+
+it('rejects invalid lane viewport before preparation or a formal ticket', async () => {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({} as WebGL2RenderingContext)
+  vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue({ x: 0, y: 0, width: 1000, height: 600, top: 0, left: 0, right: 1000, bottom: 600, toJSON: () => ({}) })
+  const session = controller()
+  render(<AssessmentHost config={fixtureMobaV4Config()} factory={pcMobaFactory} session={session} onBack={vi.fn()} />)
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '检查设备并进入试练' })) })
+  expect(screen.getByRole('alert')).toHaveTextContent('16:9')
+  expect(session.start).not.toHaveBeenCalled()
+  expect(screen.queryByRole('button', { name: '结束试练' })).toBeNull()
 })
 
 it('interrupts a countdown frame stall instead of silently extending the lease', async () => {

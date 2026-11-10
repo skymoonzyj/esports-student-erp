@@ -16,6 +16,7 @@ import {
 import { useEffect, useState } from "react"
 
 import { ProblemDetailsError } from "../api/client"
+import { SystemAppearancePanel } from "../appearance/SystemAppearancePanel"
 import { formatAuditDateTime } from "../shared/date"
 import {
   getOperationsOverview,
@@ -27,6 +28,7 @@ import type {
 } from "./api"
 import "./operations.css"
 import { OperationsHistoryPanel } from "./OperationsHistoryPanel"
+import { OperationsRequestErrorsPanel } from "./OperationsRequestErrorsPanel"
 
 const REFRESH_INTERVAL_SECONDS = 30
 const windowOptions = [
@@ -237,6 +239,7 @@ export function OperationsMonitorPage() {
   if (overview.isPending) {
     return (
       <main className="operationsPage">
+        <SystemAppearancePanel key="system-appearance" />
         <div className="operationsInitialState" aria-live="polite">
           <Activity aria-hidden="true" />
           <p>正在汇总运行状态...</p>
@@ -248,6 +251,7 @@ export function OperationsMonitorPage() {
   if (overview.isError || !overview.data) {
     return (
       <main className="operationsPage">
+        <SystemAppearancePanel key="system-appearance" />
         <div className="operationsInitialState operationsInitialState--error" role="alert">
           <ShieldAlert aria-hidden="true" />
           <strong>运维数据读取失败</strong>
@@ -309,6 +313,7 @@ export function OperationsMonitorPage() {
         </div>
       </header>
 
+      <SystemAppearancePanel key="system-appearance" />
       <section className="operationsSummaryGrid" aria-label="服务运行概览">
         <article className="operationsPanel operationsHealthPanel">
           <HealthGauge score={data.health.score} status={data.health.status} />
@@ -442,6 +447,7 @@ export function OperationsMonitorPage() {
         </article>
       </section>
       <OperationsHistoryPanel autoRefresh={autoRefresh} />
+      <OperationsRequestErrorsPanel />
     </main>
   )
 }

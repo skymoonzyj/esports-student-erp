@@ -16,6 +16,7 @@ from app.rbac.seed import (
     ROLE_PERMISSION_GRANTS,
     ROLES,
     SELF_SCOPE_ONLY_PERMISSIONS,
+    seed_roles_and_permissions,
 )
 from app.rbac.service import RbacService
 
@@ -147,6 +148,41 @@ ASSET_PERMISSION_KEYS = {
 }
 
 
+def test_seed_restores_only_the_five_administration_global_team_grants(db: Session) -> None:
+    expected = {
+        ("professional_teams.manage", "global"),
+        ("team_memberships.read", "global"),
+        ("team_memberships.manage", "global"),
+        ("team_memberships.transfer", "global"),
+        ("team_manager_assignments.manage", "global"),
+    }
+    role_id = db.scalar(select(Role.id).where(Role.key == "administration"))
+    db.execute(
+        delete(RolePermission).where(
+            RolePermission.role_id == role_id,
+            RolePermission.permission_id.in_(
+                select(Permission.id).where(Permission.key.in_({key for key, _ in expected}))
+            ),
+            RolePermission.scope_kind == "global",
+        )
+    )
+
+    def grants() -> set[tuple[str, str]]:
+        return set(
+            db.execute(
+                select(Permission.key, RolePermission.scope_kind)
+                .join(RolePermission, RolePermission.permission_id == Permission.id)
+                .where(RolePermission.role_id == role_id)
+            ).tuples()
+        )
+
+    before = grants()
+    seed_roles_and_permissions(db)
+    assert grants() == before | expected
+    seed_roles_and_permissions(db)
+    assert grants() == before | expected
+
+
 def test_finance_role_and_revenue_share_permissions_are_least_privilege_seeded(
     postgres_engine: Engine,
 ) -> None:
@@ -231,11 +267,16 @@ def test_finance_role_and_revenue_share_permissions_are_least_privilege_seeded(
         ("travel_reports.import", "global"),
         ("travel_reports.export", "global"),
     }
-    assert self_revenue_share_roles == set(ROLES) - {
-        "student",
-        "registered_user",
-        "team_member",
-        "team_manager",
+    assert self_revenue_share_roles == {
+        "super_admin",
+        "admin",
+        "coach",
+        "customer_service",
+        "life_teacher",
+        "staff",
+        "guardian",
+        "administration",
+        "finance",
     }
     assert self_referral_roles == {"super_admin", "admin", "coach"}
 
@@ -355,6 +396,8 @@ def test_asset_permissions_are_limited_to_personal_access_except_for_asset_opera
         "registered_user": set(),
         "team_member": set(),
         "team_manager": set(),
+        "property": set(),
+        "assistant_coach": set(),
     }
 
 
@@ -372,6 +415,9 @@ def test_super_admin_and_operations_roles_are_least_privilege_seeded(
         "housing.checkouts.manage",
         "housing.issues.manage",
         "housing.reports.export_sensitive",
+        "housing.changes.review",
+        "housing.keycards.manage",
+        "housing.exports.basic",
         "food_preferences.read",
         "food_preferences.export",
         "assets.read",
@@ -389,6 +435,12 @@ def test_super_admin_and_operations_roles_are_least_privilege_seeded(
         "travel_reports.export",
         "personnel_intake.submit",
         "personnel_intake.housing.read",
+        "personnel_intake.review",
+        "professional_teams.manage",
+        "team_memberships.read",
+        "team_memberships.manage",
+        "team_memberships.transfer",
+        "team_manager_assignments.manage",
     }
     with Session(postgres_engine) as db:
         role_names = {
@@ -455,8 +507,11 @@ def test_super_admin_and_operations_roles_are_least_privilege_seeded(
             "audit.read",
             "mail.settings.manage",
             "operations.monitor.read",
+            "operations.appearance.manage",
             "project_coaches.manage",
             "housing.history.void",
+            "reactionx.manage",
+            "reactionx.conduct",
         }
         - ADMIN_OPERATIONAL_FINANCE_PERMISSIONS
         - ADMIN_GLOBAL_ASSET_PERMISSIONS
@@ -468,7 +523,7 @@ def test_super_admin_and_operations_roles_are_least_privilege_seeded(
     assert grants["coach"] & set(HOUSING_PERMISSION_IDS) == set()
 
 
-def test_personnel_intake_grants_keep_review_admin_only(postgres_engine: Engine) -> None:
+def test_personnel_intake_grants_include_administration_direct_creation(postgres_engine: Engine) -> None:
     with Session(postgres_engine) as db:
         grants = set(
             db.execute(
@@ -486,8 +541,8 @@ def test_personnel_intake_grants_keep_review_admin_only(postgres_engine: Engine)
             "personnel_intake.housing.read",
             "personnel_intake.review",
         )
-        if permission != "personnel_intake.review" or role in {"admin", "super_admin"}
-    }
+        if permission != "personnel_intake.review" or role in {"admin", "super_admin", "administration"}
+    } | {("assistant_coach", "personnel_intake.housing.read", "global")}
 
 
 def test_registration_review_permissions_are_sensitive_and_admin_only(
@@ -667,6 +722,28 @@ def test_housing_permissions_and_least_privilege_grants_are_seeded(
         },
         ("student", "housing.read", "self"),
         ("guardian", "housing.read", "family"),
+        ("property", "housing.read", "global"),
+    }
+
+
+def test_property_role_has_only_approved_housing_grants(postgres_engine: Engine) -> None:
+    with Session(postgres_engine) as db:
+        grants = set(
+            db.execute(
+                select(Permission.key, RolePermission.scope_kind)
+                .join(RolePermission, RolePermission.permission_id == Permission.id)
+                .join(Role, Role.id == RolePermission.role_id)
+                .where(Role.key == "property")
+            ).tuples()
+        )
+
+    # Exact grants also deny assets, finance/revenue share, invited housing,
+    # legacy room/stay writes, sensitive exports and approval authority.
+    assert grants == {
+        ("housing.read", "global"),
+        ("housing.changes.submit", "global"),
+        ("housing.keycards.manage", "global"),
+        ("housing.exports.basic", "global"),
     }
 
 
@@ -745,6 +822,7 @@ def test_teaching_projects_permissions_and_grants_are_seeded(
     assert permissions == teaching_permission_keys
     assert grants == {
         *_administrator_grants(teaching_permission_keys),
+        ("administration", "professional_teams.manage", "global"),
         ("customer_service", "teaching.read", "global"),
         ("coach", "teaching.read", "assigned_class"),
         ("guardian", "teaching.read", "family"),

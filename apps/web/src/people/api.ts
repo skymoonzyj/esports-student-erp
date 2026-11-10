@@ -1,9 +1,12 @@
 import { apiFetch } from "../api/client"
 import type { PersonTeamProjection } from "../teams/api"
+import type { PersonDocumentType } from "../assistedPeople/documentFacts"
 
 export type PersonType = "student" | "guardian" | "staff" | "visitor"
 export type StaffType =
+  | "team_manager"
   | "coach"
+  | "assistant_coach"
   | "life_teacher"
   | "customer_service"
   | "administration"
@@ -37,7 +40,7 @@ export type PersonSummary = {
   email: string | null
   sex: "male" | "female" | null
   date_of_birth: string | null
-  document_type?: "cn_id" | "passport"
+  document_type?: PersonDocumentType
   document_issuing_country?: string | null
   intake_mode?: "strict" | "pending"
   staff_type: StaffType | null
@@ -71,6 +74,8 @@ export type PersonCounts = {
   guardian: number
   staff: number
   coach: number
+  staff_team_manager: number
+  assistant_coach: number
   life_teacher: number
   customer_service: number
   administration: number
@@ -90,6 +95,7 @@ export type PersonDetail = PersonSummary & {
   visit_reason: string | null
   linked_student_id: string | null
   account_management_allowed?: boolean
+  activation_roles_available?: boolean
 }
 
 export type StaffPersonProfile = {

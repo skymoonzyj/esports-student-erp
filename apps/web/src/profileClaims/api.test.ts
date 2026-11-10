@@ -6,6 +6,46 @@ const input = { full_name: "  测试本人  ", identity_number: " 11010519900102
 const started = { accepted: true, resend_available_at: "2026-10-20T01:01:00Z", expires_at: "2026-10-20T01:10:00Z" }
 afterEach(() => { clearProfileClaimSession(); setCsrfToken(null); vi.unstubAllGlobals() })
 
+it("sends explicitly typed canonical return permits for person and guardian without invented facts", async () => {
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(started))
+  vi.stubGlobal("fetch", fetcher)
+  await startProfileClaim({ ...input, document_type: "hk_mo_permit", identity_number: " h1234567801 ", issuing_country: null, completion: {
+    guardians: [{ full_name: "合成监护", document_type: "hk_mo_permit", document_issuing_country: null, identity_number: "m8765432102", phone: "13800000000", relationship: "母亲", sex: "female", date_of_birth: "1980-01-02" }],
+  } })
+  expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({ document_type: "hk_mo_permit", identity_number: "H12345678", issuing_country: null, completion: {
+    sex: null, date_of_birth: null, guardians: [{ document_type: "hk_mo_permit", identity_number: "M87654321", date_of_birth: "1980-01-02", sex: "female" }],
+  } })
+})
+
+it.each(["H1234 5678", "H123456789", "H１２３４５６７８", "A12345678"])("rejects malformed return permit %s and any person or guardian issuer", async (identity_number) => {
+  const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher)
+  await expect(startProfileClaim({ ...input, document_type: "hk_mo_permit", identity_number })).rejects.toThrow()
+  for (const issuer of ["HK", "CN", "MO"]) {
+    await expect(startProfileClaim({ ...input, document_type: "hk_mo_permit", identity_number: "H12345678", issuing_country: issuer })).rejects.toThrow()
+    await expect(startProfileClaim({ ...input, document_type: "hk_mo_permit", identity_number: "H12345678", completion: { issuing_country: issuer } })).rejects.toThrow()
+    await expect(startProfileClaim({ ...input, completion: { guardians: [{ full_name: "合成监护", document_type: "hk_mo_permit", document_issuing_country: issuer, identity_number: "M87654321", phone: "13800000000", relationship: "母亲", sex: "female", date_of_birth: "1980-01-02" }] } })).rejects.toThrow()
+  }
+  expect(fetcher).not.toHaveBeenCalled()
+})
+
+it("normalizes HK claims and guardian documents without fabricating birth or sex", async () => {
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(started))
+  vi.stubGlobal("fetch", fetcher)
+  await startProfileClaim({ ...input, document_type: "hk_id", identity_number: " ab123456（9） ", completion: {
+    guardians: [{ full_name: "测试监护", document_type: "hk_id", identity_number: "a1234563", phone: "13800000000", relationship: "父亲", sex: "male", date_of_birth: "1990-01-02" }],
+  } } as never)
+  expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({ document_type: "hk_id", identity_number: "AB1234569", completion: {
+    sex: null, date_of_birth: null, guardians: [{ document_type: "hk_id", identity_number: "A1234563" }],
+  } })
+})
+
+it.each(["A123456(0)", "A123456(3", "Ａ123456(3)", "A123456（3)", "A123456(3）", "ß1234568"])("rejects malformed HKID %s and a false HK issuing domain before transport", async (identity_number) => {
+  const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher)
+  await expect(startProfileClaim({ ...input, document_type: "hk_id", identity_number } as never)).rejects.toThrow()
+  await expect(startProfileClaim({ ...input, document_type: "hk_id", identity_number: "A123456(3)", issuing_country: "CN" } as never)).rejects.toThrow()
+  expect(fetcher).not.toHaveBeenCalled()
+})
+
 it("uses independent private POST transport without formal auth CSRF or sensitive URL fields", async () => {
   setCsrfToken("formal-auth-secret")
   const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(started))

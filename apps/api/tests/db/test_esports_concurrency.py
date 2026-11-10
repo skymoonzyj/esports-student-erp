@@ -7,12 +7,14 @@ from queue import Queue
 from threading import Barrier, Event
 from time import monotonic
 from typing import Any
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import Engine, func, select, text
 from sqlalchemy.orm import Session
 
+from app.esports_assessments.catalog import get_suite
 from app.esports_assessments.models import (
     AssessmentAttempt,
     AssessmentPracticeRun,
@@ -46,6 +48,15 @@ def committed_actor(postgres_engine):
     actor = committed_assessment_actor(postgres_engine)
     yield actor.account_id, actor.person_id
     cleanup_assessment_actor(postgres_engine, actor.person_id)
+
+
+def _create_versioned_session(service, actor, catalog_version):
+    """Freeze historical creation only; v5 exercises the actual current default."""
+    if catalog_version == "pc-fps-v5":
+        return service.create(actor, session_request(), NOW)
+    frozen = get_suite("pc-fps", catalog_version=catalog_version)
+    with patch("app.esports_assessments.catalog.get_suite", return_value=frozen):
+        return service.create(actor, session_request(), NOW)
 
 
 def _backend_pid(db: Session) -> int:
@@ -161,16 +172,26 @@ def test_concurrent_session_create_is_linearizable(postgres_engine, committed_ac
         assert counts(db, person_id, account_id) == (1, 0, 0, 0, 1)
 
 
+@pytest.mark.parametrize(
+    ("catalog_version", "test_ids"),
+    [
+        ("pc-fps-v3", ("precision", "tracking", "switching", "recognition")),
+        ("pc-fps-v4", ("gridshot", "sixshot", "spheretrack90")),
+        ("pc-fps-v5", ("gridshot", "sixshot", "spheretrack90")),
+    ],
+)
 def test_concurrent_last_submit_creates_one_result_report_and_completion_audit(
-    postgres_engine, committed_actor
+    postgres_engine, committed_actor, catalog_version, test_ids
 ):
     from app.esports_assessments.formal_service import FormalAssessmentService
 
     account_id, person_id = committed_actor
     with Session(postgres_engine) as db:
         service, actor = FormalAssessmentService(db), reload_actor(db, account_id)
-        session = service.create(actor, session_request(), NOW)
-        for index, test_id in enumerate(("precision", "tracking", "switching")):
+        session = _create_versioned_session(service, actor, catalog_version)
+        assert session.suite_config.catalog_version == catalog_version
+        assert tuple(session.members) == test_ids
+        for index, test_id in enumerate(test_ids[:-1]):
             started_at = NOW + timedelta(seconds=90 * index)
             attempt = service.start_attempt(
                 actor, session.id, attempt_request("pc-fps", test_id), started_at
@@ -189,12 +210,12 @@ def test_concurrent_last_submit_creates_one_result_report_and_completion_audit(
         last = service.start_attempt(
             actor,
             session.id,
-            attempt_request("pc-fps", "recognition"),
-            NOW + timedelta(seconds=270),
+            attempt_request("pc-fps", test_ids[-1]),
+            NOW + timedelta(seconds=90 * (len(test_ids) - 1)),
         )
         request = result_request(
             "pc-fps",
-            "recognition",
+            test_ids[-1],
             seed=last.seed,
             catalog_version=last.config.catalog_version,
         )
@@ -208,7 +229,7 @@ def test_concurrent_last_submit_creates_one_result_report_and_completion_audit(
                 actor,
                 last.id,
                 request,
-                NOW + timedelta(seconds=333),
+                NOW + timedelta(seconds=90 * (len(test_ids) - 1) + 63),
             )
             return saved.result_id, saved.session.report_id
 
@@ -216,7 +237,7 @@ def test_concurrent_last_submit_creates_one_result_report_and_completion_audit(
         outcomes = [future.result(20) for future in [pool.submit(run) for _ in range(2)]]
     assert outcomes[0] == outcomes[1]
     with Session(postgres_engine) as db:
-        assert counts(db, person_id, account_id) == (1, 4, 4, 1, 2)
+        assert counts(db, person_id, account_id) == (1, len(test_ids), len(test_ids), 1, 2)
         assert db.get(AssessmentSession, session.id).status == "completed"
         assert (
             db.scalar(select(AssessmentReport.id).where(AssessmentReport.session_id == session.id))
@@ -234,11 +255,11 @@ def test_abandon_and_submit_have_one_ordered_winner(postgres_engine, committed_a
         service, actor = FormalAssessmentService(db), reload_actor(db, account_id)
         session = service.create(actor, session_request(), NOW)
         attempt = service.start_attempt(
-            actor, session.id, attempt_request("pc-fps", "precision"), NOW
+            actor, session.id, attempt_request("pc-fps", "gridshot"), NOW
         )
         request = result_request(
             "pc-fps",
-            "precision",
+            "gridshot",
             seed=attempt.seed,
             catalog_version=attempt.config.catalog_version,
         )
@@ -295,7 +316,7 @@ def test_concurrent_formal_and_practice_start_share_one_account_lease(
                     view = FormalAssessmentService(db).start_attempt(
                         actor,
                         session.id,
-                        attempt_request("pc-fps", "precision"),
+                        attempt_request("pc-fps", "gridshot"),
                         NOW,
                     )
                 else:
@@ -352,7 +373,7 @@ def test_concurrent_formal_and_practice_start_share_one_account_lease(
             fresh = FormalAssessmentService(db).start_attempt(
                 actor,
                 session.id,
-                attempt_request("pc-fps", "precision"),
+                attempt_request("pc-fps", "gridshot"),
                 later,
             )
             stale = db.get(AssessmentPracticeRun, winner_id)
@@ -379,10 +400,12 @@ def test_concurrent_formal_and_practice_start_share_one_account_lease(
 
 
 @pytest.mark.parametrize("first", ["deny", "submit"])
+@pytest.mark.parametrize("catalog_version", ["pc-fps-v4", "pc-fps-v5"])
 def test_permission_change_and_final_submit_have_one_authorized_order(
     postgres_engine,
     committed_actor,
     first,
+    catalog_version,
 ) -> None:
     from app.esports_assessments.errors import AssessmentForbidden
     from app.esports_assessments.formal_service import FormalAssessmentService
@@ -392,13 +415,29 @@ def test_permission_change_and_final_submit_have_one_authorized_order(
     manager = committed_assessment_actor(postgres_engine)
     try:
         with Session(postgres_engine) as db:
+            # Management requires completion of the temporary-password onboarding.
+            reload_actor(db, manager.account_id).account.force_password_change = False
             db.add(UserRole(user_id=manager.account_id, role_id=ROLES["super_admin"].id))
             db.commit()
         with Session(postgres_engine) as db:
+            manager_actor = reload_actor(db, manager.account_id)
+            assert manager_actor.account.status == "active"
+            assert manager_actor.account.force_password_change is False
+            assert (
+                RbacService(db)
+                .decide(
+                    user_id=manager.account_id,
+                    permission="permissions.manage",
+                    resource_tokens={"global"},
+                )
+                .allowed
+            )
             service = FormalAssessmentService(db)
             actor = reload_actor(db, account_id)
-            session = service.create(actor, session_request(), NOW)
-            for index, test_id in enumerate(("precision", "tracking", "switching")):
+            session = _create_versioned_session(service, actor, catalog_version)
+            assert session.suite_config.catalog_version == catalog_version
+            assert tuple(session.members) == ("gridshot", "sixshot", "spheretrack90")
+            for index, test_id in enumerate(("gridshot", "sixshot")):
                 started_at = NOW + timedelta(seconds=index * 90)
                 attempt = service.start_attempt(
                     actor,
@@ -420,12 +459,12 @@ def test_permission_change_and_final_submit_have_one_authorized_order(
             last = service.start_attempt(
                 actor,
                 session.id,
-                attempt_request("pc-fps", "recognition"),
-                NOW + timedelta(seconds=270),
+                attempt_request("pc-fps", "spheretrack90"),
+                NOW + timedelta(seconds=180),
             )
             request = result_request(
                 "pc-fps",
-                "recognition",
+                "spheretrack90",
                 seed=last.seed,
                 catalog_version=last.config.catalog_version,
             )
@@ -443,7 +482,7 @@ def test_permission_change_and_final_submit_have_one_authorized_order(
                     reload_actor(db, account_id),
                     last.id,
                     request,
-                    NOW + timedelta(seconds=333),
+                    NOW + timedelta(seconds=243),
                 )
             except AssessmentForbidden:
                 return "forbidden"
@@ -480,7 +519,7 @@ def test_permission_change_and_final_submit_have_one_authorized_order(
             if first == "deny":
                 assert outcomes[1] == "forbidden"
                 assert assessment_counts(db, person_id) == {
-                    "formal_results": 3,
+                    "formal_results": 2,
                     "formal_reports": 0,
                     "practice_results": 0,
                 }
@@ -489,7 +528,7 @@ def test_permission_change_and_final_submit_have_one_authorized_order(
                 saved = outcomes[0]
                 assert saved.session.report_id is not None
                 assert assessment_counts(db, person_id) == {
-                    "formal_results": 4,
+                    "formal_results": 3,
                     "formal_reports": 1,
                     "practice_results": 0,
                 }
@@ -498,12 +537,12 @@ def test_permission_change_and_final_submit_have_one_authorized_order(
                         reload_actor(db, account_id),
                         last.id,
                         request,
-                        NOW + timedelta(seconds=331),
+                        NOW + timedelta(seconds=241),
                     )
             assert db.scalar(
                 select(func.count())
                 .select_from(AssessmentResult)
                 .where(AssessmentResult.session_id == session.id)
-            ) == (3 if first == "deny" else 4)
+            ) == (2 if first == "deny" else 3)
     finally:
         cleanup_assessment_actor(postgres_engine, manager.person_id)

@@ -353,6 +353,49 @@ it("filters, creates, edits, and deactivates professional teams", async () => {
   )
 })
 
+it("opens catalog-only administrators directly on teams with usable create and edit forms, not teaching or project management", async () => {
+  const user = userEvent.setup()
+  const team = {
+    id: "60000000-0000-4000-8000-000000000001", project_id: activeProject.id,
+    name: "行政管理队伍", notes: null, is_active: true,
+    created_at: activeProject.created_at, updated_at: activeProject.updated_at,
+  }
+  api.listProfessionalTeams.mockResolvedValue({ items: [team], page: 1, page_size: 20, total: 1 })
+  api.createProfessionalTeam.mockResolvedValue(team)
+  api.updateProfessionalTeam.mockResolvedValue(team)
+  renderPage(["professional_teams.manage"])
+
+  expect(await screen.findByRole("tab", { name: "职业队伍" })).toHaveAttribute("aria-selected", "true")
+  await screen.findByText("行政管理队伍")
+  expect(screen.queryByRole("tab", { name: "电竞项目" })).not.toBeInTheDocument()
+  expect(screen.queryByRole("navigation", { name: "招生教学二级导航" })).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: /新增项目|编辑 英雄联盟|配置.*教练/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole("table", { name: "电竞项目列表" })).not.toBeInTheDocument()
+  expect(api.listProjects).toHaveBeenCalledTimes(1)
+  expect(api.listProjects).toHaveBeenCalledWith({ includeInactive: true, page: 1, pageSize: 100 })
+  expect(api.getProjectCoaches).not.toHaveBeenCalled()
+  expect(teamApi.getTeamContext).not.toHaveBeenCalled()
+
+  await user.click(screen.getByRole("button", { name: "新增队伍" }))
+  const createDialog = screen.getByRole("dialog", { name: "新增队伍" })
+  expect(within(createDialog).queryByRole("checkbox", { name: "用作队伍分部" })).not.toBeInTheDocument()
+  await user.selectOptions(within(createDialog).getByLabelText("所属项目"), activeProject.id)
+  await user.type(within(createDialog).getByLabelText("队伍名称"), "行政新队伍")
+  await user.click(within(createDialog).getByRole("button", { name: "保存队伍" }))
+  await waitFor(() => expect(api.createProfessionalTeam).toHaveBeenCalledWith({ project_id: activeProject.id, name: "行政新队伍", notes: null }))
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+
+  await user.click(screen.getByRole("button", { name: "编辑 行政管理队伍" }))
+  const editDialog = screen.getByRole("dialog", { name: "编辑队伍" })
+  expect(within(editDialog).getByLabelText("所属项目")).toBeDisabled()
+  await user.clear(within(editDialog).getByLabelText("队伍名称"))
+  await user.type(within(editDialog).getByLabelText("队伍名称"), "行政队伍新名称")
+  await user.click(within(editDialog).getByRole("button", { name: "保存队伍" }))
+  await waitFor(() => expect(api.updateProfessionalTeam).toHaveBeenCalledWith(team.id, { name: "行政队伍新名称", notes: null }))
+  expect(api.createProject).not.toHaveBeenCalled()
+  expect(api.updateProject).not.toHaveBeenCalled()
+})
+
 it("opens the desktop project filters by default", async () => {
   renderPage(["teaching.read"])
 

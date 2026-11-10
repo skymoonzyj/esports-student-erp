@@ -11,10 +11,18 @@ from pydantic import (
     Field,
     ModelWrapValidatorHandler,
     SecretStr,
+    StrictStr,
     field_validator,
     model_validator,
 )
 
+from app.identity.document_identity import DocumentType
+from app.personnel_intake.identity_selection import (  # noqa: F401
+    IdentityKey,
+    ManagedIdentityInput,
+    ResolvedIntakeIdentity,
+    StaffTeamSelection,
+)
 from app.referrals.schemas import InvitedHousingStatus, InvitedHousingSummary
 
 PersonKind = Literal["student", "player", "both", "staff"]
@@ -26,6 +34,8 @@ class AssistedGuardianInput(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     full_name: str = Field(min_length=1, max_length=80)
     identity_number: SecretStr
+    document_type: Literal["cn_id", "hk_id", "hk_mo_permit"] = "cn_id"
+    document_issuing_country: str | None = None
     phone: SecretStr
     email: SecretStr | None = None
     relationship: str = Field(min_length=2, max_length=40)
@@ -38,6 +48,8 @@ class AssistedPersonFields(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     full_name: str = Field(min_length=1, max_length=80)
     identity_number: SecretStr
+    document_type: Literal["cn_id", "hk_id", "hk_mo_permit"] = "cn_id"
+    document_issuing_country: str | None = None
     phone: SecretStr
     email: SecretStr | None = None
     sex: Literal["male", "female"]
@@ -57,6 +69,41 @@ class IntakeInput(AssistedPersonFields):
     team_id: UUID | None = None
 
 
+class DirectPersonInput(AssistedPersonFields):
+    kind: PersonKind
+    coach_person_ids: list[UUID] = Field(default_factory=list)
+    team_id: UUID | None = None
+
+
+class ActivationRoleUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role_keys: list[StrictStr]
+    expected_version: int = Field(ge=0, strict=True)
+    idempotency_key: UUID
+    confirm_end_staff_positions: bool = False
+
+
+class ActivationRoleOption(BaseModel):
+    key: str
+    name: str
+    assignable: bool
+    reason: str | None
+    requestable: bool = False
+
+
+class ActivationRoleOptions(BaseModel):
+    items: list[ActivationRoleOption]
+
+
+class ActivationRoleView(BaseModel):
+    person_id: UUID
+    version: int
+    role_keys: list[str]
+    role_names: list[str]
+    can_edit: bool
+    account_activated: bool
+
+
 class AssistedProfileCorrection(AssistedPersonFields):
     expected_version: int = Field(ge=1)
     reason: str = Field(min_length=1, max_length=500)
@@ -67,6 +114,8 @@ class AssistedGuardianView(BaseModel):
     model_config = ConfigDict(extra="forbid")
     full_name: str
     identity_number: str
+    document_type: Literal["cn_id", "hk_id", "hk_mo_permit"] = "cn_id"
+    document_issuing_country: str | None = None
     phone: str
     email: str | None
     relationship: str
@@ -79,9 +128,11 @@ class IntakePayloadView(BaseModel):
     """Decrypted only after detail authorization; never serialize an input model."""
 
     model_config = ConfigDict(extra="forbid")
-    kind: Literal["student", "player", "both"]
+    kind: PersonKind
     full_name: str
     identity_number: str
+    document_type: Literal["cn_id", "hk_id", "hk_mo_permit"] = "cn_id"
+    document_issuing_country: str | None = None
     phone: str
     email: str | None
     sex: Literal["male", "female"]
@@ -95,7 +146,7 @@ class PendingPersonFields(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     full_name: str = Field(min_length=1, max_length=80)
     identity_number: SecretStr
-    document_type: Literal["cn_id", "passport"] = "cn_id"
+    document_type: DocumentType = "cn_id"
     document_issuing_country: str | None = None
     phone: SecretStr | None = None
     email: SecretStr | None = None
@@ -143,7 +194,7 @@ class PendingIntakePayloadView(BaseModel):
     kind: PersonKind
     full_name: str
     identity_number: str
-    document_type: Literal["cn_id", "passport"]
+    document_type: DocumentType
     document_issuing_country: str | None
     phone: str | None
     email: str | None

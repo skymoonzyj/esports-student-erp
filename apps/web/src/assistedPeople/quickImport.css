@@ -1,0 +1,14 @@
+.quickImportPanel { margin-block: 1rem; padding: clamp(1rem, 2vw, 1.5rem); border: 1px solid var(--border-color, #d9dfeb); border-radius: 12px; background: var(--surface, #fff); }
+.quickImportSource { display: grid; gap: .5rem; font-weight: 600; }
+.quickImportSource textarea { width: 100%; box-sizing: border-box; padding: .75rem; resize: vertical; font: inherit; }
+.quickImportActions { display: flex; flex-wrap: wrap; gap: .75rem; margin-block: .75rem; }
+.quickImportTableWrap { overflow-x: auto; margin-block: 1rem; }
+.quickImportPanel table { border-collapse: collapse; min-width: 780px; width: 100%; }
+.quickImportPanel th, .quickImportPanel td { padding: .75rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border-color, #d9dfeb); }
+.quickImportPanel td span, .quickImportPanel td strong { display: block; }
+.quickImportPanel td p { margin: .25rem 0; }
+.quickImportPanel select { display: block; max-width: 230px; margin-top: .5rem; }
+.quickImportError { color: var(--danger, #a12622); }
+.quickImportSuccess { color: var(--success, #176841); }
+.quickImportConfirm { display: flex; align-items: flex-start; gap: .5rem; margin-block: 1rem; }
+.quickImportConfirm input { flex: 0 0 auto; }

@@ -21,3 +21,8 @@ it("does not infer hidden or historical team allocation as pending", () => {
 it("shows missing birth date as unknown rather than adult or zero years", () => {
   expect(ageText(null)).toBe("年龄待补")
 })
+
+it("labels main team staff classifications independently of concurrent account roles", () => {
+  expect(personTypeText(["staff"], "team_manager", [{ key: "coach", name: "教练" }])).toBe("工作人员 · 战队经理")
+  expect(personTypeText(["staff"], "assistant_coach", [{ key: "team_member", name: "队员" }])).toBe("工作人员 · 助教 · 队员")
+})

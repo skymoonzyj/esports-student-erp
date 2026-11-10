@@ -159,7 +159,9 @@ class GuardianReadinessPolicy:
         self._refresh_lock_transaction()
         self._locked_guardian_ids.add(guardian_person_id)
 
-    def lock_students(self, student_person_ids: Iterable[UUID]) -> list[Person]:
+    def lock_students(
+        self, student_person_ids: Iterable[UUID], *, no_key_update: bool = False
+    ) -> list[Person]:
         self._refresh_lock_transaction()
         requested_ids = set(student_person_ids)
         ordered_ids = sorted(requested_ids - self._locked_person_ids)
@@ -172,7 +174,7 @@ class GuardianReadinessPolicy:
                 select(Person)
                 .where(Person.id.in_(ordered_ids))
                 .order_by(Person.id)
-                .with_for_update()
+                .with_for_update(key_share=no_key_update)
                 .execution_options(populate_existing=True)
             )
         )

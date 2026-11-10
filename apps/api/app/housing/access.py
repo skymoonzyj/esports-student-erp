@@ -27,6 +27,10 @@ _HOUSING_PERMISSIONS = frozenset(
         "housing.issues.manage",
         "housing.reports.export_sensitive",
         "housing.history.void",
+        "housing.changes.submit",
+        "housing.changes.review",
+        "housing.keycards.manage",
+        "housing.exports.basic",
     }
 )
 REPORT_PERMISSION = "housing.reports.export_sensitive"
@@ -69,8 +73,8 @@ class HousingAccessService:
 
     @property
     def owner_only(self) -> bool:
-        return bool(self.roles & {"coach", "team_manager"}) and not bool(
-            self.roles & {"administration", "admin", "super_admin"}
+        return bool(self.roles & {"coach", "team_manager", "assistant_coach"}) and not bool(
+            self.roles & {"administration", "admin", "super_admin", "property"}
         )
 
     @staticmethod
@@ -90,6 +94,8 @@ class HousingAccessService:
         return cls.floor_tokens(room.building_id, room.floor_id)
 
     def can(self, permission: str, resource_tokens: set[str]) -> bool:
+        if not self._role_allows_permission(permission):
+            return False
         if self.owner_only and permission in _HOUSING_PERMISSIONS:
             if permission != "housing.read":
                 return False
@@ -106,6 +112,23 @@ class HousingAccessService:
                 ],
             ).allowed
         return self.context.decide(permission, resource_tokens).allowed
+
+    def _role_allows_permission(self, permission: str) -> bool:
+        role_gates = {
+            "housing.changes.submit": {"property", "administration", "super_admin"},
+            "housing.changes.review": {"administration", "super_admin"},
+            "housing.keycards.manage": {"property", "administration", "super_admin"},
+            "housing.exports.basic": {"property", "administration", "super_admin"},
+        }
+        if permission in role_gates and not self.roles & role_gates[permission]:
+            return False
+        # A property-only identity cannot turn independent grants into a bypass
+        # of the approval boundary. Preserve legitimate mixed operational roles.
+        return not (
+            "property" in self.roles
+            and not self.roles & {"admin", "administration", "super_admin"}
+            and permission in _HOUSING_PERMISSIONS - {"housing.read", *role_gates}
+        )
 
     @staticmethod
     def _any_sql(conditions: list[ColumnElement[bool]]) -> ColumnElement[bool]:
@@ -152,6 +175,8 @@ class HousingAccessService:
         return self._any_sql([self._floor_scope_criteria(rule) for rule in rules])
 
     def room_permission_criteria(self, permission: str) -> ColumnElement[bool]:
+        if not self._role_allows_permission(permission):
+            return false()
         if self.owner_only and permission in _HOUSING_PERMISSIONS:
             return false()
         matching_overrides = [
@@ -174,11 +199,11 @@ class HousingAccessService:
         self,
         *permissions: str,
     ) -> ColumnElement[bool]:
-        return and_(
-            *(self.room_permission_criteria(permission) for permission in permissions)
-        )
+        return and_(*(self.room_permission_criteria(permission) for permission in permissions))
 
     def floor_permission_criteria(self, permission: str) -> ColumnElement[bool]:
+        if not self._role_allows_permission(permission):
+            return false()
         if self.owner_only and permission in _HOUSING_PERMISSIONS:
             return false()
         matching_overrides = [
@@ -201,9 +226,7 @@ class HousingAccessService:
         self,
         *permissions: str,
     ) -> ColumnElement[bool]:
-        return and_(
-            *(self.floor_permission_criteria(permission) for permission in permissions)
-        )
+        return and_(*(self.floor_permission_criteria(permission) for permission in permissions))
 
     @property
     def access_revision(self) -> str:
@@ -224,6 +247,7 @@ class HousingAccessService:
         ]
         canonical = json.dumps(
             sorted(rules)
+            + [("identity", role, "allow", "global", "") for role in sorted(self.roles)]
             + ([("boundary", "owner_only", "deny", "global", "")] if self.owner_only else []),
             separators=(",", ":"),
         )
@@ -252,6 +276,60 @@ class HousingAccessService:
 
     def can_manage_room(self, room: HousingRoom) -> bool:
         return self.can("housing.rooms.manage", self.room_tokens(room))
+
+    @property
+    def has_keycard_role(self) -> bool:
+        return bool(self.roles & {"property", "administration", "super_admin"})
+
+    @property
+    def has_global_room_card_role(self) -> bool:
+        return bool(self.roles & {"administration", "super_admin"})
+
+    def can_manage_keycards(self, room: HousingRoom) -> bool:
+        return self.can_read_room(room) and self.can(
+            "housing.keycards.manage", self.room_tokens(room)
+        )
+
+    def keycard_room_criteria(self) -> ColumnElement[bool]:
+        return self.room_permissions_criteria("housing.read", "housing.keycards.manage")
+
+    def can_submit_changes(self, room: HousingRoom) -> bool:
+        permission = (
+            "housing.changes.submit" if "property" in self.roles else "housing.changes.review"
+        )
+        return self.can_read_room(room) and self.can(permission, self.room_tokens(room))
+
+    def submit_changes_criteria(self) -> ColumnElement[bool]:
+        permission = (
+            "housing.changes.submit" if "property" in self.roles else "housing.changes.review"
+        )
+        return self.room_permissions_criteria("housing.read", permission)
+
+    def can_create_property_request(self, room: HousingRoom) -> bool:
+        return (
+            "property" in self.roles
+            and not self.roles & {"administration", "super_admin"}
+            and self.can_read_room(room)
+            and self.can("housing.changes.submit", self.room_tokens(room))
+            and not self.can_manage_room(room)
+        )
+
+    def create_property_request_criteria(self) -> ColumnElement[bool]:
+        if "property" not in self.roles or self.roles & {"administration", "super_admin"}:
+            return false()
+        return self.room_permissions_criteria(
+            "housing.read", "housing.changes.submit"
+        ) & ~self.room_permissions_criteria("housing.rooms.manage")
+
+    def can_review_changes(self, room: HousingRoom) -> bool:
+        return self.can_read_room(room) and self.can(
+            "housing.changes.review", self.room_tokens(room)
+        )
+
+    def can_export_basic(self, room: HousingRoom) -> bool:
+        return self.can_read_room(room) and self.can(
+            "housing.exports.basic", self.room_tokens(room)
+        )
 
     @property
     def has_room_care_role(self) -> bool:
@@ -325,9 +403,7 @@ class HousingAccessService:
             for building in buildings
             if self.can_read_building(
                 building,
-                floors_by_building.get(building.id, ())
-                if floors is not None
-                else None,
+                floors_by_building.get(building.id, ()) if floors is not None else None,
             )
         ]
 

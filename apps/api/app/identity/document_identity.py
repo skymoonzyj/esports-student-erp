@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from datetime import date
 from typing import Literal
@@ -16,7 +17,7 @@ from app.identity.models import Person
 from app.identity.normalization import IdentityValidationError, normalize_cn_id
 from app.security.encryption import LookupDigest
 
-DocumentType = Literal["cn_id", "passport"]
+DocumentType = Literal["cn_id", "passport", "hk_id", "hk_mo_permit"]
 # ISO 3166-1 alpha-2 assigned codes, not arbitrary two-letter strings.
 ISO_COUNTRIES = frozenset(
     [
@@ -293,6 +294,42 @@ class DocumentIdentityConflict(ValueError):
     """Same document or ambiguous country requires an authorized manual review."""
 
 
+def normalize_hk_id(number: str) -> str:
+    """Canonical HKID with modulus-11 check; it contains no birth/sex facts."""
+    value = re.sub(r"\s+", "", number)
+    match = re.fullmatch(
+        r"([A-Z]{1,2})([0-9]{6})(?:([0-9A])|\(([0-9A])\)|（([0-9A])）)",
+        value,
+        flags=re.ASCII | re.IGNORECASE,
+    )
+    if match is not None:
+        letters, digits, bare, bracketed, fullwidth = match.groups()
+        letters = letters.upper()
+        check = (bare or bracketed or fullwidth).upper()
+        prefix = [ord(c) - ord("A") + 10 for c in letters]
+        if len(prefix) == 1:
+            prefix.insert(0, 36)
+        values = prefix + [int(c) for c in digits] + [10 if check == "A" else int(check)]
+        if (
+            sum(value * weight for value, weight in zip(values, range(9, 0, -1), strict=True)) % 11
+            == 0
+        ):
+            return letters + digits + check
+    raise IdentityValidationError(
+        field="identity_number", code="invalid_hk_id", message="香港身份证号码或校验字符无效"
+    )
+
+
+def normalize_hk_mo_permit(number: str) -> str:
+    """Keep only the ASCII lifetime number, not the optional renewal counter."""
+    value = number.strip()
+    if re.fullmatch(r"[HhMm][0-9]{8}(?:[0-9]{2})?", value, flags=re.ASCII):
+        return value[:9].upper()
+    raise IdentityValidationError(
+        field="identity_number", code="invalid_hk_mo_permit", message="回乡证号码无效"
+    )
+
+
 def normalize_document_identity(
     document_type: DocumentType,
     number: str,
@@ -318,6 +355,24 @@ def normalize_document_identity(
         if issuing_country not in (None, "CN"):
             invalid("document_issuing_country")
         return NormalizedDocumentIdentity("cn_id", document.number, None, sex, date_of_birth)
+    if document_type == "hk_id":
+        normalized = normalize_hk_id(number)
+        if issuing_country is not None and issuing_country.strip().upper() != "HK":
+            invalid("document_issuing_country")
+        if sex is not None and sex not in ("male", "female"):
+            invalid("sex")
+        if not allow_pending and (sex is None or date_of_birth is None):
+            invalid("sex" if sex is None else "date_of_birth")
+        return NormalizedDocumentIdentity("hk_id", normalized, None, sex, date_of_birth)
+    if document_type == "hk_mo_permit":
+        normalized = normalize_hk_mo_permit(number)
+        if issuing_country is not None:
+            invalid("document_issuing_country")
+        if sex is not None and sex not in ("male", "female"):
+            invalid("sex")
+        if not allow_pending and (sex is None or date_of_birth is None):
+            invalid("sex" if sex is None else "date_of_birth")
+        return NormalizedDocumentIdentity("hk_mo_permit", normalized, None, sex, date_of_birth)
     if document_type != "passport":
         invalid("document_type")
     normalized = number.strip().upper()
@@ -344,6 +399,14 @@ def document_identity_keys(
 ) -> DocumentIdentityKeys:
     if document.document_type == "cn_id":
         return DocumentIdentityKeys(lookup.digest(document.number), None, None)
+    if document.document_type == "hk_id":
+        return DocumentIdentityKeys(
+            lookup.digest_domain("hk-identity", document.number), None, None
+        )
+    if document.document_type == "hk_mo_permit":
+        return DocumentIdentityKeys(
+            lookup.digest_domain("hk-mo-permit-identity", document.number), None, None
+        )
     encoded = json.dumps([document.issuing_country, document.number], separators=(",", ":"))
     return DocumentIdentityKeys(
         lookup.digest_domain("passport-identity", encoded),

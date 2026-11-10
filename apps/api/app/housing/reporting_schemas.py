@@ -43,7 +43,7 @@ class GenerateHousingReportRequest(HousingReportInputModel):
     building_ids: list[UUID] = Field(default_factory=list, max_length=100)
     floor_ids: list[UUID] = Field(default_factory=list, max_length=500)
     cohort_ids: list[UUID] = Field(default_factory=list, max_length=100)
-    person_types: list[ResidentPersonType] = Field(default_factory=list, max_length=7)
+    person_types: list[ResidentPersonType] = Field(default_factory=list, max_length=11)
     purpose: str = Field(min_length=2, max_length=200)
     corrects_batch_id: UUID | None = None
 

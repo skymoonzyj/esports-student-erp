@@ -20,6 +20,7 @@ from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.models import Base
+from app.team_management import person_staff_models  # noqa: F401
 
 
 class TeamOperation(Base):
@@ -147,6 +148,70 @@ class TeamManagerAssignment(Base):
         ForeignKey("professional_teams.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_user_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("user_accounts.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    ended_by_user_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), ForeignKey("user_accounts.id", ondelete="RESTRICT")
+    )
+    open_operation_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), ForeignKey("team_operations.id", ondelete="RESTRICT")
+    )
+    close_operation_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), ForeignKey("team_operations.id", ondelete="RESTRICT")
+    )
+    end_kind: Mapped[str | None] = mapped_column(String(24))
+
+
+class TeamStaffAssignment(Base):
+    """Read-only staff scope, never a source of roster mutation authority."""
+
+    __tablename__ = "team_staff_assignments"
+    __table_args__ = (
+        CheckConstraint(
+            "staff_role IN ('manager', 'coach', 'assistant_coach')",
+            name="ck_team_staff_assignments_role",
+        ),
+        CheckConstraint(
+            "(ended_at IS NULL AND ended_by_user_id IS NULL "
+            "AND close_operation_id IS NULL AND end_kind IS NULL) "
+            "OR (ended_at IS NOT NULL AND end_kind IS NOT NULL AND ended_at >= created_at)",
+            name="ck_team_staff_assignments_end_pair",
+        ),
+        CheckConstraint(
+            "end_kind IS NULL OR end_kind IN ('unassigned', 'role_removed', 'account_deleted')",
+            name="ck_team_staff_assignments_end_kind",
+        ),
+        Index(
+            "uq_team_staff_assignments_open_account_team_role",
+            "account_id",
+            "team_id",
+            "staff_role",
+            unique=True,
+            postgresql_where=text("ended_at IS NULL"),
+        ),
+        Index("ix_team_staff_assignments_account_history", "account_id", "created_at", "id"),
+        Index("ix_team_staff_assignments_team_history", "team_id", "created_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), primary_key=True, default=uuid4)
+    account_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("user_accounts.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    team_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("professional_teams.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    staff_role: Mapped[str] = mapped_column(String(24), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

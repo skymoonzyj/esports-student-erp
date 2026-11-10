@@ -65,10 +65,10 @@ async function openHousingFilters(page: Page): Promise<Locator> {
 async function findRoomCard(page: Page, roomNumber: string): Promise<Locator> {
   const filters = await openHousingFilters(page)
   await filters.getByLabel("搜索房间").fill(roomNumber)
-  await filters.getByRole("button", { name: "应用筛选" }).click()
   await expect(page.getByText("筛选结果 1 间", { exact: true })).toBeVisible()
   const card = page.locator(".housingRoomCard").filter({ hasText: roomNumber })
   await expect(card).toHaveCount(1)
+  if (viewportWidth(page) < 720) await filters.getByRole("button", { name: "关闭筛选" }).click()
   await expect(card).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await expectHorizontallyInsideViewport(page, ".housingRoomCard")

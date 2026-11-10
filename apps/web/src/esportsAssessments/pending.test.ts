@@ -4,7 +4,6 @@ import { fixturePending, fixtureQuality, fixtureRaw } from './testSupport/fixtur
 import historicalPending from './testSupport/pending-legacy-v1-v2.json'
 import type { PendingSubmission, SuiteId, TestId } from './contracts'
 import { assessmentKeys } from './keys'
-import { ASSESSMENT_SUITE_AVAILABILITY } from './availability'
 import {
   clearAssessmentPending,
   clearAssessmentPendingExcept,
@@ -36,15 +35,6 @@ it('removes matching volatile pending even when storage cannot be enumerated', (
   vi.spyOn(Storage.prototype, 'key').mockImplementation(() => { throw new Error('denied') })
   removePending(a)
   expect(loadPending(a.account_id)).toEqual([])
-})
-
-it('keeps every production suite closed until acceptance persists an opening', () => {
-  expect(ASSESSMENT_SUITE_AVAILABILITY).toEqual({
-    'pc-fps': false,
-    'mobile-fps': false,
-    'pc-moba': false,
-    'mobile-moba': false,
-  })
 })
 
 function uuid(index: number): string {

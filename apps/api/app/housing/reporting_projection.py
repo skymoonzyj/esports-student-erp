@@ -50,7 +50,10 @@ from app.teaching.models import Cohort
 
 _SHANGHAI = ZoneInfo("Asia/Shanghai")
 _ACTUAL_STAY_STATUSES = frozenset({"checked_in", "checkout_pending", "checked_out"})
-_STAFF_TYPES = frozenset({"coach", "life_teacher", "customer_service", "administration", "other"})
+_STAFF_TYPES = frozenset({
+    "coach", "life_teacher", "customer_service", "administration", "other",
+    "team_manager", "assistant_coach",
+})
 
 
 @dataclass(frozen=True, slots=True)

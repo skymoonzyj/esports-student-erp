@@ -5,13 +5,14 @@ import { ProblemDetailsError } from '../api/client'
 import { useAuth } from '../auth/AuthProvider'
 import { assessmentApi } from './api'
 import type { AttemptDetailView } from './apiContracts'
-import { pendingSubmissionSchema, type AttemptView, type ControlSettings, type EnvironmentSnapshot, type Mode, type PendingSubmission, type QualityInput, type RawResult, type ResultSaveView, type SuiteId, type TestId } from './contracts'
+import { isLaneTaskConfig, pendingSubmissionSchema, type AttemptView, type ControlSettings, type EnvironmentSnapshot, type Mode, type PendingSubmission, type QualityInput, type RawResult, type ResultSaveView, type SuiteId, type TestId } from './contracts'
 import { acceptResponse, acceptsSave, matchesAttempt, remainingLeaseMs } from './hostState'
 import { assessmentKeys } from './keys'
 import { loadPending, removePending, savePending } from './pending'
+import type { AttackMode } from './contracts'
 
-export interface SessionIdentity { mode: Mode; suite_id: SuiteId; session_id?: string; practice_id?: string; test_id?: TestId }
-export interface StartSettings { test_id: TestId; settings: ControlSettings; environment: EnvironmentSnapshot; difficulty: number }
+export interface SessionIdentity { mode: Mode; suite_id: SuiteId; session_id?: string; practice_id?: string; test_id?: TestId; attack_mode?: AttackMode }
+export interface StartSettings { test_id: TestId; settings: ControlSettings; environment: EnvironmentSnapshot; difficulty: number; attack_mode?: AttackMode }
 interface SessionState {
   serverView: AttemptView | null; saved: ResultSaveView | null; pending: PendingSubmission | null
   ready: boolean; busy: boolean; error: string | null; revoked: boolean; volatile: boolean; leaseMs: number
@@ -22,7 +23,7 @@ const empty = (): SessionState => ({ serverView: null, saved: null, pending: nul
 export function useAssessmentSession(options: SessionIdentity) {
   const { user } = useAuth()
   const account = user?.account_id ?? ''
-  const identity = JSON.stringify([account, options.mode, options.suite_id, options.session_id, options.practice_id, options.test_id])
+  const identity = JSON.stringify([account, options.mode, options.suite_id, options.session_id, options.practice_id, options.test_id, options.attack_mode])
   const current = useRef({ identity, account, generation: 0, mounted: true })
   const live = useRef<SessionState>(empty())
   const createRequest = useRef<(StartSettings & { operation_key: string }) | null>(null)
@@ -49,6 +50,10 @@ export function useAssessmentSession(options: SessionIdentity) {
   const belongs = (attempt: AttemptView) => attempt.mode === options.mode && attempt.suite_id === options.suite_id
     && (options.mode === 'formal' ? attempt.session_id === options.session_id : attempt.session_id === null)
     && (!options.practice_id || attempt.id === options.practice_id) && (!options.test_id || attempt.test_id === options.test_id)
+  // Recovery owns its frozen config; new MOBA practices must return through the
+  // current catalog/character selector, never reuse a recovered legacy/mode config.
+  const canCreate = (state: SessionState) => !options.practice_id
+    && !(options.mode === 'practice' && options.suite_id === 'pc-moba' && state.serverView)
   const failed = (ticket: Ticket, error: unknown) => {
     if (!valid(ticket)) return
     if (error instanceof ProblemDetailsError && [401, 403].includes(error.problem.status)) {
@@ -86,7 +91,9 @@ export function useAssessmentSession(options: SessionIdentity) {
       const pending = live.current.pending
       if (pending && matchesAttempt(pending, detail.attempt)) removePending(pending)
       createRequest.current = null
-      update(ticket, { pending: null, error: detail.attempt.state === 'expired' ? '此尝试已过期，可以重新开始；旧结果不能移到新尝试。' : '此尝试已中断，可以重新开始。' })
+      update(ticket, { pending: null, error: !canCreate(live.current)
+        ? '此尝试已结束，请返回项目列表选择当前配置后新建练习；旧结果不能移到新尝试。'
+        : detail.attempt.state === 'expired' ? '此尝试已过期，可以重新开始；旧结果不能移到新尝试。' : '此尝试已中断，可以重新开始。' })
     }
     return valid(ticket) ? detail : null
   }
@@ -123,7 +130,7 @@ export function useAssessmentSession(options: SessionIdentity) {
   }
   async function start(settings: StartSettings): Promise<{ attempt: AttemptView; leaseMs: number } | null> {
     const ticket = capture()
-    if (!ticket.account || options.practice_id || !live.current.ready || live.current.busy || live.current.revoked || live.current.pending
+    if (!ticket.account || !canCreate(live.current) || !live.current.ready || live.current.busy || live.current.revoked || live.current.pending
       || (live.current.serverView && !['interrupted', 'expired'].includes(live.current.serverView.state))) return null
     update(ticket, { busy: true, error: null, saved: null })
     let settle!: () => void
@@ -133,12 +140,14 @@ export function useAssessmentSession(options: SessionIdentity) {
     const request = createRequest.current
     const requestAt = performance.now()
     try {
-      const { difficulty, ...formalRequest } = request
+      const { difficulty, attack_mode, ...formalRequest } = request
       const attempt = options.mode === 'formal'
         ? await assessmentApi.startAttempt(options.session_id!, formalRequest)
-        : await assessmentApi.startPractice({ ...formalRequest, suite_id: options.suite_id, difficulty })
+        : await assessmentApi.startPractice({ ...formalRequest, suite_id: options.suite_id, difficulty, ...(attack_mode ? { attack_mode } : {}) })
       if (!valid(ticket)) return null
-      if (!belongs(attempt)) throw new Error('created attempt identity mismatch')
+      // Recovery adopts server-frozen mode/version. A response to a NEW request
+      // must additionally match the mode frozen into that operation key.
+      if (!belongs(attempt) || (request.attack_mode && (!isLaneTaskConfig(attempt.config) || attempt.config.params.attack_mode !== request.attack_mode))) throw new Error('created attempt identity mismatch')
       const leaseMs = remainingLeaseMs(attempt, performance.now() - requestAt)
       update(ticket, { serverView: attempt, leaseMs })
       return { attempt, leaseMs }
@@ -240,7 +249,7 @@ export function useAssessmentSession(options: SessionIdentity) {
     // released its pending guard; a fast invalidation must not race that render.
     if (reportId && !state.busy) navigate(`/esports-assessments/reports/${reportId}`)
   }, [reportId, state.busy, navigate])
-  return { ...state, accountId: account, canRestart: !options.practice_id, start, submit, interrupt, leave, reconcile, retry }
+  return { ...state, accountId: account, canRestart: canCreate(state), start, submit, interrupt, leave, reconcile, retry }
 }
 
 export type AssessmentSessionController = ReturnType<typeof useAssessmentSession>

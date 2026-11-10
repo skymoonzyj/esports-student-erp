@@ -2,7 +2,7 @@ import { useQuery, type QueryKey } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { ProblemDetailsError } from '../api/client'
 import { formatShanghaiDate } from '../teaching/datetime'
-import { parseAssessmentRanking } from './contracts'
+import { parseAssessmentRanking, type AssessmentRanking } from './contracts'
 import './rankings.css'
 
 function denied(error: unknown): boolean {
@@ -15,13 +15,18 @@ const reasonLabels = {
   incompatible_input: '本轮输入方式或排名元数据无法确认，不参与排名。',
 }
 
-export function AssessmentRankingPanel({ reportId, queryKey, fetchRanking, items, reportPath, hasQualityWarnings }: {
+function AnonymousTopScores({ title, rows }: { title: string; rows: AssessmentRanking['top_scores'] }) {
+  return <div className="assessmentRankingTableWrap"><table><caption>{title} · 匿名前三</caption><thead><tr><th>名次</th><th>成绩</th><th>与本人最佳整轮差距</th></tr></thead><tbody>{rows.map((row, index) => <tr key={index}><td>第 {row.rank} 名</td><td>{row.score.toFixed(2)} 分</td><td>{row.gap > 0 ? '+' : ''}{row.gap.toFixed(2)} 分</td></tr>)}</tbody></table>{!rows.length && <p>暂无可展示的真实参与成绩。</p>}</div>
+}
+
+export function AssessmentRankingPanel({ reportId, queryKey, fetchRanking, items, reportPath, hasQualityWarnings, showTopScores = false }: {
   reportId: string
   queryKey: QueryKey
   fetchRanking: (reportId: string, signal: AbortSignal) => Promise<unknown>
   items: readonly { id: string; name: string }[]
   reportPath: string
   hasQualityWarnings: boolean
+  showTopScores?: boolean
 }) {
   const ranking = useQuery({
     queryKey: [...queryKey, 'ranking'],
@@ -66,6 +71,7 @@ export function AssessmentRankingPanel({ reportId, queryKey, fetchRanking, items
               <tbody>{value.items.map((item, index) => <tr key={item.test_id}><th scope="row">{items[index].name}</th><td>{item.score} 分</td><td>第 {item.rank} 名 / {value.participant_count} 人</td></tr>)}</tbody>
             </table>
           </div>
+          {showTopScores && <section aria-label="匿名同组成绩"><h3>同版本、同输入组匿名前三</h3><p>差距为对方成绩减本人最佳整轮成绩；正数表示对方领先，负数表示本人领先。不展示其他人员身份或报告。</p>{value.participant_count < 3 && <p>同组真实参与者不足 3 人，仅显示已有成绩，不补造名次。</p>}<AnonymousTopScores title="整体" rows={value.top_scores} />{value.items.map((item, index) => <AnonymousTopScores key={item.test_id} title={items[index].name} rows={item.top_scores} />)}</section>}
           <p>计算日期：<time dateTime={value.calculated_at}>{formatShanghaiDate(value.calculated_at)}</time></p>
           <button type="button" disabled={ranking.isFetching} onClick={() => void ranking.refetch()}>{ranking.isFetching ? '正在刷新排名…' : '刷新排名'}</button>
         </div>

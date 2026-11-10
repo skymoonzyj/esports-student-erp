@@ -23,8 +23,9 @@ from app.evaluations.staff_models import (
 )
 from app.housing.models import HousingBuilding, HousingFloor
 from app.housing.sorting import building_order_expressions
-from app.identity.models import GuardianRelationship, Person
+from app.identity.models import GuardianRelationship, Person, StaffProfile
 from app.identity.readiness import GuardianReadinessPolicy
+from app.rbac.account_protection import protected_management_target
 from app.rbac.models import (
     Permission,
     Role,
@@ -33,7 +34,12 @@ from app.rbac.models import (
     UserRole,
 )
 from app.rbac.policy import Effect, PolicyDecision, PolicyRule, RbacPolicy, ScopeKind
-from app.rbac.schemas import PermissionOverrideCreate
+from app.rbac.schemas import (
+    JobRoleChangeRequest,
+    JobRoleChangeResponse,
+    JobRoleSummary,
+    PermissionOverrideCreate,
+)
 from app.teaching.access import TeachingVisibility
 from app.teaching.coach_eligibility import CoachEligibility
 from app.teaching.models import (
@@ -120,8 +126,27 @@ class PermissionDelegationDenied(RbacServiceError):
     code = "permission_delegation_denied"
 
 
+def prospective_role_scope(role_scope_kind: str) -> ScopeKind:
+    """Indefinite role grants need a global ceiling for every dynamic scope."""
+    return (
+        "person" if role_scope_kind == "self"
+        else "family" if role_scope_kind == "family"
+        else "global"
+    )
+
+
 class InvalidPermissionOverride(RbacServiceError):
     code = "invalid_permission_override"
+
+
+class JobRoleConflict(RbacServiceError):
+    code = "job_role_conflict"
+
+
+_STAFF_ROLE_KEYS = frozenset({
+    "admin", "super_admin", "coach", "customer_service", "life_teacher",
+    "staff", "administration", "finance", "team_manager", "property", "assistant_coach",
+})
 
 
 @dataclass(frozen=True)
@@ -597,7 +622,12 @@ class RbacService:
             person = self.db.get(Person, account.person_id)
             if person is None or person.deleted_at is not None:
                 return []
-            if self.account_has_role(account.id, "super_admin"):
+            # Callers apply the same live deny-first policy to this global
+            # resource; only global rules may use administration's entrance.
+            if self.account_has_role(account.id, "super_admin") or (
+                rule.scope_kind == "global"
+                and self.account_has_role(account.id, "administration")
+            ):
                 return [{"global"}]
             if (
                 rule.permission == "team_memberships.read"
@@ -605,18 +635,28 @@ class RbacService:
                 and self.account_has_role(account.id, "team_member")
             ):
                 return [{"global", f"self:{account.person_id}"}]
-            if rule.permission in {"team_memberships.read", "team_memberships.manage"} and (
-                self.account_has_role(account.id, "team_manager")
-            ):
-                team_ids = self.db.scalars(
-                    select(TeamManagerAssignment.team_id)
-                    .join(ProfessionalTeam, ProfessionalTeam.id == TeamManagerAssignment.team_id)
-                    .join(GameProject, GameProject.id == ProfessionalTeam.project_id)
-                    .where(
-                        TeamManagerAssignment.account_id == account.id,
-                        TeamManagerAssignment.ended_at.is_(None),
-                    )
-                )
+            if rule.permission in {"team_memberships.read", "team_memberships.manage"}:
+                role_keys = set(self.db.scalars(
+                    select(Role.key).join(UserRole, UserRole.role_id == Role.id)
+                    .where(UserRole.user_id == account.id)
+                ))
+                team_ids: set[UUID] = set()
+                if "team_manager" in role_keys:
+                    team_ids.update(self.db.scalars(
+                        select(TeamManagerAssignment.team_id)
+                        .join(ProfessionalTeam, ProfessionalTeam.id == TeamManagerAssignment.team_id)
+                        .join(GameProject, GameProject.id == ProfessionalTeam.project_id)
+                        .where(
+                            TeamManagerAssignment.account_id == account.id,
+                            TeamManagerAssignment.ended_at.is_(None),
+                        )
+                    ))
+                if rule.permission == "team_memberships.read":
+                    from app.team_management.staff_service import active_staff_team_ids
+
+                    team_ids.update(active_staff_team_ids(
+                        self.db, account.id, role_keys=role_keys,
+                    ))
                 return [{"global", f"assigned_team:{team_id}"} for team_id in team_ids]
             return []
         if rule.scope_kind == "global":
@@ -1317,6 +1357,8 @@ class RbacService:
                 "invited housing permission does not support this scope"
             )
         talent_scopes = {
+            "reactionx.manage": frozenset({"global"}),
+            "reactionx.conduct": frozenset({"global", "person"}),
             "talent_tests.take": frozenset({"self"}),
             "talent_tests.read": frozenset(
                 {"self", "family", "person", "assigned_class", "global"}
@@ -1700,8 +1742,7 @@ class RbacService:
         actor: UserAccount,
         account: UserAccount,
     ) -> None:
-        if actor.status != "active":
-            raise PermissionDelegationDenied("actor account is not active")
+        self._require_current_grant_manager(actor=actor, account=account)
         if not self.decide(
             user_id=actor.id,
             permission="permissions.manage",
@@ -1710,6 +1751,21 @@ class RbacService:
             raise PermissionDelegationDenied(
                 "actor does not hold current global permission management"
             )
+
+    def _require_current_grant_manager(
+        self, *, actor: UserAccount, account: UserAccount
+    ) -> None:
+        actor_person = self.db.get(Person, actor.person_id)
+        target_person = self.db.get(Person, account.person_id)
+        if (
+            actor.status != "active"
+            or actor.force_password_change
+            or actor_person is None
+            or actor_person.deleted_at is not None
+            or target_person is None
+            or target_person.deleted_at is not None
+        ):
+            raise PermissionDelegationDenied("actor or target account is unavailable")
         target_tokens = self.person_resource_tokens(
             actor_person_id=actor.person_id,
             target_person_id=account.person_id,
@@ -1722,6 +1778,11 @@ class RbacService:
             raise PermissionDelegationDenied(
                 "actor does not hold current permission management for the account"
             )
+        if (
+            not self.account_has_role(actor.id, "super_admin")
+            and protected_management_target(self.db, account.id)
+        ):
+            raise PermissionDelegationDenied("only a super administrator may manage this account")
 
     def _require_role_delegation_authority(
         self,
@@ -1729,11 +1790,12 @@ class RbacService:
         actor: UserAccount,
         account: UserAccount,
         role: Role,
+        prospective_person: bool = False,
     ) -> None:
         actor_is_super_admin = self.account_has_role(actor.id, "super_admin")
-        if role.key == "super_admin" and not actor_is_super_admin:
+        if role.key in {"super_admin", "finance"} and not actor_is_super_admin:
             raise PermissionDelegationDenied(
-                "only an active super administrator can assign the super administrator role"
+                "only an active super administrator can assign a protected role"
             )
         if actor_is_super_admin:
             # The super administrator role is the explicit delegation root.
@@ -1749,28 +1811,22 @@ class RbacService:
         )
         reference_time = datetime.now(UTC)
         for permission, role_scope_kind in grants:
-            if role_scope_kind == "self":
-                scope_kind: ScopeKind = "person"
-                scope_id = account.person_id
-            elif role_scope_kind == "family":
-                scope_kind = "family"
-                scope_id = None
-            else:
-                # Role grants have no object id and remain valid indefinitely.  A
-                # global ceiling is therefore required for global and dynamic
-                # scopes such as assigned_class/building/floor.
-                scope_kind = "global"
-                scope_id = None
+            scope_kind = prospective_role_scope(role_scope_kind)
+            scope_id = account.person_id if scope_kind == "person" else None
             delegation_input = PermissionOverrideCreate(
                 permission_id=permission.id,
                 effect="allow",
                 scope_kind=scope_kind,
                 scope_id=scope_id,
             )
-            resource = self._scope_resource(
-                account=account,
-                input=delegation_input,
-                occurred_at=reference_time,
+            resource = (
+                EvaluationResource(student_person_id=account.person_id)
+                if prospective_person and scope_kind == "person"
+                else self._scope_resource(
+                    account=account,
+                    input=delegation_input,
+                    occurred_at=reference_time,
+                )
             )
             self._require_delegation_authority(
                 actor_user_id=actor.id,
@@ -1778,6 +1834,45 @@ class RbacService:
                 input=delegation_input,
                 resource=resource,
             )
+
+    def require_prospective_role_grant(
+        self, *, actor_user_id: UUID, person_id: UUID, role: Role
+    ) -> None:
+        """Validate the real current manager and bundle for an account not yet created.
+
+        Callers performing writes own the complete sorted participant locks.
+        This never persists a placeholder account or bypasses delegation ceilings.
+        """
+        actor = self.require_prospective_role_manager(
+            actor_user_id=actor_user_id, person_id=person_id
+        )
+        self._require_role_delegation_authority(
+            actor=actor,
+            account=UserAccount(person_id=person_id),
+            role=role,
+            prospective_person=True,
+        )
+
+    def require_prospective_role_manager(self, *, actor_user_id: UUID, person_id: UUID) -> UserAccount:
+        """Current account + global and target permission checks, without granting a role."""
+        actor = self.db.get(UserAccount, actor_user_id, populate_existing=True)
+        person = self.db.get(Person, actor.person_id, populate_existing=True) if actor else None
+        if (
+            actor is None or actor.status != "active" or actor.force_password_change
+            or person is None or person.deleted_at is not None
+        ):
+            raise PermissionDelegationDenied("actor account is unavailable")
+        tokens = self.person_resource_tokens(
+            actor_person_id=actor.person_id, target_person_id=person_id
+        )
+        if not all(
+            self.decide(
+                user_id=actor.id, permission="permissions.manage", resource_tokens=scope
+            ).allowed
+            for scope in ({"global"}, tokens)
+        ):
+            raise PermissionDelegationDenied("actor cannot manage roles")
+        return actor
 
     def assign_role(
         self,
@@ -1843,6 +1938,142 @@ class RbacService:
         except IntegrityError as exc:
             raise DuplicatePermissionRule("role is already assigned") from exc
 
+    def change_job_role(
+        self,
+        *,
+        actor_user_id: UUID,
+        account_id: UUID,
+        input: JobRoleChangeRequest,
+        request_id: str,
+        before_change: Callable[[], object] | None = None,
+    ) -> JobRoleChangeResponse:
+        """Replace staff roles and their lifecycle effects in one audited transaction."""
+        from app.team_management.lifecycle import TeamLifecycleService
+        from app.team_management.staff_service import staff_team_ids_for_account
+        from app.team_management.write_support import lock_directory
+
+        with atomic_write_transaction(self.db):
+            participants = {user_id: person_id for user_id, person_id in self.db.execute(
+                select(UserAccount.id, UserAccount.person_id)
+                .where(UserAccount.id.in_({actor_user_id, account_id}))
+            )}
+            if account_id not in participants:
+                raise RbacResourceNotFound("account not found")
+            if actor_user_id not in participants:
+                raise PermissionDelegationDenied("actor account is unavailable")
+            # Discover the full identity lock set before taking any lock. Root
+            # accounts share this ordering with existing role-removal paths.
+            person_ids = set(participants.values()) | set(self.active_super_admin_person_ids())
+            readiness = GuardianReadinessPolicy(self.db)
+            people = {person.id: person for person in readiness.lock_students(person_ids)}
+            accounts = readiness.lock_accounts(person_ids)
+            by_id = {account.id: account for account in accounts}
+            account = by_id.get(account_id)
+            actor = by_id.get(actor_user_id)
+            if account is None or people[account.person_id].deleted_at is not None:
+                raise RbacResourceNotFound("account not found")
+            if (actor is None or actor.force_password_change
+                    or people[actor.person_id].deleted_at is not None):
+                raise PermissionDelegationDenied("actor account is unavailable")
+            if before_change is not None:
+                before_change()
+            self._require_current_role_manager(actor=actor, account=account)
+
+            current_ids = set(self.db.scalars(
+                select(UserRole.role_id).where(UserRole.user_id == account_id)
+            ))
+            if current_ids != set(input.expected_role_ids):
+                raise JobRoleConflict("岗位已被其他操作更新，请刷新后重新确认")
+            requested_ids = {input.to_role_id}
+            if input.from_role_id is not None:
+                requested_ids.add(input.from_role_id)
+            role_by_id = {role.id: role for role in self.db.scalars(
+                select(Role).where(Role.id.in_(current_ids | requested_ids))
+                .order_by(Role.id).with_for_update().execution_options(populate_existing=True)
+            )}
+            if not requested_ids <= role_by_id.keys():
+                raise RbacResourceNotFound("role not found")
+            if any(role_by_id[value].key not in _STAFF_ROLE_KEYS for value in requested_ids):
+                raise JobRoleConflict("换岗只能选择工作人员岗位，身份角色保持不变")
+            staff_ids = {value for value in current_ids if role_by_id[value].key in _STAFF_ROLE_KEYS}
+            if input.from_role_id is None:
+                if staff_ids:
+                    raise JobRoleConflict("当前已有工作人员岗位，请选择要替换的旧岗位")
+            elif input.from_role_id not in staff_ids:
+                raise JobRoleConflict("当前账号不再持有所选旧岗位，请刷新后重新确认")
+            if input.from_role_id == input.to_role_id:
+                raise JobRoleConflict("新岗位不能与旧岗位相同")
+            removed_ids = (
+                {input.from_role_id} if input.from_role_id is not None else set()
+            ) if input.keep_concurrent_roles else staff_ids - {input.to_role_id}
+            retained_ids = current_ids - removed_ids
+            added_ids = {input.to_role_id} - current_ids
+            final_ids = retained_ids | {input.to_role_id}
+            to_role = role_by_id[input.to_role_id]
+            self._require_role_delegation_authority(actor=actor, account=account, role=to_role)
+            removes_root = any(role_by_id[value].key == "super_admin" for value in removed_ids)
+            if removes_root:
+                if not self.account_has_role(actor.id, "super_admin"):
+                    raise PermissionDelegationDenied("only a super administrator can remove a root")
+                if actor.id == account.id:
+                    raise LastAdminProtected("the current super administrator role is protected")
+
+            removed_staff_keys = {role_by_id[value].key for value in removed_ids}
+            team_ids = staff_team_ids_for_account(
+                self.db, account.id, role_keys=removed_staff_keys,
+            )
+            if "team_manager" in removed_staff_keys:
+                team_ids.update(self.db.scalars(select(TeamManagerAssignment.team_id).where(
+                    TeamManagerAssignment.account_id == account.id,
+                    TeamManagerAssignment.ended_at.is_(None),
+                )))
+            lock_directory(self.db, list(team_ids))
+            occurred_at = datetime.now(UTC)
+            for removed_key in sorted(removed_staff_keys & {"team_manager", "coach", "assistant_coach"}):
+                TeamLifecycleService(self.db).before_role_removal(
+                    account.id, removed_key, actor.id, occurred_at,
+                )
+            for assignment in self.db.scalars(
+                select(UserRole).where(UserRole.user_id == account_id,
+                                       UserRole.role_id.in_(removed_ids))
+                .order_by(UserRole.role_id).with_for_update()
+                .execution_options(populate_existing=True)
+            ):
+                self.db.delete(assignment)
+            for role_id in added_ids:
+                self.db.add(UserRole(user_id=account_id, role_id=role_id))
+            final_roles = sorted((role_by_id[value] for value in final_ids), key=lambda role: role.key)
+            final_keys = {role.key for role in final_roles}
+            staff_type = "coach" if "coach" in final_keys else (
+                to_role.key if to_role.key in {"life_teacher", "customer_service", "administration", "team_manager", "assistant_coach"}
+                else "other"
+            )
+            profile = self.db.scalar(select(StaffProfile).where(
+                StaffProfile.person_id == account.person_id
+            ).with_for_update().execution_options(populate_existing=True))
+            if profile is None:
+                self.db.add(StaffProfile(person_id=account.person_id, staff_type=staff_type))
+            else:
+                profile.staff_type = staff_type
+            self.db.flush()
+            if removes_root:
+                self._ensure_recovery_super_admin(accounts)
+            AuditService(self.db).append(
+                actor_user_id=actor.id, action="account.job_role.change", resource_type="account",
+                resource_id=account_id, purpose=None, outcome="allowed", request_id=request_id,
+                metadata={
+                    "old_role_keys": sorted(role_by_id[value].key for value in current_ids),
+                    "new_role_keys": sorted(final_keys),
+                    "keep_concurrent_roles": input.keep_concurrent_roles,
+                },
+            )
+            result = JobRoleChangeResponse(
+                account_id=account_id, added_role_ids=sorted(added_ids),
+                removed_role_ids=sorted(removed_ids), retained_role_ids=sorted(retained_ids),
+                roles=[JobRoleSummary(id=role.id, key=role.key, name=role.name) for role in final_roles],
+            )
+        return result
+
     def remove_role(
         self,
         *,
@@ -1895,11 +2126,16 @@ class RbacService:
                 if locked_account.id in active_admin_ids and locked_account.status == "active"
             ]
             refreshed_role = self.db.scalar(
-                select(Role).where(Role.id == role_id).execution_options(populate_existing=True)
+                select(Role).where(Role.id == role_id).with_for_update()
+                .execution_options(populate_existing=True)
             )
             if refreshed_role is None:
                 raise RbacResourceNotFound("role not found")
             role = refreshed_role
+            if role.key == "super_admin" and not self.account_has_role(actor.id, "super_admin"):
+                raise PermissionDelegationDenied(
+                    "only an active super administrator can remove the super administrator role"
+                )
             assignment = self.db.scalar(
                 select(UserRole)
                 .where(UserRole.user_id == account_id, UserRole.role_id == role_id)
@@ -1909,9 +2145,14 @@ class RbacService:
             if assignment is not None and role.key == "super_admin" and actor_user_id == account_id:
                 raise LastAdminProtected("the current super administrator role is protected")
             if assignment is not None:
-                if role.key in {"team_member", "team_manager"}:
+                if role.key in {"team_member", "team_manager", "coach", "assistant_coach"}:
+                    from app.team_management.staff_service import staff_team_ids_for_account
+
+                    team_ids = staff_team_ids_for_account(
+                        self.db, account.id, role_keys={role.key},
+                    )
                     if role.key == "team_member":
-                        team_ids = list(
+                        team_ids.update(
                             self.db.scalars(
                                 select(TeamMembership.team_id).where(
                                     TeamMembership.person_id == account.person_id,
@@ -1919,8 +2160,8 @@ class RbacService:
                                 )
                             )
                         )
-                    else:
-                        team_ids = list(
+                    elif role.key == "team_manager":
+                        team_ids.update(
                             self.db.scalars(
                                 select(TeamManagerAssignment.team_id).where(
                                     TeamManagerAssignment.account_id == account.id,
@@ -1928,7 +2169,7 @@ class RbacService:
                                 )
                             )
                         )
-                    lock_directory(self.db, team_ids)
+                    lock_directory(self.db, list(team_ids))
                     TeamLifecycleService(self.db).before_role_removal(
                         account.id, role.key, actor_user_id, datetime.now(UTC)
                     )
@@ -1961,13 +2202,40 @@ class RbacService:
             result = role
         return result
 
+    def _lock_override_participants(
+        self, actor_user_id: UUID, account_id: UUID, permission: Permission
+    ) -> tuple[UserAccount, UserAccount]:
+        participants = {account: person for account, person in self.db.execute(
+            select(UserAccount.id, UserAccount.person_id)
+            .where(UserAccount.id.in_({actor_user_id, account_id}))
+        )}
+        if account_id not in participants:
+            raise RbacResourceNotFound("account not found")
+        if actor_user_id not in participants:
+            raise PermissionDelegationDenied("actor account is unavailable")
+        person_ids = set(participants.values())
+        if permission.key in {"accounts.manage", "permissions.manage"}:
+            # Recovery-root locks must join the initial globally ordered set,
+            # not be acquired after a target with a later UUID has been locked.
+            person_ids.update(self.active_super_admin_person_ids())
+        readiness = GuardianReadinessPolicy(self.db)
+        readiness.lock_students(person_ids)
+        accounts = {account.id: account for account in readiness.lock_accounts(person_ids)}
+        account = accounts.get(account_id)
+        actor = accounts.get(actor_user_id)
+        if account is None:
+            raise RbacResourceNotFound("account not found")
+        if actor is None:
+            raise PermissionDelegationDenied("actor account is unavailable")
+        return actor, account
+
     def _lock_talent_grant_participants(
         self,
         actor_user_id: UUID,
         target_account_id: UUID,
         permission: Permission,
     ) -> None:
-        if not permission.key.startswith(("talent_tests.", "esports_assessments.")):
+        if not permission.key.startswith(("talent_tests.", "esports_assessments.", "reactionx.")):
             return
         person_ids = set(
             self.db.scalars(
@@ -2045,7 +2313,7 @@ class RbacService:
         target_account_id: UUID,
         permission: Permission,
     ) -> None:
-        if not permission.key.startswith(("talent_tests.", "esports_assessments.")):
+        if not permission.key.startswith(("talent_tests.", "esports_assessments.", "reactionx.")):
             return
         actor = self.db.scalar(
             select(UserAccount)
@@ -2081,15 +2349,12 @@ class RbacService:
         try:
             with write_transaction(self.db):
                 permission = self._require_permission(input.permission_id)
+                actor, account = self._lock_override_participants(
+                    actor_user_id, account_id, permission
+                )
                 self._lock_talent_grant_participants(actor_user_id, account_id, permission)
                 self._lock_team_grant_participants(actor_user_id, account_id, permission)
-                account = self.db.scalar(
-                    select(UserAccount)
-                    .where(UserAccount.id == account_id)
-                    .execution_options(populate_existing=True)
-                )
-                if account is None:
-                    raise RbacResourceNotFound("account not found")
+                self._require_current_grant_manager(actor=actor, account=account)
                 self._require_team_grant_manager(actor_user_id, account_id, permission)
                 self._require_talent_grant_manager(actor_user_id, account_id, permission)
                 self._validate_override_input(
@@ -2102,7 +2367,9 @@ class RbacService:
                     input=input,
                     occurred_at=reference_time,
                 )
-                if not permission.key.startswith(("talent_tests.", "esports_assessments.")):
+                if not permission.key.startswith(
+                    ("talent_tests.", "esports_assessments.", "reactionx.")
+                ):
                     self._require_delegation_authority(
                         actor_user_id=actor_user_id,
                         permission=permission,
@@ -2165,15 +2432,11 @@ class RbacService:
             if permission_id is None:
                 raise RbacResourceNotFound("permission override not found")
             permission = self._require_permission(permission_id)
+            actor, account = self._lock_override_participants(
+                actor_user_id, account_id, permission
+            )
             self._lock_talent_grant_participants(actor_user_id, account_id, permission)
             self._lock_team_grant_participants(actor_user_id, account_id, permission)
-            account = self.db.scalar(
-                select(UserAccount)
-                .where(UserAccount.id == account_id)
-                .execution_options(populate_existing=True)
-            )
-            if account is None:
-                raise RbacResourceNotFound("account not found")
             override = self.db.scalar(
                 select(UserPermissionOverride)
                 .where(
@@ -2185,6 +2448,7 @@ class RbacService:
             )
             if override is None:
                 raise RbacResourceNotFound("permission override not found")
+            self._require_current_grant_manager(actor=actor, account=account)
             permission = self._require_permission(override.permission_id)
             self._require_team_grant_manager(actor_user_id, account_id, permission)
             self._require_talent_grant_manager(actor_user_id, account_id, permission)
@@ -2205,7 +2469,7 @@ class RbacService:
             ):
                 raise SelfPermissionLockout("cannot remove your own permission management")
             if override.effect == "deny" and not permission.key.startswith(
-                ("talent_tests.", "esports_assessments.")
+                ("talent_tests.", "esports_assessments.", "reactionx.")
             ):
                 delegation_input = PermissionOverrideCreate(
                     permission_id=override.permission_id,

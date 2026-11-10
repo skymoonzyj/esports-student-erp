@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 TeamAction = Literal["read", "manage", "transfer", "assign_managers"]
 TeamAllocationStatus = Literal["untracked", "pending", "assigned", "not_required"]
+StaffRole = Literal["manager", "coach", "assistant_coach"]
 
 
 class TeamDto(BaseModel):
@@ -109,6 +110,10 @@ class TeamAssignmentView(TeamDto):
     ended_on: date | None
 
 
+class TeamStaffAssignmentView(TeamAssignmentView):
+    staff_role: StaffRole
+
+
 class TeamAffiliation(TeamDto):
     membership_id: UUID
     project_id: UUID
@@ -163,6 +168,15 @@ class AssignManagerInput(TeamMutationInput):
 
 
 class UnassignManagerInput(TeamMutationInput):
+    pass
+
+
+class AssignStaffInput(TeamMutationInput):
+    account_id: UUID
+    staff_role: StaffRole
+
+
+class UnassignStaffInput(TeamMutationInput):
     pass
 
 

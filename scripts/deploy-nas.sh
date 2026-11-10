@@ -7,9 +7,13 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage: scripts/deploy-nas.sh [--source <repository>] [--dry-run] [--from-hook]
+                           [--reactionx-release-bundle <directory>]
 
 Default source: .nas-release-sync under the launcher's repository when present;
 otherwise the launcher's repository. An explicit --source always takes precedence.
+ReactionX bundles are optional, verified fixed-file inputs. Without the option
+the candidate exposes no package; it never inherits an older release's EXE.
+Bundle input must live outside the source repository (and outside source Git).
 
 Environment overrides:
   NAS_SSH_HOST             NAS host (default: 192.168.31.151)
@@ -19,6 +23,8 @@ Environment overrides:
   NAS_APP_DIR              Remote ERP directory
   NAS_COMPOSE_PROJECT      Compose project name
   NAS_PUBLIC_URL           HTTPS URL used for the final listener check
+  NAS_WEB_ASSET_HISTORY    Explicit approved JSON [{release_id,image_id}] for
+                           one-time legacy asset recovery (default: [])
   ERP_NAS_AUTO_DEPLOY      Set to 0 to disable the post-commit hook
 EOF
 }
@@ -26,6 +32,7 @@ EOF
 source_root=""
 dry_run=false
 from_hook=false
+reactionx_bundle=""
 while (($#)); do
   case "$1" in
     --source)
@@ -35,6 +42,10 @@ while (($#)); do
     --dry-run)
       dry_run=true
       shift
+      ;;
+    --reactionx-release-bundle)
+      reactionx_bundle=${2:?"--reactionx-release-bundle requires a directory"}
+      shift 2
       ;;
     --from-hook)
       from_hook=true
@@ -52,6 +63,10 @@ while (($#)); do
 done
 
 script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+if [[ -n "$reactionx_bundle" ]]; then
+  # Absolute but NOT realpath: validator must still reject symlink components.
+  reactionx_bundle=$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$reactionx_bundle")
+fi
 if [[ -n "$source_root" ]]; then
   repo_root=$source_root
 elif [[ -d "$script_root/.nas-release-sync" ]]; then
@@ -75,6 +90,7 @@ nas_app_dir=${NAS_APP_DIR:-/home/skymoonzyj/esports-erp}
 nas_project=${NAS_COMPOSE_PROJECT:-esports-erp-staging}
 nas_public_url=${NAS_PUBLIC_URL:-https://skymoonzyj.l.cd:18080}
 nas_health_bind_address=${NAS_HEALTH_BIND_ADDRESS:-$nas_host}
+nas_web_asset_history=${NAS_WEB_ASSET_HISTORY:-'[]'}
 remote_target="${nas_user}@${nas_host}"
 
 for command_name in git ssh rsync python3; do
@@ -95,6 +111,10 @@ done
   echo "The selected source lacks the required NAS deployment guard: $repo_root" >&2
   exit 2
 }
+[[ -f scripts/nas-web-assets.py ]] || {
+  echo "The selected source lacks the required web asset preservation helper." >&2
+  exit 2
+}
 
 if [[ -x "$repo_root/.venv/bin/alembic" ]]; then
   alembic_cmd=("$repo_root/.venv/bin/alembic")
@@ -113,10 +133,30 @@ fi
 # Build and transfer only a verified, stable snapshot. rsync includes actual
 # untracked source bytes; neither Git's filename-only status nor mutable input
 # is used as the release identity.
+if [[ -n "$reactionx_bundle" ]]; then
+  python3 - "$repo_root" "$reactionx_bundle" <<'VERIFY_BUNDLE_LOCATION'
+import os
+import sys
+from pathlib import Path
+
+# Source is a trusted repository boundary: compare its physical identity even
+# when --source uses a logical alias such as macOS /var -> /private/var.
+# Keep the supplied bundle spelling so its separate no-symlink validator can
+# reject aliases instead of silently dereferencing untrusted components.
+source = Path(sys.argv[1]).resolve(strict=True)
+bundle = Path(os.path.abspath(sys.argv[2]))
+if bundle.is_relative_to(source):
+    raise SystemExit("ReactionX bundle must be outside source repository/image context.")
+VERIFY_BUNDLE_LOCATION
+fi
 git diff --check
 source_commit=$(git rev-parse --short=12 HEAD)
 snapshot=$(mktemp -d "${TMPDIR:-/tmp}/erp-release.XXXXXX")
-trap 'rm -rf "$snapshot"' EXIT
+bundle_snapshot=$(mktemp -d "${TMPDIR:-/tmp}/erp-reactionx.XXXXXX")
+# macOS TMPDIR may contain the system /var alias. Only our freshly created
+# private temporary directory is canonicalized; supplied paths stay untrusted.
+bundle_snapshot=$(cd "$bundle_snapshot" && pwd -P)
+trap 'rm -rf "$snapshot" "$bundle_snapshot"' EXIT
 snapshot_filters=(
   --include='.env.example' --exclude='.git' --exclude='.githooks/'
   --exclude='.superpowers/' --exclude='.worktrees/' --exclude='.nas-release-sync/'
@@ -145,6 +185,14 @@ snapshot_changes=$(rsync -anrc --delete --itemize-changes "${snapshot_filters[@]
   exit 4
 }
 source_state=$(python3 "$snapshot/scripts/nas-deploy-guard.py" digest "$snapshot")
+reactionx_digest=unavailable
+if [[ -n "$reactionx_bundle" ]]; then
+  # Freeze outside source identity and image build context, before NAS writes.
+  reactionx_digest=$(python3 "$snapshot/scripts/reactionx-release-bundle.py" \
+    freeze "$reactionx_bundle" "$bundle_snapshot/bundle")
+  python3 "$snapshot/scripts/reactionx-release-bundle.py" \
+    verify "$bundle_snapshot/bundle" "$reactionx_digest" >/dev/null
+fi
 cd "$snapshot"
 
 local_heads=$("${alembic_cmd[@]}" -c apps/api/alembic.ini heads | awk '{print $1}')
@@ -164,7 +212,11 @@ ssh_options=(
 )
 
 remote_bash() {
-  ssh "${ssh_options[@]}" "$remote_target" bash -s -- "$@"
+  # OpenSSH joins command argv before the remote shell parses it. Encode once
+  # so JSON, whitespace and shell metacharacters remain literal arguments.
+  local remote_command
+  printf -v remote_command '%q ' bash -s -- "$@"
+  ssh "${ssh_options[@]}" "$remote_target" "$remote_command"
 }
 
 remote_bash "$nas_app_dir" "$nas_project" <<'REMOTE_PREFLIGHT'
@@ -209,6 +261,9 @@ EOF
 fi
 
 release_id="$(date -u +%Y%m%dT%H%M%SZ)-${source_commit}-${source_state:0:12}"
+if [[ "$reactionx_digest" != unavailable ]]; then
+  release_id="${release_id}-rx${reactionx_digest:0:12}"
+fi
 
 printf 'NAS deployment preflight passed: source head %s, NAS revision %s.\n' \
   "$local_head" "$remote_revision"
@@ -217,11 +272,14 @@ if [[ "$dry_run" == true ]]; then
   exit 0
 fi
 
-remote_bash "$nas_app_dir" "$release_id" <<'REMOTE_INCOMING'
+remote_bash "$nas_app_dir" "$release_id" "$reactionx_digest" <<'REMOTE_INCOMING'
 set -euo pipefail
 app_dir=$1
 release_id=$2
 mkdir -p "$app_dir/incoming/$release_id" "$app_dir/releases" "$app_dir/backups"
+if [[ "$3" != unavailable ]]; then
+  mkdir -p "$app_dir/incoming/$release_id-reactionx-bundle"
+fi
 REMOTE_INCOMING
 
 rsync_ssh=$(printf '%q ' ssh "${ssh_options[@]}")
@@ -258,7 +316,14 @@ rsync -a --delete --human-readable \
   -e "$rsync_ssh" \
   "$snapshot/" "$remote_target:$nas_app_dir/incoming/$release_id/"
 
-remote_bash "$nas_app_dir" "$release_id" "$nas_project" "$local_head" "$remote_revision" "$nas_public_url" "$nas_health_bind_address" "$source_state" <<'REMOTE_DEPLOY'
+if [[ "$reactionx_digest" != unavailable ]]; then
+  python3 "$snapshot/scripts/reactionx-release-bundle.py" \
+    verify "$bundle_snapshot/bundle" "$reactionx_digest" >/dev/null
+  rsync -a --delete -e "$rsync_ssh" \
+    "$bundle_snapshot/bundle/" "$remote_target:$nas_app_dir/incoming/$release_id-reactionx-bundle/"
+fi
+
+remote_bash "$nas_app_dir" "$release_id" "$nas_project" "$local_head" "$remote_revision" "$nas_public_url" "$nas_health_bind_address" "$source_state" "$nas_web_asset_history" "$reactionx_digest" <<'REMOTE_DEPLOY'
 set -euo pipefail
 app_dir=$1
 release_id=$2
@@ -268,7 +333,10 @@ baseline_revision=$5
 public_url=$6
 health_bind_address=$7
 expected_digest=$8
+web_asset_history=${9:-'[]'}
+reactionx_digest=${10:-unavailable}
 incoming="$app_dir/incoming/$release_id"
+incoming_bundle="$app_dir/incoming/$release_id-reactionx-bundle"
 release="$app_dir/releases/$release_id"
 current="$app_dir/current"
 db_container="${project}-db-1"
@@ -290,6 +358,17 @@ test ! -e "$release"
 [[ "$expected_digest" =~ ^[a-f0-9]{64}$ ]] || { echo "Invalid expected snapshot digest." >&2; exit 17; }
 actual_digest=$(python3 "$incoming/scripts/nas-deploy-guard.py" digest "$incoming")
 [[ "$actual_digest" == "$expected_digest" ]] || { echo "Transferred release digest mismatch." >&2; exit 17; }
+# Independent payload identity is verified under the same activation lock. An
+# absent option cannot silently reuse a leftover incoming or previous package.
+if [[ "$reactionx_digest" == unavailable ]]; then
+  [[ ! -e "$incoming_bundle" && ! -L "$incoming_bundle" ]] || {
+    echo "Unexpected ReactionX bundle while package is unavailable." >&2; exit 17;
+  }
+else
+  [[ "$reactionx_digest" =~ ^[a-f0-9]{64}$ ]] || { echo "Invalid bundle digest." >&2; exit 17; }
+  python3 "$incoming/scripts/reactionx-release-bundle.py" \
+    verify "$incoming_bundle" "$reactionx_digest" >/dev/null
+fi
 test -L "$current" || { echo "current must be a symlink; refusing a non-atomic replacement." >&2; exit 17; }
 previous_pointer=$(readlink -f "$current")
 previous_active=$(cat "$app_dir/.active-release" 2>/dev/null || true)
@@ -329,6 +408,17 @@ printf 'status=preparing\nrelease=%s\nprevious_current=%s\nprevious_active=%s\n'
   "$release" "$previous_pointer" "$previous_active" > "$app_dir/.deployment-state"
 mkdir -p "$release"
 rsync -a --delete --exclude='.env' --exclude='secrets/' "$incoming/" "$release/"
+mkdir -p "$release/runtime"
+chmod 755 "$release/runtime"
+if [[ "$reactionx_digest" == unavailable ]]; then
+  mkdir "$release/runtime/reactionx-release"
+  chmod 755 "$release/runtime/reactionx-release"
+else
+  python3 "$release/scripts/reactionx-release-bundle.py" \
+    freeze "$incoming_bundle" "$release/runtime/reactionx-release" >/dev/null
+  python3 "$release/scripts/reactionx-release-bundle.py" \
+    verify "$release/runtime/reactionx-release" "$reactionx_digest" >/dev/null
+fi
 cp -a "$current/.env" "$release/.env"
 cp -a "$current/secrets" "$release/secrets"
 
@@ -346,6 +436,7 @@ fi
 
 printf 'source_release_id=%s\nsource_alembic_head=%s\nprepared_utc=%s\n' \
   "$release_id" "$expected_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$release/.release-metadata"
+printf 'reactionx_bundle_digest=%s\n' "$reactionx_digest" >> "$release/.release-metadata"
 
 cd "$release"
 guard=(python3 "$release/scripts/nas-deploy-guard.py")
@@ -383,6 +474,13 @@ print(paths[0])
     --backup-dir "$app_dir/backups/full" --status-file "$operations_dir/backup-status.json"
 fi
 "${compose[@]}" build api scheduler web
+# Preserve complete previous asset groups before touching the active pointer or
+# schema. The helper pins images, enforces bounded seven-day retirement, verifies
+# rebuilt bytes and only then replaces the candidate web tag. No extra Compose
+# overlays/volumes are introduced; the existing four-file guard stays authoritative.
+python3 "$release/scripts/nas-web-assets.py" \
+  --app-dir "$app_dir" --project "$project" --release-id "$release_id" \
+  --history "$web_asset_history"
 "${compose[@]}" run -T --rm --no-deps api python -m app.evaluations.media_store --initialize-store-identity </dev/null
 "${compose[@]}" run -T --rm --no-deps api python -m app.evaluations.media_store --verify-store-identity </dev/null
 
@@ -456,6 +554,12 @@ done
 
 docker exec "${project}-proxy-1" wget -q -O - http://127.0.0.1:8080/api/v1/health/live >/dev/null
 "${guard[@]}" runtime "$app_dir" "$current" "$project"
+# Re-read mounted bytes inside API before claiming the candidate healthy.
+if [[ "$reactionx_digest" == unavailable ]]; then
+  docker exec "${project}-api-1" python -c 'import os; assert not os.listdir("/app/runtime/reactionx-release"), "Unexpected release package"'
+else
+  docker exec "${project}-api-1" python -c 'import sys; from pathlib import Path; from app.reactionx.release_bundle import bundle_digest; bundle_digest(Path("/app/runtime/reactionx-release"), sys.argv[1])' "$reactionx_digest"
+fi
 for service in api scheduler; do
   docker exec "${project}-${service}-1" python -m app.evaluations.media_store --verify-store-identity
   docker exec "${project}-${service}-1" python -c 'import os; from pathlib import Path; paths=[v for k,v in os.environ.items() if k.endswith("_FILE") and v]; assert paths and all(Path(p).is_file() and Path(p).stat().st_size > 0 for p in paths), "Required secret unavailable"'

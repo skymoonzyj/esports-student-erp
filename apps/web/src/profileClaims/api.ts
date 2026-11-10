@@ -2,15 +2,24 @@ import { z } from "zod"
 import { ProblemDetailsError } from "../api/client"
 import { beginProfileClaimRequest, replaceProfileClaimGeneration } from "./keys"
 import type { ClaimPublicStatus, ClaimStart, ClaimStartInput } from "./types"
+import { identityDocumentTypes, normalizeHkId, normalizeHkMoPermit, personDocumentTypes } from "../assistedPeople/documentFacts"
 export { clearProfileClaimSession } from "./keys"
 
 const country = z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/)
 const noControlCharacters = (value: string) => ![...value].some((character) => character.charCodeAt(0) < 32)
 const guardianInput = z.strictObject({
   full_name: z.string().trim().min(1).max(80), identity_number: z.string().trim().min(1),
+  document_type: z.enum(identityDocumentTypes).optional(), document_issuing_country: country.nullable().optional(),
   phone: z.string().trim().min(1), email: z.email().nullable().optional(), relationship: z.string().trim().min(2).max(40),
   sex: z.enum(["male", "female"]), date_of_birth: z.iso.date(), is_primary: z.boolean().optional(),
-})
+}).superRefine((input, ctx) => {
+  if (input.document_type === "hk_id" && (!normalizeHkId(input.identity_number) || input.document_issuing_country && input.document_issuing_country !== "HK")) {
+    ctx.addIssue({ code: "custom", message: "香港身份证信息无效", path: ["identity_number"] })
+  }
+  if (input.document_type === "hk_mo_permit" && (!normalizeHkMoPermit(input.identity_number) || input.document_issuing_country != null)) {
+    ctx.addIssue({ code: "custom", message: "回乡证信息无效", path: ["identity_number"] })
+  }
+}).transform((input) => ({ ...input, identity_number: input.document_type === "hk_mo_permit" ? normalizeHkMoPermit(input.identity_number)! : input.document_type === "hk_id" ? normalizeHkId(input.identity_number)! : input.identity_number }))
 const completionInput = z.strictObject({
   phone: z.string().trim().max(80).refine(noControlCharacters).transform((value) => value || null).nullable().default(null),
   sex: z.enum(["male", "female"]).nullable().default(null), date_of_birth: z.iso.date().nullable().default(null),
@@ -20,20 +29,22 @@ const startInput = z.strictObject({
   full_name: z.string().trim().min(1).max(80),
   identity_number: z.string(),
   email: z.string().trim().toLowerCase().pipe(z.email()),
-  document_type: z.enum(["cn_id", "passport"]).optional(), issuing_country: country.nullable().optional(),
+  document_type: z.enum(personDocumentTypes).optional(), issuing_country: country.nullable().optional(),
   completion: completionInput.nullable().optional(),
 }).superRefine((input, ctx) => {
-  const cn = input.document_type !== "passport"
+  const cn = !input.document_type || input.document_type === "cn_id"
+  const hk = input.document_type === "hk_id"
+  const permit = input.document_type === "hk_mo_permit"
   const number = input.identity_number
-  if (cn ? !/^\d{17}[\dX]$/.test(number.trim().toUpperCase()) : !number.trim() || number.trim().length > 80 || !noControlCharacters(number)) {
+  if (cn ? !/^\d{17}[\dX]$/.test(number.trim().toUpperCase()) : hk ? !normalizeHkId(number) : permit ? !normalizeHkMoPermit(number) : !number.trim() || number.trim().length > 80 || !noControlCharacters(number)) {
     ctx.addIssue({ code: "custom", message: "证件号码格式无效", path: ["identity_number"] })
   }
   const extra = input.completion?.issuing_country
-  if (input.issuing_country && extra && input.issuing_country !== extra || cn && [input.issuing_country, extra].some((value) => value && value !== "CN")) {
+  if (input.issuing_country && extra && input.issuing_country !== extra || (cn || hk) && [input.issuing_country, extra].some((value) => value && value !== (hk ? "HK" : "CN")) || permit && [input.issuing_country, extra].some((value) => value != null)) {
     ctx.addIssue({ code: "custom", message: "签发国家不一致", path: ["issuing_country"] })
   }
 }).transform((input) => ({ ...input,
-  identity_number: input.document_type === "passport" ? input.identity_number : input.identity_number.trim().toUpperCase(),
+  identity_number: input.document_type === "passport" ? input.identity_number : input.document_type === "hk_mo_permit" ? normalizeHkMoPermit(input.identity_number)! : input.document_type === "hk_id" ? normalizeHkId(input.identity_number)! : input.identity_number.trim().toUpperCase(),
 }))
 const startResult = z.strictObject({
   accepted: z.literal(true), resend_available_at: z.iso.datetime({ offset: true }), expires_at: z.iso.datetime({ offset: true }),

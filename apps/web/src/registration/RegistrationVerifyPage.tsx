@@ -8,6 +8,7 @@ import {
   verifyRegistration,
 } from "./api"
 import "./registration.css"
+import { PublicEntryAside } from "./PublicEntryAside"
 
 type VerifyRouteState = {
   applicationId: string
@@ -115,6 +116,7 @@ export function RegistrationVerifyPage() {
 
   return (
     <main className="registrationPage">
+      <PublicEntryAside />
       <section className="registrationCard" aria-labelledby="registration-verify-title">
         <div className="registrationStep">步骤 2 / 3</div>
         <p className="registrationEyebrow">CONTACT VERIFICATION</p>

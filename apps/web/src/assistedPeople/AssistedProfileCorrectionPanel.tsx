@@ -4,7 +4,7 @@ import { useOptionalAuth } from "../auth/AuthProvider"
 import { AssistedPersonForm } from "./AssistedPersonForm"
 import { assistedEditorApi, newEditorOperationKey, useAssistedEditor, useEditorOperation } from "./editorApi"
 import type { AssistedEditorContext, ProfileCorrectionInput } from "./editorApi"
-import type { IntakeInput, PendingIntakeInput, PersonKind } from "./types"
+import type { DirectCreateInput, PendingIntakeInput } from "./types"
 import { PendingPersonForm, PendingReadinessSummary } from "./PendingPersonForm"
 import type { PendingPersonDraft } from "./PendingPersonForm"
 import { isPrivateDenial } from "./api"
@@ -20,7 +20,7 @@ function AccountCorrection({ accountId, personId }: { accountId: string; personI
   const editor = useAssistedEditor(accountId, personId)
   const [open, setOpen] = useState(() => Boolean(client.getQueryData(["assisted-editor-draft", accountId, personId])))
   const pendingAllowed = editor.context?.intake_mode === "pending" && editor.context.allowed_actions.includes("correct_pending_profile")
-  const strictAllowed = editor.context?.intake_mode !== "pending" && editor.context?.kind !== "staff" && editor.context?.allowed_actions.includes("correct_profile")
+  const strictAllowed = editor.context?.intake_mode !== "pending" && editor.context?.allowed_actions.includes("correct_profile")
   const privateDenied = editor.isError && isPrivateDenial(editor.error)
   useEffect(() => {
     if (editor.context && !pendingAllowed || privateDenied) client.removeQueries({ queryKey: ["assisted-editor-draft", accountId, personId] })
@@ -34,12 +34,12 @@ function AccountCorrection({ accountId, personId }: { accountId: string; personI
     {editor.blocked ? <p role="alert">管理权限暂未核实，当前草稿已保留。<button onClick={() => void editor.reload()}>重新核实管理权限</button></p> : null}
     {!open ? <button className="secondaryButton" disabled={editor.blocked} onClick={() => setOpen(true)}>更正本人及监护资料</button> :
       pendingAllowed ? <PendingCorrectionDraft accountId={accountId} personId={personId} context={editor.context} blocked={editor.blocked} reload={editor.reload} onClose={() => { client.removeQueries({ queryKey: ["assisted-editor-draft", accountId, personId] }); setOpen(false) }} /> :
-      editor.context.kind !== "staff" ? <CorrectionDraft accountId={accountId} personId={personId} context={{ ...editor.context, kind: editor.context.kind }} blocked={editor.blocked} reload={editor.reload} onClose={() => setOpen(false)} /> : null}
+      <CorrectionDraft accountId={accountId} personId={personId} context={editor.context} blocked={editor.blocked} reload={editor.reload} onClose={() => setOpen(false)} />}
   </section>
 }
 
 function CorrectionDraft({ accountId, personId, context, blocked, reload, onClose }: {
-  accountId: string; personId: string; context: AssistedEditorContext & { kind: PersonKind }; blocked: boolean;
+  accountId: string; personId: string; context: AssistedEditorContext; blocked: boolean;
   reload: () => Promise<AssistedEditorContext | null>; onClose: () => void
 }) {
   const operation = useEditorOperation(accountId, personId, context.profile_version)
@@ -50,11 +50,13 @@ function CorrectionDraft({ accountId, personId, context, blocked, reload, onClos
   const [reviewing, setReviewing] = useState(false)
   const submitted = useRef<{ fingerprint: string; key: string } | null>(null)
   const locked = blocked || operation.pending || operation.conflict || operation.succeeded
-  async function submit(input: IntakeInput) {
+  async function submit(input: DirectCreateInput) {
     if (locked) return
     if (!reason.trim() || reason.trim().length > 500) { setReasonError(true); return }
     setReasonError(false)
     const fields = { full_name: input.full_name, identity_number: input.identity_number, phone: input.phone,
+      ...(input.document_type !== undefined ? { document_type: input.document_type } : {}),
+      ...(input.document_issuing_country !== undefined ? { document_issuing_country: input.document_issuing_country } : {}),
       ...(context.can_edit_activation_email ? { email: input.email } : {}), sex: input.sex, date_of_birth: input.date_of_birth, guardians: input.guardians,
       expected_version: operation.version, reason: reason.trim() }
     const fingerprint = JSON.stringify(fields)
@@ -73,7 +75,7 @@ function CorrectionDraft({ accountId, personId, context, blocked, reload, onClos
       <button disabled={reviewing} onClick={async () => { setReviewing(true); const latest = await reload(); setReviewedVersion(latest?.profile_version ?? null); setReviewing(false) }}>重新读取最新管理信息</button>
       {reviewedVersion !== null ? <><p>已重新读取版本 {reviewedVersion}，请核对现有关系及全部草稿；不会自动提交。</p><button onClick={() => { operation.acceptVersion(reviewedVersion); setReviewedVersion(null) }}>已核对，使用最新版本</button></> : null}
     </div> : null}
-    <AssistedPersonForm identityOnlyKind={kind} canEditActivationEmail={context.can_edit_activation_email} onSubmit={submit} submitting={operation.pending} readOnly={locked} />
+    <AssistedPersonForm allowStaff identityOnlyKind={kind} canEditActivationEmail={context.can_edit_activation_email} onSubmit={submit} submitting={operation.pending} readOnly={locked} />
     <button className="secondaryButton" disabled={operation.pending} onClick={onClose}>关闭更正并清除草稿</button>
   </>
 }

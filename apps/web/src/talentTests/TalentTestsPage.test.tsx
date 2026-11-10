@@ -101,6 +101,15 @@ function renderCreationPage() {
   )
 }
 
+it('keeps ReactionX a separate specialty entry without adding a ninth round item', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => json({ ...context, catalog: newCatalog, active_session_id: null, can_read_reports: false })))
+  renderCreationPage()
+  expect(await screen.findByRole('link', { name: '进入实体灯专项' })).toHaveAttribute('href', '/talent-tests/reactionx')
+  const round = screen.getByRole('region', { name: '本人测试轮次' })
+  expect(within(round).getAllByRole('button', { name: /^选择/ })).toHaveLength(8)
+  expect(within(round).queryByText('实体灯专项')).not.toBeInTheDocument()
+})
+
 it.each([
   ["reactiontime", "反应速度"], ["aim", "瞄准速度"], ["sequence", "顺序记忆"],
   ["number-memory", "数字记忆"], ["verbal-memory", "中文词语记忆"],
@@ -251,7 +260,7 @@ it("按服务端目录顺序显示七项并只用已保存结果计算进度", a
 
   expect(await screen.findByRole("heading", { name: "天赋测试" })).toBeVisible()
   expect(await screen.findByText("1/7")).toBeVisible()
-  expect(screen.getAllByRole("heading", { level: 2 }).map((item) => item.textContent)).toEqual([
+  expect(within(screen.getByRole('region', { name: '本人测试轮次' })).getAllByRole("heading", { level: 2 }).map((item) => item.textContent)).toEqual([
     "反应速度",
     "瞄准速度",
     "顺序记忆",

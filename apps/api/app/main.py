@@ -17,6 +17,7 @@ from app.operations.metrics import RequestMetricsMiddleware, RequestMetricsStore
 from app.operations.monitor import OperationsBackgroundMonitor
 from app.operations.runtime import RuntimeSampler
 from app.portal.routing import PrivatePortalResponseMiddleware
+from app.reactionx.http_support import PrivateReactionxResponseMiddleware
 from app.registration.delivery import create_test_mailbox_sender
 from app.registration.routing import PrivateRegistrationResponseMiddleware
 from app.talent_tests.router import PrivateTalentResponseMiddleware
@@ -69,6 +70,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(PrivateFoodPreferenceResponseMiddleware)
     app.add_middleware(PrivateRegistrationResponseMiddleware)
     app.add_middleware(PrivateTalentResponseMiddleware)
+    app.add_middleware(PrivateReactionxResponseMiddleware)
     app.add_middleware(PrivateEsportsAssessmentResponseMiddleware)
     app.add_middleware(RequestMetricsMiddleware, store=request_metrics)
     app.include_router(api_router, prefix="/api/v1")

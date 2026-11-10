@@ -827,6 +827,24 @@ class IdentityService:
             )
             or 0
         )
+        staff_team_manager = (
+            self.db.scalar(
+                select(func.count())
+                .select_from(StaffProfile)
+                .join(Person, Person.id == StaffProfile.person_id)
+                .where(active_people, StaffProfile.staff_type == "team_manager")
+            )
+            or 0
+        )
+        assistant_coach = (
+            self.db.scalar(
+                select(func.count())
+                .select_from(StaffProfile)
+                .join(Person, Person.id == StaffProfile.person_id)
+                .where(active_people, StaffProfile.staff_type == "assistant_coach")
+            )
+            or 0
+        )
         customer_service = (
             self.db.scalar(
                 select(func.count())
@@ -934,6 +952,8 @@ class IdentityService:
             guardian=int(guardian),
             staff=int(staff),
             coach=int(coach),
+            staff_team_manager=int(staff_team_manager),
+            assistant_coach=int(assistant_coach),
             life_teacher=int(life_teacher),
             customer_service=int(customer_service),
             administration=int(administration),

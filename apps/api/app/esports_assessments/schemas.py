@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import Field, StrictBool, StrictInt, model_validator
 
 from .config_schemas import (
+    AttackMode,
     Difficulty,
     FiniteNumber,
     NonNegative,
@@ -17,6 +18,7 @@ from .config_schemas import (
     SuiteId,
     TaskConfig,
     TestId,
+    members_for_catalog,
 )
 from .raw_schemas import RawResult
 
@@ -143,9 +145,9 @@ def validate_settings(
 
 
 class QualityInput(StrictModel):
-    duration_ms: Annotated[NonNegative, Field(le=60000)]
-    max_frame_gap_ms: Annotated[NonNegative, Field(le=60000)]
-    long_frame_gap_total_ms: Annotated[NonNegative, Field(le=60000)]
+    duration_ms: Annotated[NonNegative, Field(le=300000)]
+    max_frame_gap_ms: Annotated[NonNegative, Field(le=300000)]
+    long_frame_gap_total_ms: Annotated[NonNegative, Field(le=300000)]
     input_kind: InputKind
     hidden: StrictBool
     interrupted: StrictBool
@@ -157,6 +159,7 @@ class OperationRequest(StrictModel):
 
 class SessionCreate(OperationRequest):
     suite_id: SuiteId
+    attack_mode: AttackMode | None = None
 
 
 class AttemptCreate(OperationRequest):
@@ -168,6 +171,7 @@ class AttemptCreate(OperationRequest):
 class PracticeCreate(AttemptCreate):
     suite_id: SuiteId
     difficulty: Difficulty = 3
+    attack_mode: AttackMode | None = None
 
 
 class ResultSubmit(OperationRequest):
@@ -235,24 +239,24 @@ class SessionView(StrictModel):
     suite_id: SuiteId
     suite_config: SuiteConfig
     status: Literal["in_progress", "completed", "abandoned"]
-    members: tuple[TestId, TestId, TestId, TestId]
+    members: Annotated[tuple[TestId, ...], Field(min_length=1, max_length=4)]
     results: Annotated[tuple[SessionResultView, ...], Field(max_length=4)]
     report_id: UUID | None
 
     @model_validator(mode="after")
     def check_members(self) -> Self:
-        from .config_schemas import MEMBERS
-
         if (
-            self.members != MEMBERS[self.suite_id]
+            self.members != members_for_catalog(self.suite_id, self.suite_config.catalog_version)
             or self.suite_config.suite_id != self.suite_id
             or self.suite_config.test_ids != self.members
             or len({r.test_id for r in self.results}) != len(self.results)
             or any(r.test_id not in self.members for r in self.results)
         ):
             raise ValueError("invalid session result members")
-        if self.status == "completed" and (len(self.results) != 4 or self.report_id is None):
-            raise ValueError("completed session requires four results and a report")
+        if self.status == "completed" and (
+            len(self.results) != len(self.members) or self.report_id is None
+        ):
+            raise ValueError("completed session requires all frozen results and a report")
         return self
 
 
@@ -303,6 +307,17 @@ class AssessmentReportView(StrictModel):
     suite: SuiteConfig
     person: PersonDisplaySnapshot
     completed_at: datetime
-    results: tuple[ReportResult, ReportResult, ReportResult, ReportResult]
+    results: Annotated[tuple[ReportResult, ...], Field(min_length=1, max_length=4)]
     recommendations: Annotated[tuple[str, ...], Field(max_length=16)]
     comparisons: Annotated[tuple[ReportComparison, ...], Field(max_length=4)]
+
+    @model_validator(mode="after")
+    def check_frozen_members(self) -> Self:
+        if (
+            self.suite.suite_id != self.suite_id
+            or tuple(result.test_id for result in self.results) != self.suite.test_ids
+        ):
+            raise ValueError("report requires each frozen member in catalog order")
+        if any(result.config != self.suite.tasks[result.test_id] for result in self.results):
+            raise ValueError("report task configuration differs from frozen catalog")
+        return self

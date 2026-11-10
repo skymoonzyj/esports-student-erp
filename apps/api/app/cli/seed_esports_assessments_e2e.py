@@ -21,7 +21,7 @@ from app.cli.e2e_database_safety import (
 )
 from app.core.transactions import write_transaction
 from app.esports_assessments.catalog import get_task
-from app.esports_assessments.config_schemas import MEMBERS
+from app.esports_assessments.config_schemas import members_for_catalog
 from app.esports_assessments.models import (
     AssessmentAttempt,
     AssessmentPracticeRun,
@@ -133,6 +133,20 @@ class _ExpectedEvidence:
     audits: Counter[str]
 
 
+# Acceptance is intentionally pinned, never inferred from a submitted snapshot or
+# whichever catalog happens to become current in a later release.
+_CATALOG_VERSIONS = {
+    "pc-fps": "pc-fps-v5",
+    "pc-moba": "pc-moba-v5",
+    "mobile-fps": "mobile-fps-v3",
+    "mobile-moba": "mobile-moba-v3",
+}
+
+
+def _members(suite_id: str) -> tuple[str, ...]:
+    return members_for_catalog(suite_id, _CATALOG_VERSIONS[suite_id])
+
+
 def _formal_rows(*suites: str) -> tuple[
     Counter[tuple[str, str]],
     Counter[tuple[str, str, str]],
@@ -144,12 +158,12 @@ def _formal_rows(*suites: str) -> tuple[
         Counter(
             (suite_id, test_id, "submitted")
             for suite_id in suites
-            for test_id in MEMBERS[suite_id]
+            for test_id in _members(suite_id)
         ),
         Counter(
             (suite_id, test_id)
             for suite_id in suites
-            for test_id in MEMBERS[suite_id]
+            for test_id in _members(suite_id)
         ),
         Counter(suites),
     )
@@ -169,7 +183,7 @@ _EXPECTED: dict[EvidenceMode, _ExpectedEvidence] = {
         reports=_PC_REPORTS,
         practices=Counter(
             {
-                ("pc-fps", "precision", "submitted"): 1,
+                ("pc-fps", "gridshot", "submitted"): 1,
                 ("pc-moba", "last-hit", "submitted"): 1,
             }
         ),
@@ -202,13 +216,13 @@ _EXPECTED: dict[EvidenceMode, _ExpectedEvidence] = {
         sessions=Counter({("pc-fps", "in_progress"): 1}),
         attempts=Counter(
             {
-                ("pc-fps", "precision", "submitted"): 1,
-                ("pc-fps", "tracking", "interrupted"): 1,
+                ("pc-fps", "gridshot", "submitted"): 1,
+                ("pc-fps", "sixshot", "interrupted"): 1,
             }
         ),
-        results=Counter({("pc-fps", "precision"): 1}),
+        results=Counter({("pc-fps", "gridshot"): 1}),
         reports=Counter(),
-        practices=Counter({("pc-fps", "precision", "submitted"): 1}),
+        practices=Counter({("pc-fps", "gridshot", "submitted"): 1}),
         audits=Counter({"esports_assessments.started": 1}),
     ),
     "capabilities-desktop": _ExpectedEvidence(
@@ -216,7 +230,7 @@ _EXPECTED: dict[EvidenceMode, _ExpectedEvidence] = {
         attempts=Counter(),
         results=Counter(),
         reports=Counter(),
-        practices=Counter({("pc-fps", "precision", "interrupted"): 1}),
+        practices=Counter({("pc-fps", "gridshot", "interrupted"): 1}),
         audits=Counter(),
     ),
     "capabilities-touch": _ExpectedEvidence(
@@ -452,7 +466,7 @@ def _validate_operation_state(
             raise EsportsAssessmentE2EEvidenceError("operation_state")
 
 
-def _frozen_v3_task(
+def _frozen_task(
     value: object,
     *,
     suite_id: str,
@@ -461,18 +475,24 @@ def _frozen_v3_task(
 ) -> dict[str, object]:
     if not isinstance(value, dict):
         raise EsportsAssessmentE2EEvidenceError(reason)
-    catalog_version = f"{suite_id}-v3"
+    catalog_version = _CATALOG_VERSIONS[suite_id]
     expected = get_task(
         suite_id,
         test_id,
         catalog_version=catalog_version,
+        attack_mode=(
+            "ranged"
+            if isinstance(value.get("params"), dict)
+            and value["params"].get("attack_mode") == "ranged"
+            else "melee"
+        ) if suite_id == "pc-moba" else None,
     ).model_dump(mode="json")
     if value != expected:
         raise EsportsAssessmentE2EEvidenceError(reason)
     return value
 
 
-def _frozen_v3_suite(
+def _frozen_suite(
     value: object,
     *,
     suite_id: str,
@@ -480,18 +500,18 @@ def _frozen_v3_suite(
 ) -> dict[str, dict[str, object]]:
     if not isinstance(value, dict):
         raise EsportsAssessmentE2EEvidenceError(reason)
-    members = MEMBERS[suite_id]
+    members = _members(suite_id)
     tasks = value.get("tasks")
     if (
         value.get("suite_id") != suite_id
-        or value.get("catalog_version") != f"{suite_id}-v3"
+        or value.get("catalog_version") != _CATALOG_VERSIONS[suite_id]
         or value.get("test_ids") not in (list(members), members)
         or not isinstance(tasks, dict)
         or set(tasks) != set(members)
     ):
         raise EsportsAssessmentE2EEvidenceError(reason)
     return {
-        test_id: _frozen_v3_task(
+        test_id: _frozen_task(
             tasks[test_id],
             suite_id=suite_id,
             test_id=test_id,
@@ -543,7 +563,7 @@ def validate_esports_assessments_e2e_evidence(
         if not isinstance(suite_id, str):
             raise EsportsAssessmentE2EEvidenceError("session_config_identity")
         snapshot = getattr(row, "catalog_snapshot", None)
-        frozen_tasks_by_session[getattr(row, "id", None)] = _frozen_v3_suite(
+        frozen_tasks_by_session[getattr(row, "id", None)] = _frozen_suite(
             snapshot,
             suite_id=suite_id,
             reason="session_config_identity",
@@ -654,7 +674,7 @@ def validate_esports_assessments_e2e_evidence(
         test_id = getattr(row, "test_id", None)
         if not isinstance(suite_id, str) or not isinstance(test_id, str):
             raise EsportsAssessmentE2EEvidenceError("practice_config_identity")
-        _frozen_v3_task(
+        _frozen_task(
             getattr(row, "config_snapshot", None),
             suite_id=suite_id,
             test_id=test_id,
@@ -720,7 +740,7 @@ def validate_esports_assessments_e2e_evidence(
         suite_id = getattr(session, "suite_id", None)
         if not isinstance(suite_id, str):
             raise EsportsAssessmentE2EEvidenceError("audit_identity")
-        first_test_id = MEMBERS[suite_id][0]
+        first_test_id = _members(suite_id)[0]
         first_task = frozen_tasks_by_session.get(session_id, {}).get(first_test_id)
         if (
             metadata["session_id"] != str(session_id)
@@ -746,7 +766,7 @@ def validate_esports_assessments_e2e_evidence(
                 not in {
                     str(value) for value in result_submission_keys.get(session_id, set())
                 }
-                or metadata["result_count"] != 4
+                or metadata["result_count"] != len(frozen_tasks_by_session[session_id])
                 or metadata["report_id"] != str(getattr(report, "id", None))
             ):
                 raise EsportsAssessmentE2EEvidenceError("audit_identity")

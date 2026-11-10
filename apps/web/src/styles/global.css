@@ -33,7 +33,7 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid rgb(99 91 255 / 28%);
+  outline: 3px solid var(--ui-focus-ring);
   outline-offset: 2px;
 }
 
@@ -49,10 +49,10 @@ button:disabled {
   min-height: 44px;
   padding: 0 18px;
   border: 0;
-  border-radius: 11px;
+  border-radius: var(--ui-radius-sm);
   color: white;
   background: var(--color-accent-600);
-  box-shadow: 0 12px 25px rgb(74 66 218 / 20%);
+  box-shadow: var(--ui-shadow-button);
   font-weight: 720;
   cursor: pointer;
   transition: background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
@@ -60,7 +60,7 @@ button:disabled {
 
 .primaryButton:hover:not(:disabled) {
   background: var(--color-accent-700);
-  box-shadow: 0 14px 30px rgb(74 66 218 / 25%);
+  box-shadow: var(--ui-shadow-button);
   transform: translateY(-1px);
 }
 
@@ -79,11 +79,11 @@ button:disabled {
   height: 48px;
   display: grid;
   place-items: center;
-  border-radius: 14px;
+  border-radius: var(--ui-radius-md);
   color: white;
   background: var(--color-accent-600);
   font-weight: 800;
-  box-shadow: 0 16px 36px rgb(74 66 218 / 22%);
+  box-shadow: var(--ui-shadow-button);
 }
 
 .routeLoading p {
@@ -98,9 +98,9 @@ button:disabled {
   justify-items: center;
   padding: 32px;
   border: 1px dashed var(--color-border);
-  border-radius: 18px;
+  border-radius: var(--ui-radius-lg);
   color: var(--color-text-muted);
-  background: white;
+  background: var(--color-surface);
   text-align: center;
 }
 

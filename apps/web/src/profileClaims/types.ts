@@ -1,4 +1,4 @@
-import type { AssistedGuardianInput } from "../assistedPeople/types"
+import type { AssistedGuardianInput, PersonDocumentType } from "../assistedPeople/types"
 
 export interface ClaimCompletionInput {
   phone?: string | null
@@ -12,7 +12,7 @@ export interface ClaimStartInput {
   full_name: string
   identity_number: string
   email: string
-  document_type?: "cn_id" | "passport"
+  document_type?: PersonDocumentType
   issuing_country?: string | null
   completion?: ClaimCompletionInput | null
 }

@@ -12,6 +12,7 @@ from app.cli.e2e_credentials import E2E_CREDENTIALS
 from app.cli.e2e_database_safety import E2EDatabaseRefused, require_e2e_database_url
 from app.cli.seed_e2e import (
     E2E_ADMIN_ACCOUNT_ID,
+    E2E_COACH_ACCOUNT_ID,
     E2E_SELF_STUDENT_ACCOUNT_ID,
     E2E_SELF_STUDENT_PERSON_ID,
     _seed_account,
@@ -183,6 +184,12 @@ def seed_team_management_e2e(
         db.add(UserRole(
             user_id=E2E_SELF_STUDENT_ACCOUNT_ID,
             role_id=ROLES["team_member"].id,
+        ))
+        # Reuse the canonical synthetic coach login for read-only multi-role
+        # coverage. Do not create new credentials or pre-bind any staff relation.
+        db.add(UserRole(
+            user_id=E2E_COACH_ACCOUNT_ID,
+            role_id=ROLES["assistant_coach"].id,
         ))
         db.flush()
 

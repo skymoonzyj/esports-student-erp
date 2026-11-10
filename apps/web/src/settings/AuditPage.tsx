@@ -47,6 +47,27 @@ function nextCalendarDate(value: string): string {
 }
 
 const actionLabels: Record<string, string> = {
+  "reactionx.pairing.create": "创建 ReactionX 配对",
+  "reactionx.pairing.claim": "领取 ReactionX 配对",
+  "reactionx.pairing.confirm_browser": "网页确认 ReactionX 配对",
+  "reactionx.pairing.confirm_device": "设备确认 ReactionX 配对",
+  "reactionx.pairing.activate": "激活 ReactionX 连接器",
+  "reactionx.pairing.cancel": "取消 ReactionX 配对",
+  "reactionx.connector.revoke": "撤销 ReactionX 连接器",
+  "reactionx.run.prepare": "准备 ReactionX 训练",
+  "reactionx.run.start": "启动 ReactionX 训练",
+  "reactionx.run.stop": "请求停止 ReactionX 训练",
+  "reactionx.run.safety_stop": "安全停止 ReactionX 训练",
+  "reactionx.run.stop_confirmed": "确认 ReactionX 灯具已停止",
+  "reactionx.run.manual_activate": "手动激活 ReactionX 灯具",
+  "reactionx.device.scan": "扫描 ReactionX 灯具",
+  "reactionx.device.connect": "连接 ReactionX 灯具",
+  "reactionx.device.disconnect": "断开 ReactionX 灯具",
+  "reactionx.device.identify": "识别 ReactionX 灯具",
+  "reactionx.result.saved": "保存 ReactionX 结果",
+  "reactionx.upload.authorized": "授权 ReactionX 原包补传",
+  "reactionx.recovery.requested": "申请 ReactionX 结果恢复",
+  "reactionx.recovery.confirmed": "二次确认 ReactionX 结果恢复",
   "referral_organization_manager.assign": "分配邀请机构负责人",
   "referral_organization_manager.revoke": "移除邀请机构负责人",
   "referral_organization_manager.list": "查看邀请机构负责人",
@@ -58,7 +79,10 @@ const actionLabels: Record<string, string> = {
   "team_memberships.transfer": "调动队伍",
   "team_managers.assign": "分配队伍管理人员",
   "team_managers.unassign": "解除队伍管理人员分配",
+  "team_staff.assign": "分配队内只读岗位",
+  "team_staff.unassign": "解除队内只读岗位",
   "operations.alert.acknowledge": "确认运维告警已知晓",
+  "operations.appearance.update": "修改全局系统外观",
   "account.create": "创建账号",
   "account.delete": "删除账号",
   "account.disable": "停用账号",
@@ -68,8 +92,10 @@ const actionLabels: Record<string, string> = {
   "account.permission_override.remove": "移除账号权限规则",
   "account.role.assign": "分配账号角色",
   "account.role.remove": "移除账号角色",
+  "account.job_role.change": "变更账号岗位",
   "person.create": "创建人员档案",
   "person.update": "修改人员档案",
+  "person.assignments.update": "修改人员身份与项目教练归属",
   "person.nickname.update": "修改个人昵称",
   "person.profile.update": "修改人员昵称与备注",
   "housing.stay.update_planned_departure": "修改计划退宿日期",
@@ -83,7 +109,15 @@ const actionLabels: Record<string, string> = {
   "student_game_account.limit_update": "修改游戏账号绑定上限",
   "housing.building.create": "创建住宿楼栋",
   "housing.room.verify_batch": "批量确认房间",
+  "housing.room.service_status_batch.available": "批量设为可用",
+  "housing.room.service_status_batch.maintenance": "批量设为维修",
+  "housing.room.service_status_batch.disabled": "批量设为停用",
   "housing.room.update": "修改房间",
+  "housing.room_card.save": "修改房卡日期",
+  "housing.property_change.submit": "提交物业房态变更",
+  "housing.property_change.review": "审核物业房态变更",
+  "housing.property_change.withdraw": "撤回物业房态变更",
+  "housing.property.export": "导出住宿与问题房清单",
   "housing.room.cleaning.complete": "完成房间保洁",
   "housing.room_photo.put": "上传房间照片",
   "housing.room_photo.delete": "删除房间照片",
@@ -121,6 +155,8 @@ const actionLabels: Record<string, string> = {
   "admissions.enrollment.withdrawal_refund": "办理退营退款",
   "admissions.payment_import.process": "处理付款导入",
   "asset.export": "导出资产台账",
+  "asset.rental.renew": "续期资产租约",
+  "asset.rental.return": "资产退租",
   "asset.photo.upload": "上传资产辨识照片",
   "asset.photo.remove": "移除资产辨识照片",
   "procurement.center.create": "新增采购结算中心",
@@ -207,13 +243,18 @@ const operationLabels: Record<string, string> = {
 }
 
 const resourceLabels: Record<string, string> = {
+  housing_room_card: "住宿房卡",
+  housing_property_change: "物业房态变更申请",
+  housing_property_export: "住宿与问题房清单",
   referral_organization_manager: "邀请机构负责人关系",
   invited_housing: "受邀人员住宿",
   invitation_source: "邀请来源",
   cloud_backup: "云备份",
   team_membership: "队伍成员关系",
   team_manager_assignment: "队伍管理关系",
+  team_staff_assignment: "队内工作人员关系",
   operations_alert: "运维告警",
+  global_appearance: "全局系统外观",
   account: "账号",
   admission_case: "招生报名记录",
   coach_assignment: "教练分配记录",
@@ -264,12 +305,15 @@ const resourceLabels: Record<string, string> = {
 }
 
 const roleLabels: Record<string, string> = {
+  property: "物业",
   team_member: "队员",
   team_manager: "队伍管理",
   admin: "管理员",
   administration: "行政",
   coach: "教练",
+  assistant_coach: "助教",
   customer_service: "客服",
+  finance: "财务",
   guardian: "监护人",
   life_teacher: "生活老师",
   registered_user: "已注册用户",
@@ -279,6 +323,10 @@ const roleLabels: Record<string, string> = {
 }
 
 const permissionLabels: Record<string, string> = {
+  "housing.changes.submit": "提交房态变更申请",
+  "housing.changes.review": "审核房态变更申请",
+  "housing.keycards.manage": "维护房卡日期",
+  "housing.exports.basic": "导出住宿与问题房清单",
   "referrals.read_invited_housing": "查看受邀人员住宿",
   "team_memberships.read": "查看队伍成员关系",
   "team_memberships.manage": "管理队伍成员关系",
@@ -335,6 +383,30 @@ const scopeLabels: Record<string, string> = {
 }
 
 const metadataKeyLabels: Record<string, string> = {
+  previous_cleaning_frequency: "原保洁需求",
+  cleaning_frequency: "保洁需求",
+  previous_card_issued_on: "原房卡开卡日期",
+  card_issued_on: "房卡开卡日期",
+  previous_card_expires_on: "原房卡到期日期",
+  card_expires_on: "房卡到期日期",
+  housing_change_decision: "房态审核决定",
+  housing_export_kind: "清单类型",
+  old_role_keys: "原账号角色",
+  new_role_keys: "新账号角色",
+  keep_concurrent_roles: "保留其他兼任岗位",
+  old_theme: "原主题",
+  new_theme: "新主题",
+  old_version: "原版本",
+  ownership_type: "资产归属",
+  acquisition_method: "取得方式",
+  acquisition_channel: "采购渠道",
+  acquisition_note_changed: "获得方式说明已修改",
+  rental_started_on: "租赁开始日期",
+  rental_expires_on: "租赁到期日期",
+  rental_returned_on: "退租日期",
+  rental_revision: "租期版本",
+  rental_period: "续期周期",
+  previous_expires_on: "原到期日期",
   previous_daily_cleaning_enabled: "原每日保洁",
   daily_cleaning_enabled: "新每日保洁",
   changed_fields: "修改字段",
@@ -354,6 +426,7 @@ const metadataKeyLabels: Record<string, string> = {
   source_team_id: "原队伍编号",
   target_team_id: "目标队伍编号",
   person_id: "人员编号",
+  new_version: "更新后版本",
   professional_team_id: "队伍编号",
   is_team_division: "分部用途",
   affected_account_count: "受影响账号数",
@@ -464,6 +537,18 @@ function labelPurpose(value: string | null): string {
 }
 
 function metadataValueLabel(key: string, value: unknown): string {
+  if (key === "old_theme" || key === "new_theme") {
+    return value === "clear" ? "清爽专业" : value === "command" ? "深蓝效率" : "其他主题"
+  }
+  if (["ownership_type", "acquisition_method", "acquisition_channel", "rental_period"].includes(key)) {
+    if (value === null) return "未设置"
+    const labels: Record<string, string> = { owned: "自有", rented: "租用", purchase: "采购", other: "其他", online: "线上", offline: "线下", week: "一周", month: "一月", quarter: "一季" }
+    return typeof value === "string" ? labels[value] ?? "已记录" : "已记录"
+  }
+  if (["rental_started_on", "rental_expires_on", "rental_returned_on", "previous_expires_on", "previous_card_issued_on", "card_issued_on", "previous_card_expires_on", "card_expires_on"].includes(key)) {
+    if (value === null) return "未设置"
+    return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "日期无效"
+  }
   if (key === "changed_fields" && Array.isArray(value)) {
     const fields: Record<string, string> = { nickname: "昵称", profile_notes: "个人档案备注" }
     return value.map((field) => typeof field === "string" ? fields[field] ?? "其他字段" : "其他字段").join("、")
@@ -479,13 +564,21 @@ function metadataValueLabel(key: string, value: unknown): string {
   if ((key === "old_nickname" || key === "new_nickname") && value === null) return "未设置"
   if (typeof value === "boolean") return value ? "是" : "否"
   if (typeof value === "number") return String(value)
-  if (Array.isArray(value)) return `${value.length} 项`
+  if (Array.isArray(value)) {
+    if (key === "old_role_keys" || key === "new_role_keys") return value.map(role => typeof role === "string" ? roleLabels[role] ?? "自定义角色" : "未知角色").join("、") || "无"
+    return `${value.length} 项`
+  }
   if (typeof value !== "string") return "已记录"
   if (key === "source_kind") return value === "organization" ? "机构" : value === "person" ? "个人" : "其他来源"
   if (key === "field") {
     return value === "identity_number" ? "身份证号" : value === "phone" ? "手机号" : "其他字段"
   }
   if (key === "role_key") return roleLabels[value] ?? "自定义角色"
+  if (key === "previous_cleaning_frequency" || key === "cleaning_frequency") {
+    return ({ unspecified: "未设置", daily: "每日保洁", weekly: "每周保洁", on_demand: "按需保洁" } as Record<string, string>)[value] ?? "未知保洁需求"
+  }
+  if (key === "housing_change_decision") return value === "approve" ? "通过" : value === "reject" ? "驳回" : "未知决定"
+  if (key === "housing_export_kind") return value === "occupants" ? "住宿人员列表" : value === "problems" ? "问题房清单" : "未知清单"
   if (key === "permission_key") return labelPermission(value)
   if (key === "scope_kind") return scopeLabels[value] ?? "其他范围"
   if (key === "effect") return enumValueLabels[value] ?? "已记录"
@@ -506,7 +599,15 @@ function metadataValueLabel(key: string, value: unknown): string {
 
 function metadataItems(metadata: AuditMetadata): ReactNode[] {
   return Object.entries(metadata).flatMap(([key, value]) => {
-    if (["reason", "transfer_reason", "profile_notes", "binary", "request_body", "photo_bytes", "image_bytes", "image_data", "file_content"].includes(key)) return []
+    if (["reason", "transfer_reason", "profile_notes", "acquisition_note", "binary", "request_body", "photo_bytes", "image_bytes", "image_data", "file_content"].includes(key)) return []
+    if (key === "previous_rental_facts" || key === "rental_facts") {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return []
+      const facts = value as Record<string, unknown>
+      return ["ownership_type", "acquisition_method", "acquisition_channel", "rental_started_on", "rental_expires_on", "rental_returned_on", "rental_revision"].flatMap((field) => {
+        if (!(field in facts)) return []
+        return [<span key={`${key}.${field}`}>{key === "previous_rental_facts" ? "原" : "新"}{metadataKeyLabels[field]}：{metadataValueLabel(field, facts[field])}</span>]
+      })
+    }
     const explicitClear = ["old_nickname", "new_nickname", "previous_planned_check_out_at", "planned_check_out_at"].includes(key)
     if (value === undefined || (value === null && !explicitClear)) return []
     const label = metadataKeyLabels[key] ?? (key.endsWith("_id") ? "关联编号" : "变更信息")
@@ -682,7 +783,7 @@ export function AuditPage() {
               </div>
               <div className="auditMetadata" role="cell" data-label="审计详情">
                 <span className="auditMetadataTitle">变更信息</span>
-                <AuditMetadataView metadata={event.metadata} />
+                <AuditMetadataView metadata={event.action.startsWith("reactionx.") ? {} : event.metadata} />
                 <small>请求编号：{safeAuditText(event.request_id)}</small>
               </div>
             </article>

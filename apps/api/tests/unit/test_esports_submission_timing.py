@@ -15,7 +15,7 @@ def test_submission_at_62999_milliseconds_is_too_early() -> None:
     with pytest.raises(AssessmentConflict) as error:
         require_submission_elapsed(
             created_at,
-            get_task("pc-fps", "precision"),
+            get_task("pc-fps", "precision", catalog_version="pc-fps-v3"),
             created_at + timedelta(milliseconds=62_999),
         )
 
@@ -27,7 +27,7 @@ def test_submission_at_63_seconds_is_allowed() -> None:
 
     require_submission_elapsed(
         created_at,
-        get_task("pc-fps", "precision"),
+        get_task("pc-fps", "precision", catalog_version="pc-fps-v3"),
         created_at + timedelta(seconds=63),
     )
 
@@ -42,4 +42,6 @@ def test_submission_timing_rejects_naive_datetimes(naive_field: str) -> None:
         now = now.replace(tzinfo=None)
 
     with pytest.raises(ValueError, match=rf"^{naive_field} must be timezone-aware$"):
-        require_submission_elapsed(created_at, get_task("pc-fps", "precision"), now)
+        require_submission_elapsed(
+            created_at, get_task("pc-fps", "precision", catalog_version="pc-fps-v3"), now
+        )

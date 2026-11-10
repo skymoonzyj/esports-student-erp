@@ -10,7 +10,6 @@ from app.core.time import business_today
 from app.identity.document_identity import normalize_document_identity
 from app.identity.normalization import (
     IdentityValidationError,
-    normalize_cn_id,
     normalize_email,
     normalize_phone,
 )
@@ -20,6 +19,7 @@ from app.personnel_intake.guardian_records import ApprovalEvidenceError
 from app.personnel_intake.schemas import (
     AssistedGuardianInput,
     AssistedGuardianView,
+    DirectPersonInput,
     IntakeInput,
     IntakePayloadView,
     PendingIntakeInput,
@@ -30,6 +30,8 @@ from app.personnel_intake.schemas import (
 class NormalizedFields(TypedDict):
     full_name: str
     identity_number: str
+    document_type: Literal["cn_id", "hk_id", "hk_mo_permit"]
+    document_issuing_country: str | None
     phone: str
     email: str | None
     sex: Literal["male", "female"]
@@ -50,41 +52,57 @@ def decode_payload(raw: str) -> IntakePayloadView | PendingIntakePayloadView:
         raise ApprovalEvidenceError() from exc
 
 
-def normalize_payload(value: IntakeInput, *, today: date | None = None) -> IntakePayloadView:
+def normalize_payload(value: IntakeInput | DirectPersonInput, *, today: date | None = None) -> IntakePayloadView:
     today = today or business_today()
     try:
 
-        def fields(person: IntakeInput | AssistedGuardianInput) -> NormalizedFields:
-            identity = normalize_cn_id(
-                person.identity_number.get_secret_value(), expected_birth_date=person.date_of_birth
+        def fields(person: IntakeInput | DirectPersonInput | AssistedGuardianInput) -> NormalizedFields:
+            identity = normalize_document_identity(
+                person.document_type,
+                person.identity_number.get_secret_value(),
+                issuing_country=person.document_issuing_country,
+                sex=person.sex,
+                date_of_birth=person.date_of_birth,
+                allow_pending=False,
             )
-            if identity.sex != person.sex or identity.birth_date > today:
+            if person.date_of_birth > today:
                 raise PersonnelIntakeError(
                     "personnel_intake_validation", status=422, detail="身份资料不一致"
                 )
             return {
                 "full_name": person.full_name,
                 "identity_number": identity.number,
+                "document_type": person.document_type,
+                "document_issuing_country": identity.issuing_country,
                 "phone": normalize_phone(person.phone.get_secret_value()),
                 "email": normalize_email(person.email.get_secret_value()) if person.email else None,
-                "sex": identity.sex,
-                "date_of_birth": identity.birth_date,
+                "sex": person.sex,
+                "date_of_birth": person.date_of_birth,
             }
 
         own = fields(value)
         guardians = []
-        identities = {own["identity_number"]}
+        identities = {
+            (own["document_type"], own["document_issuing_country"], own["identity_number"])
+        }
         for guardian in value.guardians:
             item = fields(guardian)
             if (
                 is_minor(guardian.date_of_birth, today)
-                or item["identity_number"] in identities
+                or (
+                    item["document_type"],
+                    item["document_issuing_country"],
+                    item["identity_number"],
+                )
+                in identities
                 or (item["email"] and item["email"] == own["email"])
             ):
                 raise PersonnelIntakeError(
                     "personnel_intake_validation", status=422, detail="监护资料不符合要求"
                 )
-            identities.add(item["identity_number"])
+            identities.add(
+                (item["document_type"], item["document_issuing_country"], item["identity_number"])
+            )
             guardians.append(
                 AssistedGuardianView(
                     **item, relationship=guardian.relationship, is_primary=guardian.is_primary
@@ -136,15 +154,19 @@ def normalize_pending_payload(
                 "personnel_intake_validation", status=422, detail="联系方式无效"
             )
         # CN phone facts retain their strict format; foreign contacts are not login identifiers.
-        if phone and value.document_type == "cn_id":
+        if phone and value.document_type != "passport":
             phone = normalize_phone(phone)
         email = normalize_email(value.email.get_secret_value()) if value.email else None
         guardians: list[AssistedGuardianView] = []
-        seen = {document.number} if document.document_type == "cn_id" else set()
+        seen = {(document.document_type, document.issuing_country, document.number)}
         for guardian in value.guardians:
-            identity = normalize_cn_id(
+            identity = normalize_document_identity(
+                guardian.document_type,
                 guardian.identity_number.get_secret_value(),
-                expected_birth_date=guardian.date_of_birth,
+                issuing_country=guardian.document_issuing_country,
+                sex=guardian.sex,
+                date_of_birth=guardian.date_of_birth,
+                allow_pending=False,
             )
             guardian_email = (
                 normalize_email(guardian.email.get_secret_value()) if guardian.email else None
@@ -153,17 +175,19 @@ def normalize_pending_payload(
                 identity.sex != guardian.sex
                 or is_minor(guardian.date_of_birth, today)
                 or guardian.date_of_birth > today
-                or identity.number in seen
+                or (identity.document_type, identity.issuing_country, identity.number) in seen
                 or (guardian_email and guardian_email == email)
             ):
                 raise PersonnelIntakeError(
                     "personnel_intake_validation", status=422, detail="监护资料不符合要求"
                 )
-            seen.add(identity.number)
+            seen.add((identity.document_type, identity.issuing_country, identity.number))
             guardians.append(
                 AssistedGuardianView(
                     full_name=guardian.full_name,
                     identity_number=identity.number,
+                    document_type=guardian.document_type,
+                    document_issuing_country=identity.issuing_country,
                     sex=guardian.sex,
                     date_of_birth=guardian.date_of_birth,
                     phone=normalize_phone(guardian.phone.get_secret_value()),
@@ -176,7 +200,7 @@ def normalize_pending_payload(
             kind=value.kind,
             full_name=value.full_name,
             identity_number=document.number
-            if document.document_type == "cn_id"
+            if document.document_type != "passport"
             else value.identity_number.get_secret_value(),
             document_type=document.document_type,
             document_issuing_country=document.issuing_country,

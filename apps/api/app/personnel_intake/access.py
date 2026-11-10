@@ -25,6 +25,7 @@ from app.rbac.service import RbacDecisionContext, RbacService
 from app.teaching.coach_eligibility import CoachEligibility
 from app.teaching.models import GameProject, ProfessionalTeam, TeachingClass
 from app.team_management.models import TeamManagerAssignment, TeamMembership
+from app.team_management.staff_service import active_staff_team_ids
 
 PRIVILEGED = {"admin", "super_admin", "administration"}
 
@@ -37,6 +38,8 @@ class IntakeAccessSnapshot:
     decisions: RbacDecisionContext
     own_coach_eligible: bool
     managed_team_ids: frozenset[UUID]
+    # Readonly team staff scope must never satisfy intake submission ownership.
+    readable_staff_team_ids: frozenset[UUID] = frozenset()
 
     def allowed(
         self,
@@ -145,7 +148,9 @@ class IntakeAccessSnapshot:
         return False
 
     def can_enter_managed_people(self) -> bool:
-        if self.person_id is None or not self.roles & (PRIVILEGED | {"coach", "team_manager"}):
+        if self.person_id is None or not self.roles & (
+            PRIVILEGED | {"coach", "team_manager", "assistant_coach"}
+        ):
             return False
         permission = "personnel_intake.housing.read"
         for rule in [*self.decisions.role_rules, *self.decisions.overrides]:
@@ -200,6 +205,7 @@ class PersonnelIntakeAccess:
             self.rbac.decision_context(actor.account.id),
             eligible,
             teams,
+            frozenset(active_staff_team_ids(self.db, actor.account.id, role_keys=roles)),
         )
 
     def actor_state(self, actor: AuthContext) -> tuple[set[str], UUID | None]:
@@ -303,21 +309,21 @@ class PersonnelIntakeAccess:
         )
         review_teams = (
             self.team_ids(actor, snapshot=state, permission="personnel_intake.review")
-            if roles & {"admin", "super_admin"}
+            if roles & PRIVILEGED
             else []
         )
         review_coaches = (
             self.coach_ids(
                 actor, snapshot=state, permission="personnel_intake.review", team_ids=review_teams
             )
-            if roles & {"admin", "super_admin"}
+            if roles & PRIVILEGED
             else []
         )
-        direct_create = bool(roles & {"admin", "super_admin"}) and (
+        direct_create = bool(roles & PRIVILEGED) and (
             state.allowed("personnel_intake.review") or bool(review_coaches or review_teams)
         )
         review = state.can_enter_review_queue()
-        if review:
+        if review or direct_create:
             coaches = sorted(set(coaches) | set(review_coaches))
             teams = sorted(set(teams) | set(review_teams))
         managed = state.can_enter_managed_people()
@@ -325,10 +331,10 @@ class PersonnelIntakeAccess:
             can_submit=submit,
             can_review=review,
             can_direct_create=direct_create,
-            can_direct_create_pending=bool(roles & {"admin", "super_admin"})
+            can_direct_create_pending=bool(roles & PRIVILEGED)
             and state.allowed("personnel_intake.review"),
             can_read_managed=managed,
-            allowed_team_ids=teams if submit or review else [],
+            allowed_team_ids=teams if submit or review or direct_create else [],
             eligible_coaches=[
                 AssistedOption(id=p.id, label=p.full_name)
                 for p in self.db.scalars(
@@ -337,7 +343,7 @@ class PersonnelIntakeAccess:
                     .order_by(Person.full_name, Person.id)
                 )
             ]
-            if submit or review
+            if submit or review or direct_create
             else [],
             eligible_teams=[
                 AssistedOption(id=t.id, label=t.name)
@@ -347,7 +353,7 @@ class PersonnelIntakeAccess:
                     .order_by(ProfessionalTeam.name, ProfessionalTeam.id)
                 )
             ]
-            if submit or review
+            if submit or review or direct_create
             else [],
         )
 

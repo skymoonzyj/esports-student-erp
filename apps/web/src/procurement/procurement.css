@@ -1078,3 +1078,74 @@
     justify-content: space-between;
   }
 }
+
+/* Procurement is a ledger first: readable money, contained wide tables. */
+.procurementPage { min-width: 0; }
+.procurementPageHeader h1 { font-size: clamp(26px, 3vw, 34px); letter-spacing: -.025em; }
+.procurementPage .primaryButton,
+.procurementPage .secondaryButton,
+.procurementDialog button,
+.procurementTextButton,
+.procurementInvoiceFileButton { min-height: 44px; border-radius: var(--ui-radius-sm, 8px); }
+.procurementIconButton,
+.procurementProductLink { width: 44px; min-width: 44px; height: 44px; }
+.procurementSummary { gap: 16px; }
+.procurementSummary > div { min-width: 0; min-height: 108px; padding: 20px; border-radius: var(--ui-radius-md, 12px); }
+.procurementSummary span { font-weight: 600; }
+.procurementSummary strong { font-size: clamp(23px, 2vw, 29px); letter-spacing: -.02em; }
+.procurementSummary > div:first-child strong { color: var(--color-accent-800); }
+.procurementReserveFundOverview { overflow: hidden; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); }
+.procurementFilters { min-width: 0; padding: 18px; border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); }
+.procurementFilterField input,
+.procurementFilterField select,
+.procurementPeriodField > input,
+.procurementForm input:not([type="checkbox"]):not([type="radio"]),
+.procurementForm select,
+.procurementCenterCreate input,
+.procurementCenterRow > input { min-height: 44px; border-radius: var(--ui-radius-sm, 8px); }
+.procurementSegmented { min-height: 50px; border-radius: var(--ui-radius-sm, 8px); }
+.procurementSegmented button { min-height: 44px; }
+.procurementLedger { margin-top: 24px; padding-top: 8px; }
+.procurementLedger > header { flex-wrap: wrap; }
+.procurementLedger > header h2 { font-size: 18px; }
+.procurementTableWrap { max-width: 100%; min-width: 0; border-radius: var(--ui-radius-md, 12px); overscroll-behavior-x: contain; scrollbar-gutter: stable; }
+.procurementTable th { height: 48px; background: var(--ui-header-bg, var(--color-canvas)); }
+.procurementTable td { padding-block: var(--ui-table-cell-y, 16px); }
+.procurementTable :is(th, td):nth-child(4),
+.procurementTable :is(th, td):nth-child(5),
+.procurementTable :is(th, td):nth-child(6) { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.procurementTable td:nth-child(6) { color: var(--color-text-strong); }
+.procurementTable tbody tr:hover { background: color-mix(in srgb, var(--color-accent-soft) 34%, white); }
+.procurementDialog { border-radius: var(--ui-radius-lg, 18px); padding: 26px; }
+.procurementDialogHeader { border-bottom: 1px solid var(--color-border-soft); padding-bottom: 16px; }
+.procurementDialogActions { margin-top: 8px; padding-top: 18px; border-top: 1px solid var(--color-border-soft); }
+.procurementCalculatedTotal { border-color: var(--color-accent-300); background: var(--color-accent-soft); }
+.procurementCalculatedTotal strong,
+.procurementReserveFundMetrics strong,
+.procurementInvoiceMatches strong { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.procurementCheckLabel { min-height: 44px; }
+.procurementTableWrap:focus-visible,
+.procurementPage button:focus-visible,
+.procurementDialog button:focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }
+
+html[data-ui-theme="command"] .procurementSummary { gap: 0; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--ui-radius-md, 8px); }
+html[data-ui-theme="command"] .procurementSummary > div { min-height: 88px; padding: 16px 20px; border: 0; border-right: 1px solid var(--color-border-soft); border-radius: 0; }
+html[data-ui-theme="command"] .procurementSummary > div:last-child { border-right: 0; }
+html[data-ui-theme="command"] .procurementSummary strong { font-size: 25px; }
+html[data-ui-theme="command"] .procurementFilters { margin-top: 16px; padding: 14px 16px; }
+html[data-ui-theme="command"] .procurementLedger { margin-top: 18px; }
+
+@media (max-width: 760px) {
+  .procurementSummary > div { padding: 16px; }
+  .procurementFilters { padding: 16px; background: white; }
+  .procurementDialogBackdrop { padding: 10px; }
+  .procurementDialog { max-height: calc(100dvh - 20px); padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); }
+  .procurementDialogActions > button { flex: 1 1 110px; }
+  .procurementPagination { flex-wrap: wrap; }
+  html[data-ui-theme="command"] .procurementSummary > div:nth-child(2) { border-right: 0; }
+  html[data-ui-theme="command"] .procurementSummary > div:nth-child(-n + 2) { border-bottom: 1px solid var(--color-border-soft); }
+}
+@media (max-width: 480px) {
+  html[data-ui-theme="command"] .procurementSummary > div { border-right: 0; border-bottom: 1px solid var(--color-border-soft); }
+  html[data-ui-theme="command"] .procurementSummary > div:last-child { border-bottom: 0; }
+}

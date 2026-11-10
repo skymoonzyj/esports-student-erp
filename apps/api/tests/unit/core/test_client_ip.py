@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -227,7 +228,17 @@ def test_nginx_overwrites_x_real_ip_for_api_and_web() -> None:
 
     assert "map $http_x_real_ip $client_real_ip" not in nginx_config
     assert "$client_real_ip" not in nginx_config
-    assert nginx_config.count("proxy_set_header X-Real-IP $remote_addr;") == 2
+    proxy_locations = [
+        block for block in nginx_config.split("        location ")
+        if "proxy_pass " in block
+    ]
+    assert proxy_locations
+    for block in proxy_locations:
+        # Every proxy location, including the bounded ReactionX routes, must
+        # replace caller-supplied X-Real-IP rather than forward or duplicate it.
+        assert re.findall(r"proxy_set_header\s+X-Real-IP\s+([^;]+);", block) == [
+            "$remote_addr"
+        ]
 
 
 def test_nginx_does_not_restore_disabled_production_api_docs_via_spa() -> None:

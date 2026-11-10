@@ -1,10 +1,10 @@
-import type { AttemptView, PendingSubmission, ResultSaveView, TaskConfig } from './contracts'
+import { isLaneTaskConfig, type AttemptView, type PendingSubmission, type ResultSaveView, type TaskConfig } from './contracts'
 
 export type HostPhase = 'intro' | 'preflight' | 'trial' | 'starting' | 'countdown' | 'running' | 'pending' | 'saved' | 'interrupted'
-export const assessmentTestLabels = { precision: '定位精度', tracking: '连续跟踪', switching: '目标切换', recognition: '敌我识别', 'move-fire': '移动射击', 'last-hit': '补刀时机', 'orb-walk': '走砍节奏', dodge: '威胁躲避', 'map-awareness': '小地图注意', 'skill-aim': '技能瞄准', 'move-attack': '移动攻击' } as const
+export const assessmentTestLabels = { precision: '定位精度', tracking: '连续跟踪', switching: '目标切换', recognition: '敌我识别', 'move-fire': '移动射击', 'last-hit': '补刀时机', 'orb-walk': '走砍节奏', dodge: '威胁躲避', 'map-awareness': '小地图注意', 'skill-aim': '技能瞄准', 'move-attack': '移动攻击', gridshot: '网格射击', sixshot: '六目标射击', spheretrack90: '90°范围跟枪' } as const
 
 export function assessmentTaskLabel(config: TaskConfig): string {
-  return config.params.kind === 'dodge_choice' ? '危险区域识别与躲避' : assessmentTestLabels[config.test_id]
+  return isLaneTaskConfig(config) ? '五分钟兵线补刀' : config.params.kind === 'dodge_choice' ? '危险区域识别与躲避' : assessmentTestLabels[config.test_id]
 }
 
 export function acceptResponse(requestGeneration: number, currentGeneration: number, requestAccount: string, currentAccount: string): boolean {

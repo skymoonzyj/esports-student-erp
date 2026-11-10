@@ -15,6 +15,7 @@ from app.identity.document_identity import (
     DocumentType,
     document_identity_keys,
     normalize_document_identity,
+    normalize_hk_mo_permit,
 )
 from app.identity.normalization import normalize_cn_id
 from app.personnel_intake.claims.models import ProfileClaim, ProfileClaimSession
@@ -89,13 +90,23 @@ def completion_material(value: ClaimCompletionFields | None) -> dict[str, Any] |
         "guardians": [
             {
                 "full_name": g.full_name,
-                "identity_number": g.identity_number.get_secret_value(),
+                "identity_number": normalize_hk_mo_permit(g.identity_number.get_secret_value())
+                if g.document_type == "hk_mo_permit"
+                else g.identity_number.get_secret_value(),
                 "phone": g.phone.get_secret_value(),
                 "email": g.email.get_secret_value() if g.email else None,
                 "sex": g.sex,
                 "date_of_birth": g.date_of_birth.isoformat(),
                 "relationship": g.relationship,
                 "is_primary": g.is_primary,
+                **(
+                    {
+                        "document_type": g.document_type,
+                        "document_issuing_country": g.document_issuing_country,
+                    }
+                    if g.document_type != "cn_id" or g.document_issuing_country is not None
+                    else {}
+                ),
             }
             for g in value.guardians
         ],

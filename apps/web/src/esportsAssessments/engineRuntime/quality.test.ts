@@ -3,6 +3,14 @@ import { describe, expect, it } from 'vitest'
 import { FrameQualityTracker } from './quality'
 
 describe('FrameQualityTracker', () => {
+  it('retains five-minute quality evidence and the unchanged fatal-gap rule', () => {
+    const tracker = new FrameQualityTracker(300000)
+    for (let i = 0; i < 3000; i++) tracker.recordFrameGap(100)
+    expect(tracker.snapshot(300000)).toMatchObject({ duration_ms: 300000, long_frame_gap_total_ms: 300000, max_frame_gap_ms: 100 })
+    expect(tracker.longFrameWarning).toBe(true)
+    tracker.recordFrameGap(501, 0)
+    expect(tracker.fatalFrameGap).toBe(true)
+  })
   it('integrates only the final-frame overlap while retaining the true frame gap', () => {
     const tracker = new FrameQualityTracker()
     for (let i = 0; i < 299; i += 1) tracker.recordFrameGap(200)

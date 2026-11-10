@@ -61,7 +61,10 @@ def test_closed_suite_superadmin_can_complete_own_formal_report_and_practice(
     assert tuple(item.suite_id for item in queries.suites().items) == SUITES
 
     formal = FormalAssessmentService(db)
-    session = formal.create(actor, session_request(suite_id), NOW)
+    request = session_request(suite_id)
+    if suite_id == "pc-moba":
+        request = request.model_copy(update={"attack_mode": "melee"})
+    session = formal.create(actor, request, NOW)
     stored = db.get(AssessmentSession, session.id)
     assert stored.person_id == actor.person.id
     assert stored.created_by_user_id == actor.account.id
@@ -77,7 +80,7 @@ def test_closed_suite_superadmin_can_complete_own_formal_report_and_practice(
                 seed=run.seed,
                 catalog_version=run.config.catalog_version,
             ),
-            at + timedelta(seconds=63),
+            at + timedelta(milliseconds=run.config.duration_ms + 3000),
         )
     assert saved.session is not None and saved.session.report_id is not None
     report = queries.report(saved.session.report_id)
@@ -86,8 +89,11 @@ def test_closed_suite_superadmin_can_complete_own_formal_report_and_practice(
 
     practice = PracticeAssessmentService(db)
     test_id = catalog.get_suite(suite_id).test_ids[0]
-    at = NOW + timedelta(minutes=5)
-    run = practice.start(actor, practice_request(suite_id, test_id), at)
+    at = NOW + timedelta(minutes=6)
+    request = practice_request(suite_id, test_id)
+    if suite_id == "pc-moba":
+        request = request.model_copy(update={"attack_mode": "melee"})
+    run = practice.start(actor, request, at)
     saved_practice = practice.submit(
         actor,
         run.id,
@@ -97,7 +103,7 @@ def test_closed_suite_superadmin_can_complete_own_formal_report_and_practice(
             seed=run.seed,
             catalog_version=run.config.catalog_version,
         ),
-        at + timedelta(seconds=63),
+        at + timedelta(milliseconds=run.config.duration_ms + 3000),
     )
     assert saved_practice.scored.score is saved_practice.scored.grade is None
     assert saved_practice.session is None
@@ -127,9 +133,7 @@ def test_non_superadmin_cannot_start_closed_suite_even_with_global_read_and_take
     before = counts(db)
     for action in (
         lambda: formal.create(actor, session_request("pc-moba"), NOW),
-        lambda: formal.start_attempt(
-            actor, session.id, attempt_request("pc-fps", "precision"), NOW
-        ),
+        lambda: formal.start_attempt(actor, session.id, attempt_request("pc-fps", "gridshot"), NOW),
         lambda: PracticeAssessmentService(db).start(actor, practice_request(), NOW),
     ):
         with pytest.raises(AssessmentUnavailable):
@@ -163,7 +167,7 @@ def test_preview_revocation_is_live_and_blocks_fresh_writes_and_idempotent_repla
     formal = FormalAssessmentService(db)
     practice = PracticeAssessmentService(db)
     create = session_request()
-    attempt = attempt_request("pc-fps", "precision")
+    attempt = attempt_request("pc-fps", "gridshot")
     practice_create = practice_request()
     session = formal.create(actor, create, NOW)
     run = formal.start_attempt(actor, session.id, attempt, NOW)
@@ -190,9 +194,7 @@ def test_preview_revocation_is_live_and_blocks_fresh_writes_and_idempotent_repla
         lambda: formal.create(actor, create, NOW),
         lambda: formal.create(actor, session_request("pc-moba"), NOW),
         lambda: formal.start_attempt(actor, session.id, attempt, NOW),
-        lambda: formal.start_attempt(
-            actor, session.id, attempt_request("pc-fps", "precision"), NOW
-        ),
+        lambda: formal.start_attempt(actor, session.id, attempt_request("pc-fps", "gridshot"), NOW),
         lambda: practice.start(actor, practice_create, NOW),
         lambda: practice.start(actor, practice_request(), NOW),
     ):

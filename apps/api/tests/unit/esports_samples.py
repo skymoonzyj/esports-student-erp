@@ -4,6 +4,21 @@ from app.esports_assessments.catalog import recognition_schedule
 
 
 def sample_raw(suite_id: str, test_id: str, *, perfect: bool, seed: int = 123) -> dict:
+    if test_id in ("gridshot", "sixshot"):
+        return {
+            "kind": "multi_target",
+            "shots": [
+                {"at_ms": i * 100, "hit": True}
+                for i in range((300 if test_id == "gridshot" else 150) if perfect else 0)
+            ],
+        }
+    if test_id == "spheretrack90":
+        return {
+            "kind": "spheretrack90",
+            "coverage_ms": 60000 if perfect else 0,
+            "loss_count": 0,
+            "reacquisition_ms": [],
+        }
     if test_id in ("precision", "switching"):
         count, window = (30, 2000) if test_id == "precision" else (40, 1500)
         return {

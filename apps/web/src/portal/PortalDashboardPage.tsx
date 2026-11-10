@@ -13,6 +13,13 @@ import { Link } from "react-router-dom"
 
 import { useAuth } from "../auth/AuthProvider"
 import { DashboardPage } from "../layout/AppShell"
+import { HousingPropertyChangesPanel } from "../housing/HousingPropertyChangesPanel"
+import { DepartureRemindersPanel } from "./DepartureRemindersPanel"
+import { useDepartureReminders } from "./useDepartureReminders"
+import { RentalRemindersPanel } from "./RentalRemindersPanel"
+import { useRentalReminders } from "./useRentalReminders"
+import { RoomCardRemindersContent } from "./RoomCardRemindersPanel"
+import { useRoomCardReminders } from "./useRoomCardReminders"
 import {
   getCoachNextCohorts,
   getLearningStudents,
@@ -33,16 +40,50 @@ const BACK_OFFICE_PERMISSIONS = new Set([
   "admission_cases.read",
   "housing.read",
   "audit.read",
+  "accounts.read",
+  "assets.read",
+  "payments.read",
+  "procurement.read",
+  "travel_reports.read",
+  "revenue_share.finance",
+  "enrollments.read",
+  "food_preferences.export",
 ])
+
+function WorkspacePropertyReview({ enabled, ready }: { enabled: boolean; ready: boolean }) {
+  if (!enabled) return null
+  return <div hidden={!ready} inert={!ready}><HousingPropertyChangesPanel mode="review" enabled={enabled} /></div>
+}
 
 export function PortalDashboardPage() {
   const { user } = useAuth()
   const accountId = user?.account_id ?? "anonymous"
   const contextQuery = usePortalContext()
   const context = contextQuery.data
-  const contextReady = Boolean(context && !contextQuery.isFetching)
+  const contextReady = Boolean(context && contextQuery.isSuccess && !contextQuery.isFetching)
+  const propertyReviewEnabled = contextQuery.isSuccess && context?.housing_management_available === true && Boolean(user && (
+    user.is_super_admin || user.permissions.includes("housing.read") || user.scoped_permissions?.includes("housing.read")
+  ))
   const coachEnabled = contextReady && context?.coach_available === true
   const learningEnabled = contextReady && context?.learning_available === true
+  const departures = useDepartureReminders({
+    accountId: user?.account_id ?? null,
+    contextReady,
+    contextEpoch: contextQuery.dataUpdatedAt,
+  })
+  usePortalAccessError(departures.query.error)
+  const rentals = useRentalReminders({
+    accountId: user?.account_id ?? null,
+    contextReady,
+    contextEpoch: contextQuery.dataUpdatedAt,
+  })
+  usePortalAccessError(rentals.query.error)
+  const roomCards = useRoomCardReminders({
+    accountId: user?.account_id ?? null,
+    contextReady,
+    contextEpoch: contextQuery.dataUpdatedAt,
+  })
+  usePortalAccessError(roomCards.query.error)
 
   const coachQuery = useQuery({
     queryKey: portalKeys.coach(accountId, undefined, 1),
@@ -59,13 +100,14 @@ export function PortalDashboardPage() {
 
   const portalError = contextQuery.error ?? coachQuery.error ?? studentsQuery.error
   const accessError = usePortalAccessError(portalError)
-  const hasPortalCapability = Boolean(
+  const hasPortalNavigation = Boolean(
     context?.coach_available ||
       context?.learning_available ||
       context?.payments_available ||
       context?.housing_available ||
       context?.invitations_available,
   )
+  const hasPortalCapability = hasPortalNavigation || departures.query.data?.available === true || rentals.query.data?.available === true || roomCards.query.data?.available === true
   const hasBackOfficeCapability = Boolean(
     user?.permissions.some((permission) => BACK_OFFICE_PERMISSIONS.has(permission)) ||
       user?.scoped_permissions?.some((permission) =>
@@ -83,27 +125,14 @@ export function PortalDashboardPage() {
     (coachEnabled && coachQuery.isFetching) ||
     (learningEnabled && studentsQuery.isFetching)
 
-  if (
+  const noPortalTasks =
     !privateDataFetching &&
     !portalError &&
-    !hasPortalCapability &&
+    !hasPortalNavigation &&
     !evaluationAvailable &&
     !enrollmentAvailable
-  ) {
-    if (hasBackOfficeCapability) return <DashboardPage />
-    return (
-      <div className="portalPage">
-        <header className="portalPageHeader">
-          <p className="pageEyebrow">WORKSPACE</p>
-          <h1>工作台</h1>
-        </header>
-        <section className="portalEmpty" aria-label="暂无工作项">
-          <h2>当前暂无可用工作项</h2>
-          <p>当前账号没有已授权的工作项。</p>
-        </section>
-      </div>
-    )
-  }
+  const showEmpty = noPortalTasks && !hasBackOfficeCapability && !hasPortalCapability &&
+    !departures.query.isPending && !departures.query.isError && !rentals.query.isPending && !rentals.query.isError && !roomCards.query.isPending && !roomCards.query.isError
 
   const learningTitle =
     context?.learning_mode === "self"
@@ -113,6 +142,21 @@ export function PortalDashboardPage() {
         : "学习信息"
   const learningActionLabel = `查看${learningTitle}`
   const coachOption = coachQuery.data?.options[0]
+  const effectivePermissions = new Set([
+    ...(user?.permissions ?? []),
+    ...(user?.scoped_permissions ?? []).filter((permission) =>
+      ["housing.read", "teaching.read", "admission_cases.read", "assets.read", "procurement.read", "travel_reports.read", "enrollments.read", "accounts.read", "revenue_share.finance"].includes(permission),
+    ),
+  ])
+  // A cached projection must never be shown while its capability is being revalidated.
+  const departureData = !departures.query.isFetching && !departures.query.isError && departures.query.data?.available ? departures.query.data : undefined
+  const rentalData = !rentals.query.isFetching && !rentals.query.isError && rentals.query.data?.available ? rentals.query.data : undefined
+  const metrics = [
+    ...(coachEnabled && !coachQuery.isFetching && !coachQuery.isError && coachQuery.data ? [{ label: "待查看学员", value: coachQuery.data.total, note: "下一期教练名单" }] : []),
+    ...(learningEnabled && !studentsQuery.isFetching && !studentsQuery.isError && studentsQuery.data ? [{ label: "关联学员", value: studentsQuery.data.total, note: learningTitle }] : []),
+    ...(contextReady && departureData ? [{ label: "今日退宿／结营", value: departureData.today_count, note: "计划日期 · 不代表实际离开" }] : []),
+    ...(contextReady && rentalData ? [{ label: "租用到期提醒", value: rentalData.total, note: "近七日到期及已逾期" }] : []),
+  ]
 
   function retryPortal(): void {
     void contextQuery.refetch()
@@ -123,12 +167,29 @@ export function PortalDashboardPage() {
   return (
     <div className="portalPage">
       <header className="portalPageHeader">
-        <p className="pageEyebrow">TODAY</p>
+        <p className="pageEyebrow">WORKSPACE / 工作空间</p>
         <h1>工作台</h1>
-        <p>今日工作与个人信息</p>
+        <p>今日工作与个人信息 · 从这里开始</p>
       </header>
 
-      {accessError.permissionRevoked ? null : portalError ? (
+      {metrics.length > 0 ? (
+        <section className="portalSummary" aria-label="工作概览">
+          {metrics.map((metric) => (
+            <article key={metric.label}>
+              <p>{metric.label}</p>
+              <strong>{metric.value}<small>{metric.label === "租用到期提醒" ? " 项" : " 人"}</small></strong>
+              <span>{metric.note}</span>
+            </article>
+          ))}
+        </section>
+      ) : null}
+
+      {showEmpty ? (
+        <section className="portalEmpty" aria-label="暂无工作项">
+          <h2>当前暂无可用工作项</h2>
+          <p>当前账号没有已授权的工作项。</p>
+        </section>
+      ) : accessError.permissionRevoked ? null : portalError ? (
         <section className="portalError" role="alert">
           <div>
             <strong>工作台暂时无法更新</strong>
@@ -145,7 +206,7 @@ export function PortalDashboardPage() {
           <span className="portalLoadingBar short" />
           <p>正在更新工作台</p>
         </section>
-      ) : (
+      ) : noPortalTasks && hasBackOfficeCapability ? null : (
         <section className="portalTaskGrid" aria-label="门户工作项">
           {context?.invitations_available ? (
             <article className="portalTaskCard housing">
@@ -265,7 +326,20 @@ export function PortalDashboardPage() {
         </section>
       )}
 
-      {hasBackOfficeCapability ? <DashboardPage embedded /> : null}
+      <div className="portalReminders">
+        <WorkspacePropertyReview enabled={propertyReviewEnabled} ready={contextReady} />
+        <DepartureRemindersPanel state={departures} />
+        <RentalRemindersPanel state={rentals} />
+        <RoomCardRemindersContent state={roomCards} contextError={Boolean(contextQuery.error)} />
+      </div>
+      {contextReady && hasBackOfficeCapability ? (
+        <DashboardPage
+          embedded
+          permissions={effectivePermissions}
+          housingAvailable={context?.housing_management_available}
+          isSuperAdmin={user?.is_super_admin}
+        />
+      ) : null}
     </div>
   )
 }

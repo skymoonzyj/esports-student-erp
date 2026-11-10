@@ -99,6 +99,14 @@ class CoachResponsibilityService:
             )
             lock_participants(self.db, sorted(ids), sorted(accounts))
             authorize()
+            from app.identity.assignments.models import PersonAssignmentState
+
+            if self.db.get(PersonAssignmentState, person_id) is not None:
+                raise PersonnelIntakeError(
+                    "assignments_managed_separately",
+                    status=409,
+                    detail="此人员已使用身份与归属管理，请在人员档案的新入口维护项目与教练",
+                )
             profile = self.db.scalar(
                 select(AssistedPersonProfile)
                 .where(AssistedPersonProfile.person_id == person_id)

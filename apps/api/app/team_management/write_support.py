@@ -15,6 +15,7 @@ from app.auth.models import UserAccount
 from app.auth.service import AuthContext
 from app.identity.models import Person
 from app.rbac.models import Role, UserRole
+from app.security.encryption import EnvelopeCipher, LookupDigest
 from app.teaching.models import GameProject, ProfessionalTeam
 from app.team_management.access import TeamAccessService
 from app.team_management.errors import (
@@ -182,10 +183,17 @@ def require_candidate(
 
 def member_eligible_predicate() -> ColumnElement[bool]:
     """The accountless exception is exclusively an approved assisted player."""
+    from app.identity.assignments.models import PersonAssignmentState
     from app.personnel_intake.models import (
         AssistedApproval,
         AssistedPersonProfile,
         PersonnelIntakeRequest,
+    )
+
+    independent_player = exists(
+        select(PersonAssignmentState.person_id).where(
+            PersonAssignmentState.person_id == Person.id, PersonAssignmentState.is_player
+        )
     )
 
     approved = exists(
@@ -194,7 +202,7 @@ def member_eligible_predicate() -> ColumnElement[bool]:
         .join(PersonnelIntakeRequest, PersonnelIntakeRequest.id == AssistedApproval.request_id)
         .where(
             AssistedPersonProfile.person_id == Person.id,
-            PersonnelIntakeRequest.kind.in_(["player", "both"]),
+            or_(PersonnelIntakeRequest.kind.in_(["player", "both"]), independent_player),
         )
     )
     role = exists(
@@ -213,7 +221,13 @@ def member_eligible_predicate() -> ColumnElement[bool]:
     )
 
 
-def require_member_candidate(db: Session, *, person_id: UUID) -> Person:
+def require_member_candidate(
+    db: Session,
+    *,
+    person_id: UUID,
+    cipher: EnvelopeCipher | None = None,
+    lookup: LookupDigest | None = None,
+) -> Person:
     person = db.scalar(
         select(Person)
         .outerjoin(UserAccount, UserAccount.person_id == Person.id)
@@ -221,6 +235,11 @@ def require_member_candidate(db: Session, *, person_id: UUID) -> Person:
     )
     if person is None:
         raise TeamCandidateIneligible()
+    if db.scalar(select(UserAccount.id).where(UserAccount.person_id == person_id)) is None:
+        from app.identity.assignments.team_eligibility import trusted_business_player
+
+        if not trusted_business_player(db, person_id, cipher=cipher, lookup=lookup):
+            raise TeamCandidateIneligible()
     return person
 
 
@@ -273,6 +292,7 @@ def append_audit(
     *,
     person_id: UUID | None = None,
     source_team_id: UUID | None = None,
+    purpose: str | None = None,
 ) -> None:
     metadata = {"operation_key": str(key), "professional_team_id": str(team_id)}
     for name, value in result.model_dump().items():
@@ -285,9 +305,17 @@ def append_audit(
     AuditService(db).append(
         actor_user_id=actor.account.id,
         action=action,
-        resource_type="team_manager_assignment" if result.assignment_id else "team_membership",
+        resource_type=(
+            "person_team_staff_position"
+            if action.startswith("person_staff.")
+            else "team_staff_assignment"
+            if action.startswith("team_staff.")
+            else "team_manager_assignment"
+            if result.assignment_id
+            else "team_membership"
+        ),
         resource_id=result.assignment_id or result.membership_id or result.closed_membership_id,
-        purpose=None,
+        purpose=purpose,
         outcome="allowed",
         request_id=str(key),
         metadata=metadata,
@@ -298,7 +326,11 @@ def integrity_conflict(exc: IntegrityError) -> TeamServiceError | None:
     constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
     if constraint == "uq_team_memberships_open_person":
         return TeamMemberConflict()
-    if constraint == "uq_team_manager_assignments_open_account_team":
+    if constraint in {
+        "uq_team_manager_assignments_open_account_team",
+        "uq_team_staff_assignments_open_account_team_role",
+        "uq_person_team_staff_current",
+    }:
         return TeamAssignmentConflict()
     if constraint == "uq_team_operations_actor_key":
         return TeamOperationConflict()

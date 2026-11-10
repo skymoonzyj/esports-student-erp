@@ -61,8 +61,8 @@ async function openDeparture(page: Page): Promise<Locator> {
   const dialog = page.getByRole("dialog", { name: "修改计划离开 · E2E自助学员", exact: true })
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('input[type="datetime-local"]')).toHaveCount(0)
-  await expect(dialog.getByLabel("住宿期限")).toHaveValue("")
-  await expect(dialog.getByRole("button", { name: "保存计划离开", exact: true })).toBeDisabled()
+  await expect(dialog.getByLabel("住宿期限")).toHaveValue("fixed_term")
+  await expect(dialog.getByLabel("计划离开日期", { exact: true })).toBeVisible()
   return dialog
 }
 
@@ -151,8 +151,9 @@ test("checked-in planned departure changes through date-only UI without replacin
     await page.goto(`/housing/rooms/${room.id}`)
     await expect(page.getByRole("heading", { name: `房间 ${roomNumber}`, exact: true })).toBeVisible()
     let dialog = await openDeparture(page)
-    await dialog.getByLabel("住宿期限").selectOption("fixed_term")
     await expect(dialog.getByLabel("计划离开日期", { exact: true })).toHaveAttribute("type", "date")
+    await expect(dialog.getByLabel("计划离开日期", { exact: true })).toHaveValue(shanghaiDate(before.as_of, 3))
+    await expect(dialog.getByRole("button", { name: "保存计划离开", exact: true })).toBeEnabled()
     await dialog.getByLabel("计划离开日期", { exact: true }).fill(nextDate)
     await saveDeparture(page, dialog, original.id)
     await page.reload()
@@ -182,7 +183,7 @@ test("checked-in planned departure changes through date-only UI without replacin
     expect(detail.room.remaining_capacity).toBe(detail.room.capacity - 1)
 
     dialog = await openDeparture(page)
-    await dialog.getByLabel("住宿期限").selectOption("fixed_term")
+    await expect(dialog.getByLabel("计划离开日期", { exact: true })).toHaveValue("")
     await expect(dialog.getByRole("button", { name: "保存计划离开", exact: true })).toBeDisabled()
     await dialog.getByLabel("计划离开日期", { exact: true }).fill(finalDate)
     await saveDeparture(page, dialog, original.id)

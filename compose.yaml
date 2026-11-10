@@ -96,6 +96,8 @@ services:
   web:
     build:
       context: ./apps/web
+      additional_contexts:
+        reactionx_contracts: ./shared/reactionx/v1
       target: development
     volumes:
       - ./apps/web:/app

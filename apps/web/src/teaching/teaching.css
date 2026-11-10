@@ -166,7 +166,7 @@
   grid-template-columns: minmax(180px, 1fr) minmax(140px, 0.55fr) auto;
 }
 
-.teamFilters {
+.teachingFilters.teamFilters {
   grid-template-columns: minmax(170px, 0.8fr) minmax(180px, 1fr) minmax(140px, 0.55fr) auto;
 }
 
@@ -1186,7 +1186,7 @@
   }
 
   .projectTableGrid {
-    grid-template-columns: minmax(180px, 1fr) 76px 86px 120px;
+    grid-template-columns: minmax(180px, 1fr) 76px 86px 144px;
     gap: 10px;
   }
 
@@ -1240,7 +1240,7 @@
 
   .teachingFilters,
   .projectFilters,
-  .teamFilters {
+  .teachingFilters.teamFilters {
     grid-template-columns: minmax(0, 1fr);
     padding: 0 12px 12px;
   }
@@ -1600,4 +1600,84 @@
   .teachingClassRow dl > div:last-child {
     grid-column: 1 / -1;
   }
+}
+
+/* Teaching surfaces share the global system without coupling team filters. */
+.teachingPageHeader h1,
+.cohortDetailHeader h1 { font-size: clamp(24px, 2.5vw, 30px); font-weight: 680; letter-spacing: -.025em; }
+.teachingPageHeader,
+.cohortDetailHeader { min-width: 0; padding-bottom: 6px; }
+.teachingPageHeader > div { min-width: 0; }
+.teachingFoundationDescription { line-height: 1.7; }
+.teachingEyebrow { color: var(--color-accent-800); letter-spacing: .06em; }
+.teachingSectionNav,
+.teachingFilterMenu,
+.teachingDataSurface,
+.cohortListSurface,
+.cohortOverview,
+.cohortTabSurface { border: 1px solid var(--color-border-soft); border-radius: var(--ui-radius-md, 12px); background: var(--color-surface); }
+.teachingSectionNav { margin-top: 18px; padding: 6px; }
+.teachingFilterMenu { margin-top: 18px; }
+.teachingDataSurface { overflow: clip; }
+.teachingTableHeader { background: var(--ui-header-bg, var(--color-canvas)); }
+.teachingTableRow { padding-block: var(--ui-table-cell-y, 14px); }
+.teachingTableRow:hover { background: var(--color-canvas); }
+.teachingFilters label,
+.teachingDialogForm label { font-size: 12px; }
+.teachingSectionNavLink,
+.teachingPrimaryButton,
+.teachingSecondaryButton,
+.teachingSecondaryLink,
+.teachingDangerButton,
+.teachingTabs button,
+.teachingPagination button,
+.teachingFilters input:not([type="checkbox"]),
+.teachingFilters select,
+.teachingFilters .teachingCheckbox,
+.teachingDialogForm input:not([type="checkbox"]),
+.teachingDialogForm select,
+.classPicker select,
+.teachingSegmented label span,
+.teachingDialogForm .projectCoachOption { min-height: 44px; }
+.teachingPrimaryButton,
+.teachingSecondaryButton,
+.teachingSecondaryLink,
+.teachingDangerButton,
+.teachingSectionNavLink,
+.teachingFilters input,
+.teachingFilters select,
+.teachingDialogForm input,
+.teachingDialogForm select,
+.teachingDialogForm textarea { border-radius: var(--ui-radius-sm, 8px); }
+.teachingPrimaryButton { box-shadow: var(--ui-shadow-button, none); }
+.teachingRowActions button,
+.teachingDialogHeader button { width: 44px; height: 44px; flex-basis: 44px; }
+.teachingDialog { border-radius: var(--ui-radius-lg, 16px); background: var(--color-surface); overscroll-behavior: contain; }
+.teachingDialogActions { flex-wrap: wrap; }
+.teachingSectionNavLink:focus-visible,
+.teachingBackLink:focus-visible,
+.teachingTabs button:focus-visible,
+.teachingPrimaryButton:focus-visible,
+.teachingSecondaryButton:focus-visible,
+.teachingDangerButton:focus-visible,
+.teachingRowActions button:focus-visible,
+.teachingDialogHeader button:focus-visible { outline: 3px solid var(--ui-focus-ring, var(--color-accent-300)); outline-offset: 3px; }
+html[data-ui-theme="command"] .teachingSectionNav { gap: 2px; padding: 4px; }
+html[data-ui-theme="command"] .teachingFilterMenu { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+html[data-ui-theme="command"] .teachingDataSurface { margin-top: 0; border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+html[data-ui-theme="command"] .teachingFilters { gap: 10px; padding-block: 12px; }
+html[data-ui-theme="command"] .cohortListRow { padding-block: 12px; }
+html[data-ui-theme="command"] .cohortOverviewPanel,
+html[data-ui-theme="command"] .cohortHistoryPanel { padding: 16px; }
+@media (max-width: 719px) {
+  .teachingDataSurface,
+  html[data-ui-theme="command"] .teachingDataSurface { margin-top: 12px; border: 0; border-radius: 0; background: transparent; overflow: visible; }
+  .teachingTableRow { border-radius: var(--ui-radius-md, 12px); }
+  .teachingRowActions { grid-template-columns: minmax(70px, 1fr) repeat(3, 44px) !important; }
+  .teachingRowActions > .teachingReadOnly { grid-column-end: 5; }
+  .teachingDialogBackdrop { place-items: end stretch; padding: 0; }
+  .teachingDialog { width: 100%; min-height: 0; max-height: 92dvh; padding: 20px 16px max(20px, env(safe-area-inset-bottom)); border-radius: var(--ui-radius-lg, 16px) var(--ui-radius-lg, 16px) 0 0; }
+  .teachingDialogActions { position: sticky; bottom: -1px; padding-block: 12px max(8px, env(safe-area-inset-bottom)); background: var(--color-surface); }
+  .cohortTabSurface > header { padding: 14px; }
+  html[data-ui-theme="command"] .teachingFilters { padding-top: 0; }
 }

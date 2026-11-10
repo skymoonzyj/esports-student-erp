@@ -41,7 +41,7 @@ from app.personnel_intake.schemas import (
 )
 from app.rbac.policy import PolicyRule
 from app.teaching.models import GameProject, ProfessionalTeam
-from app.team_management.models import TeamManagerAssignment, TeamMembership
+from app.team_management.models import TeamMembership
 
 PERMISSION = "personnel_intake.housing.read"
 
@@ -49,6 +49,36 @@ PERMISSION = "personnel_intake.housing.read"
 class ManagedPeopleQuery:
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    @staticmethod
+    def _person_kind_criteria(as_of: datetime) -> tuple[ColumnElement[bool], ColumnElement[bool]]:
+        is_student = exists().where(StudentProfile.person_id == Person.id)
+        is_player = exists(
+            select(TeamMembership.id)
+            .join(ProfessionalTeam, ProfessionalTeam.id == TeamMembership.team_id)
+            .join(GameProject, GameProject.id == ProfessionalTeam.project_id)
+            .where(
+                TeamMembership.person_id == Person.id,
+                TeamMembership.ended_at.is_(None),
+                TeamMembership.joined_on <= business_date_at(as_of),
+                ProfessionalTeam.is_active,
+                GameProject.is_active,
+                GameProject.is_team_division,
+            )
+        )
+        return is_student, is_player
+
+    def authorized_person_ids_statement(
+        self, state: IntakeAccessSnapshot, as_of: datetime
+    ) -> Select[tuple[UUID]]:
+        affiliations = self._affiliations(state, as_of)
+        is_student, is_player = self._person_kind_criteria(as_of)
+        return select(Person.id).where(
+            true() if state.can_enter_managed_people() else false(),
+            Person.deleted_at.is_(None),
+            Person.id.in_(select(affiliations.c.person_id)),
+            or_(is_student, is_player),
+        )
 
     @staticmethod
     def _affiliations(state: IntakeAccessSnapshot, as_of: datetime) -> Any:
@@ -77,16 +107,16 @@ class ManagedPeopleQuery:
             )
             .join(ProfessionalTeam, ProfessionalTeam.id == TeamMembership.team_id)
             .join(GameProject, GameProject.id == ProfessionalTeam.project_id)
-            .join(TeamManagerAssignment, TeamManagerAssignment.team_id == ProfessionalTeam.id)
             .where(
                 TeamMembership.ended_at.is_(None),
                 TeamMembership.joined_on <= business_date_at(as_of),
-                TeamManagerAssignment.account_id == state.account_id,
-                TeamManagerAssignment.ended_at.is_(None),
+                ProfessionalTeam.id.in_(
+                    state.readable_staff_team_ids
+                    | (state.managed_team_ids if "team_manager" in state.roles else frozenset())
+                ),
                 ProfessionalTeam.is_active,
                 GameProject.is_active,
                 GameProject.is_team_division,
-                true() if "team_manager" in state.roles else false(),
             )
         )
         current = union_all(coaches, teams).subquery()
@@ -176,24 +206,9 @@ class ManagedPeopleQuery:
         scope = self._cursor_scope(actor, filters)
         after = self._decode_cursor(filters.cursor, scope)
         affiliations = self._affiliations(state, as_of)
-        is_student = exists().where(StudentProfile.person_id == Person.id)
-        is_player = exists(
-            select(TeamMembership.id)
-            .join(ProfessionalTeam, ProfessionalTeam.id == TeamMembership.team_id)
-            .join(GameProject, GameProject.id == ProfessionalTeam.project_id)
-            .where(
-                TeamMembership.person_id == Person.id,
-                TeamMembership.ended_at.is_(None),
-                TeamMembership.joined_on <= business_date_at(as_of),
-                ProfessionalTeam.is_active,
-                GameProject.is_active,
-                GameProject.is_team_division,
-            )
-        )
-        predicates = [
-            Person.deleted_at.is_(None),
-            Person.id.in_(select(affiliations.c.person_id)),
-            or_(is_student, is_player),
+        is_student, is_player = self._person_kind_criteria(as_of)
+        predicates: list[ColumnElement[bool]] = [
+            Person.id.in_(self.authorized_person_ids_statement(state, as_of)),
         ]
         if filters.query:
             escaped = filters.query.replace("/", "//").replace("%", "/%").replace("_", "/_")

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal, DecimalException
 from typing import Literal, Self
 from urllib.parse import urlsplit
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.asset_management.hardware import AssetHardware
 
 ProcurementExportFormat = Literal["xlsx", "csv"]
 ProcurementExportScope = Literal[
@@ -22,6 +24,25 @@ ProcurementReimbursementStatus = Literal["reimbursed", "unreimbursed"]
 ProcurementInvoiceStatus = Literal["invoiced", "uninvoiced"]
 ProcurementPurchaseChannel = Literal["online", "offline"]
 MAX_ASSETS_PER_PURCHASE = 100
+_PURCHASE_TOTAL_LIMIT = Decimal("9223372036854775807.5")
+
+
+def calculate_purchase_total(quantity: Decimal, unit_price_cents: int) -> int:
+    try:
+        if (
+            not quantity.is_finite()
+            or quantity <= 0
+            or unit_price_cents <= 0
+            or quantity >= _PURCHASE_TOTAL_LIMIT
+        ):
+            raise ValueError("purchase total must fit signed-bigint cents")
+        total = quantity * Decimal(unit_price_cents)
+        # The half-up boundary is exclusive: max cents + 0.5 rounds out of range.
+        if total >= _PURCHASE_TOTAL_LIMIT:
+            raise ValueError("purchase total must fit signed-bigint cents")
+        return int(total.quantize(Decimal(1), rounding=ROUND_HALF_UP))
+    except DecimalException as exc:
+        raise ValueError("purchase total must fit signed-bigint cents") from exc
 
 
 def _validate_product_url(value: str | None) -> str | None:
@@ -97,6 +118,7 @@ class PurchaseCreate(ProcurementInputModel):
     settled_on: date | None = None
     add_to_assets: bool = False
     asset_category: str | None = Field(default=None, max_length=80)
+    asset_hardware: AssetHardware | None = None
     asset_warranty_expires_on: date | None = None
     note: str | None = Field(default=None, max_length=2000)
 
@@ -104,9 +126,12 @@ class PurchaseCreate(ProcurementInputModel):
 
     @model_validator(mode="after")
     def validate_settlement(self) -> Self:
+        calculate_purchase_total(self.quantity, self.unit_price_cents)
         if self.is_settled != (self.settled_on is not None):
             raise ValueError("settled purchases require a settlement date")
         if self.add_to_assets:
+            # Completeness is checked only after durable operation lookup so a
+            # pre-feature computer purchase can replay its original payload.
             if self.quantity != self.quantity.to_integral_value():
                 raise ValueError("assets can only be created from an integer quantity")
             if self.quantity > MAX_ASSETS_PER_PURCHASE:
@@ -118,7 +143,7 @@ class PurchaseCreate(ProcurementInputModel):
                 and self.asset_warranty_expires_on < self.purchase_date
             ):
                 raise ValueError("asset warranty expiry cannot precede purchase date")
-        elif self.asset_category is not None or self.asset_warranty_expires_on is not None:
+        elif self.asset_category is not None or self.asset_warranty_expires_on is not None or self.asset_hardware is not None:
             raise ValueError("asset details require add_to_assets")
         return self
 
@@ -159,6 +184,8 @@ class PurchaseUpdate(ProcurementInputModel):
             for field in required_fields
         ):
             raise ValueError("purchase fields cannot be null")
+        if self.quantity is not None and self.unit_price_cents is not None:
+            calculate_purchase_total(self.quantity, self.unit_price_cents)
         return self
 
 

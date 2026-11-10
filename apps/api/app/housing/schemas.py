@@ -16,6 +16,12 @@ from pydantic import (
 )
 
 from app.housing.room_status_export_schemas import (
+    CleaningFrequency as CleaningFrequency,  # noqa: PLC0414
+)
+from app.housing.room_status_export_schemas import (
+    HousingQuickFilter as HousingQuickFilter,  # noqa: PLC0414
+)
+from app.housing.room_status_export_schemas import (
     HousingRoomStatusExportRequest as HousingRoomStatusExportRequest,  # noqa: PLC0414
 )
 
@@ -37,7 +43,9 @@ ResidentPersonType = Literal[
     "student",
     "player",
     "student_player",
+    "team_manager",
     "coach",
+    "assistant_coach",
     "life_teacher",
     "customer_service",
     "administration",
@@ -86,7 +94,11 @@ class HousingOccupancyExportRequest(HousingInputModel):
     service_statuses: list[ServiceStatus] = Field(default_factory=list, max_length=4)
     current_gender: Literal["male", "female", "unspecified"] | None = None
     occupancy: Literal["occupied", "unoccupied"] | None = None
-    assignability: Literal["assignable", "unassignable"] | None = None
+    assignability: Literal["assignable", "unassignable", "full"] | None = None
+    quick_filter: HousingQuickFilter | None = None
+    cleaning_statuses: list[CleaningStatus] = Field(default_factory=list, max_length=2)
+    daily_cleaning_enabled: bool | None = None
+    cleaning_frequencies: list[CleaningFrequency] = Field(default_factory=list, max_length=4)
 
     @model_validator(mode="after")
     def normalize_filters(self) -> Self:
@@ -96,6 +108,10 @@ class HousingOccupancyExportRequest(HousingInputModel):
             raise ValueError("verification_statuses must be unique")
         if len(set(self.service_statuses)) != len(self.service_statuses):
             raise ValueError("service_statuses must be unique")
+        if len(set(self.cleaning_statuses)) != len(self.cleaning_statuses):
+            raise ValueError("cleaning_statuses must be unique")
+        if len(set(self.cleaning_frequencies)) != len(self.cleaning_frequencies):
+            raise ValueError("cleaning_frequencies must be unique")
         if self.query is not None:
             normalized_query = self.query.strip()
             self.query = normalized_query or None
@@ -150,7 +166,29 @@ class FloorUpdate(HousingInputModel):
         return self
 
 
-class RoomCreate(HousingInputModel):
+class RoomCleaningFrequencyInput(HousingInputModel):
+    cleaning_frequency: CleaningFrequency | None = None
+    daily_cleaning_enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def normalize_cleaning_frequency(self) -> Self:
+        frequency = self.cleaning_frequency
+        enabled = self.daily_cleaning_enabled
+        if "cleaning_frequency" in self.model_fields_set and frequency is None:
+            raise ValueError("cleaning_frequency cannot be null")
+        if frequency is not None:
+            if (
+                "daily_cleaning_enabled" in self.model_fields_set
+                and enabled is not None and enabled != (frequency == "daily")
+            ):
+                raise ValueError("cleaning_frequency conflicts with daily_cleaning_enabled")
+            object.__setattr__(self, "daily_cleaning_enabled", frequency == "daily")
+        elif enabled is not None:
+            object.__setattr__(self, "cleaning_frequency", "daily" if enabled else "unspecified")
+        return self
+
+
+class RoomCreate(RoomCleaningFrequencyInput):
     floor_id: UUID
     room_number: str = Field(min_length=1, max_length=32)
     room_type: RoomType
@@ -167,10 +205,12 @@ class RoomCreate(HousingInputModel):
     @model_validator(mode="after")
     def validate_configuration(self) -> Self:
         validate_room_type_capacity(self.room_type, self.capacity)
+        if self.cleaning_frequency is None:
+            object.__setattr__(self, "cleaning_frequency", "unspecified")
         return self
 
 
-class RoomUpdate(HousingInputModel):
+class RoomUpdate(RoomCleaningFrequencyInput):
     version: StrictInt = Field(ge=1)
     floor_id: UUID | None = None
     room_number: str | None = Field(default=None, min_length=1, max_length=32)
@@ -217,6 +257,10 @@ class RoomBatchVerifyRequest(HousingInputModel):
         if len(room_ids) != len(set(room_ids)):
             raise ValueError("room IDs must be unique")
         return self
+
+
+class RoomBatchServiceStatusRequest(RoomBatchVerifyRequest):
+    service_status: Literal["available", "maintenance", "disabled"]
 
 
 class StayCreate(HousingInputModel):
@@ -348,6 +392,7 @@ class RoomResponse(HousingResponseModel):
     verification_status: VerificationStatus
     service_status: ServiceStatus
     daily_cleaning_enabled: bool = False
+    cleaning_frequency: CleaningFrequency = "unspecified"
     cleaning_status: CleaningStatus = "ready"
     cleaning_pending_at: datetime | None = None
     cleaning_completed_at: datetime | None = None
@@ -356,6 +401,19 @@ class RoomResponse(HousingResponseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("cleaning_frequency", mode="before")
+    @classmethod
+    def normalize_missing_frequency(cls, value: object) -> object:
+        return value or "unspecified"
+
+    @model_validator(mode="after")
+    def project_cleaning_compatibility(self) -> Self:
+        # Legacy fixtures/objects may not yet carry a frequency value.
+        if self.cleaning_frequency == "unspecified" and self.daily_cleaning_enabled:
+            self.cleaning_frequency = "daily"
+        self.daily_cleaning_enabled = self.cleaning_frequency == "daily"
+        return self
 
 
 class ResidentOption(HousingResponseModel):
@@ -588,11 +646,15 @@ class HousingRoomDetail(HousingResponseModel):
 
 class HousingSummary(BaseModel):
     pending_cleaning_rooms: int = 0
+    daily_cleaning_rooms: int = 0
+    weekly_cleaning_rooms: int = 0
+    on_demand_cleaning_rooms: int = 0
     total_rooms: int
     occupied_rooms: int
     unoccupied_rooms: int
     assignable_rooms: int
     unassignable_rooms: int
+    full_rooms: int
     problem_rooms: int
     pending_verification_rooms: int
     total_capacity: int

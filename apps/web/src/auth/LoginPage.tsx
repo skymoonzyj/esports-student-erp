@@ -35,14 +35,20 @@ export function LoginPage() {
   return (
     <main className="loginPage">
       <section className="loginBrand" aria-label="竞学 ERP 介绍">
-        <div className="loginBrandMark" aria-hidden="true">
-          竞
+        <div className="loginBrandIdentity">
+          <div className="loginBrandMark" aria-hidden="true">竞</div>
+          <div><strong>竞学 ERP</strong><span>教育运营 · 协同有序</span></div>
         </div>
         <p className="loginEyebrow">ESPORTS EDUCATION OPERATIONS</p>
         <h1>把每一位学员的成长，放在清晰可见的位置。</h1>
         <p className="loginBrandCopy">
           学员档案、教学协作与运营管理统一在一个安全的工作台中。
         </p>
+        <div className="loginDomainList" aria-label="协同工作领域">
+          <div><span>01</span><strong>学员与成长</strong><small>资料 · 教学 · 评价</small></div>
+          <div><span>02</span><strong>日常与保障</strong><small>住宿 · 餐饮 · 行程</small></div>
+          <div><span>03</span><strong>团队与运营</strong><small>队伍 · 资产 · 协作</small></div>
+        </div>
         <div className="loginFeatureRow" aria-label="系统特点">
           <span>实名资料保护</span>
           <span>角色权限隔离</span>

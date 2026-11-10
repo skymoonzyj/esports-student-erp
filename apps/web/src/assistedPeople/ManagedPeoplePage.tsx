@@ -28,7 +28,7 @@ function ManagedWorkspace({ accountId, context }: { accountId: string; context: 
   function filter(next: Partial<ManagedPeopleFilters>) {
     setFilterState((current) => ({ filters: { ...current.filters, ...next }, generation: current.generation + 1 }))
   }
-  return <main className="peoplePage managedPeoplePage"><h1>我的学员／队员</h1>
+  return <main className="peoplePage managedPeoplePage assistedPeoplePage"><h1>我的学员／队员</h1>
     <p>仅显示当前授权负责的学员、队员及住宿摘要。</p>
     <div className="managedPeopleFilters">
       <label>姓名或昵称<input autoComplete="off" maxLength={80} value={filters.query ?? ""} onChange={(event) => filter({ query: event.target.value || undefined })} /></label>

@@ -5,16 +5,21 @@ import { ProblemDetailsError } from '../api/client'
 import type { AuthUser } from '../auth/AuthProvider'
 import type { ReportsQuery } from './api'
 import type { AssessmentReportSummary } from './apiContracts'
-import { suiteIdSchema, type QualityFlag, type ReportResult, type SuiteId, type TaskConfig, type TestId } from './contracts'
+import { isLaneTaskConfig, suiteIdSchema, type QualityFlag, type ReportResult, type SuiteId, type TaskConfig, type TestId } from './contracts'
 
 export const suiteLabels: Record<SuiteId, string> = { 'pc-fps': '端游 FPS', 'mobile-fps': '手游 FPS', 'pc-moba': '端游 MOBA', 'mobile-moba': '手游 MOBA' }
-export const testLabels: Record<TestId, string> = { precision: '精准定位与微调', tracking: '持续跟枪', switching: '多目标切换', recognition: '敌我识别', 'move-fire': '移动与射击协同', 'last-hit': '补刀时机', 'orb-walk': '走 A 节奏', dodge: '技能躲避', 'map-awareness': '小地图注意力', 'skill-aim': '技能方向控制', 'move-attack': '移动与攻击协同' }
+export const testLabels: Record<TestId, string> = { precision: '精准定位与微调', tracking: '持续跟枪', switching: '多目标切换', recognition: '敌我识别', 'move-fire': '移动与射击协同', 'last-hit': '补刀时机', 'orb-walk': '走 A 节奏', dodge: '技能躲避', 'map-awareness': '小地图注意力', 'skill-aim': '技能方向控制', 'move-attack': '移动与攻击协同', gridshot: '网格射击', sixshot: '六目标射击', spheretrack90: '90°范围跟枪' }
 export function reportTaskLabel(config: TaskConfig): string {
+  if (isLaneTaskConfig(config)) return `五分钟兵线补刀 · ${config.params.attack_mode === 'melee' ? '近战' : '远程'}`
   return config.report_version === `${config.suite_id}-v2` && config.test_id === 'dodge'
     ? '危险区域识别与躲避'
     : testLabels[config.test_id]
 }
 export const metricLabels: Record<string, string> = {
+  hero_deaths: '人物死亡次数', hero_damage_taken: '承受防御塔伤害',
+  last_hits: '成功补刀数', enemy_deaths: '已死亡敌兵', missed: '漏刀数', unresolved: '未结算敌兵', last_hit_rate: '补刀率', opportunity_completion: '总机会完成率', last_hits_per_minute: '每分钟平均补刀', attacks: '普攻释放数',
+  minute_1_last_hits: '第 1 分钟补刀', minute_2_last_hits: '第 2 分钟补刀', minute_3_last_hits: '第 3 分钟补刀', minute_4_last_hits: '第 4 分钟补刀', minute_5_last_hits: '第 5 分钟补刀',
+  hits_per_second: '每秒命中数', successful_average_interval_ms: '连续命中平均间隔',
   opportunities: '机会数', hits: '命中次数', hit_rate: '命中率', shots: '射击次数', accuracy: '射击准确率', wrong_target_shots: '错误目标射击', successful_average_latency_ms: '成功平均用时', average_latency_ms: '平均用时', coverage_ms: '实际覆盖时长', coverage_rate: '实际覆盖率', loss_count: '采样离靶次数', average_reacquisition_ms: '采样重捕获平均用时',
   enemy_opportunities: '敌方机会数', enemy_correct: '敌方正确命中', enemy_correct_rate: '敌方正确率', enemy_missed_or_wrong: '敌方漏击或错误', friend_opportunities: '友方机会数', friend_wrong_shots: '友方误射', friend_wrong_rate: '友方误射率', enemy_correct_average_latency_ms: '敌方正确平均用时', enemy_scoring_average_latency_ms: '敌方计分平均用时', reached: '到位次数', joint_successes: '同时完成次数', joint_rate: '同时完成率', successes: '成功次数', success_rate: '成功率', early_attacks: '过早攻击', late_attacks: '过晚攻击', successful_average_offset_ms: '成功平均窗口偏移', attacks_completed: '完成攻击次数', cancelled_attacks: '取消攻击次数', avoided: '躲避次数', hits_taken: '受击次数', avoid_rate: '躲避率', average_response_ms: '每轮首次移动平均用时', released: '释放次数', unreleased: '未释放次数', average_release_angle_error_deg: '平均释放角度误差', average_release_latency_ms: '平均释放用时', average_hit_latency_ms: '平均命中用时', main_opportunities: '主任务机会数', main_hits: '主任务命中', main_hit_rate: '主任务命中率', map_opportunities: '地图事件数', map_correct: '地图正确响应', map_wrong: '地图错误响应', map_missed: '地图漏报', unprompted_count: '无提示点击', map_attention_rate: '地图注意率', map_correct_average_latency_ms: '地图正确平均用时',
   switching_group_successes: '完成两靶组数', switching_group_rate: '两靶组完成率', acquisition_success_average_ms: '首靶成功获取平均用时', switching_success_average_ms: '第二靶成功切换平均用时', switching_scoring_average_ms: '第二靶计分平均用时', moving_hits: '有效移动命中次数', safe_entries: '安全区进入次数', safe_entry_average_ms: '安全区进入用时',
@@ -43,7 +48,12 @@ export function FrozenSetup({ result }: { result: Pick<ReportResult, 'config' | 
   </details>
 }
 export function TrackingNote({ testId }: { testId: TestId }) {
-  return testId === 'tracking' ? <p className="assessmentReportsHint">覆盖率按真实时长积分；120 Hz 每个时间桶最多记录首个真实离靶及其首次重捕获。采样次数不是全部离靶事件数。</p> : null
+  return testId === 'tracking' || testId === 'spheretrack90' ? <p className="assessmentReportsHint">覆盖率按真实时长积分；120 Hz 每个时间桶最多记录首个真实离靶及其首次重捕获。采样次数不是全部离靶事件数。</p> : null
+}
+export function LaneReportNote({ config }: { config: TaskConfig }) {
+  if (!isLaneTaskConfig(config)) return null
+  const towers = config.params.kind === 'lane_last_hit_towers'
+  return <><p>补刀率 = 补刀数 / 已死亡敌兵数；总机会完成率 = 补刀数 / {towers ? 75 : 50}，总分按总机会完成率计算。</p><p>未结算敌兵仍存活，不记为漏刀。近战、远程及旧版本分别比较与排名。</p>{towers && <p>友兵和防御塔击杀不计玩家补刀。人物死亡不额外扣分，但复活等待会损失操作时间；承受伤害只计实际扣除生命。</p>}</>
 }
 export function uniqueBy<T>(items: readonly T[], key: (item: T) => string): T[] {
   const seen = new Set<string>()
@@ -66,10 +76,10 @@ export function chinaDate(value: string): string {
 }
 export function formatMetric(key: string, value: number | null, difference = false): string {
   if (value === null) return '暂无有效样本'
-  const rate = key.endsWith('_rate') || key === 'accuracy'
+  const rate = key.endsWith('_rate') || key === 'accuracy' || key === 'opportunity_completion'
   const displayed = Number((value * (rate ? 100 : 1)).toFixed(2))
   const sign = difference && displayed > 0 ? '+' : ''
-  const unit = rate ? (difference ? ' 个百分点' : '%') : key.endsWith('_ms') ? ' ms' : key.endsWith('_deg') ? '°' : ' 次'
+  const unit = rate ? (difference ? ' 个百分点' : '%') : key.endsWith('_ms') ? ' ms' : key.endsWith('_deg') ? '°' : key === 'hits_per_second' ? ' 次/秒' : key === 'hero_damage_taken' ? ' 点' : ' 次'
   return `${sign}${displayed}${unit}`
 }
 const filtersSchema = z.object({ person_id: z.uuid().optional(), suite_id: suiteIdSchema.optional(), date_from: z.iso.date().optional(), date_to: z.iso.date().optional() }).refine(value => !value.date_from || !value.date_to || value.date_from <= value.date_to)

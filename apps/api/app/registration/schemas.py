@@ -6,10 +6,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr, field_validator
 
-from app.identity.schemas import StaffType
 from app.registration.models import IdentifierKind, RegistrationPurpose, RegistrationState
 from app.registration.privacy import contains_sensitive_registration_text
 from app.security.passwords import PasswordPolicyError, PasswordService
+
+# Internal staff classifications do not expand publicly requestable account roles.
+StaffType = Literal["coach", "life_teacher", "customer_service", "administration", "other"]
 
 
 class RegistrationApplicationCreate(BaseModel):

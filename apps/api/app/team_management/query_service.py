@@ -16,21 +16,25 @@ from app.core.time import business_date_at, business_today
 from app.identity.models import Person
 from app.identity.name_search import is_name_initial_query, name_matches_query, normalize_name_query
 from app.rbac.models import Role, UserRole
+from app.security.encryption import EnvelopeCipher, LookupDigest
 from app.teaching.models import GameProject, ProfessionalTeam
 from app.team_management.access import TeamAccessService
 from app.team_management.errors import TeamAccessDenied, TeamNotFound
-from app.team_management.models import TeamManagerAssignment, TeamMembership
+from app.team_management.models import TeamManagerAssignment, TeamMembership, TeamStaffAssignment
 from app.team_management.projection import project_person_teams
 from app.team_management.schemas import (
     MyTeamResponse,
+    StaffRole,
     TeamAction,
     TeamAssignmentView,
     TeamCandidate,
     TeamCandidatePage,
     TeamMemberView,
     TeamPage,
+    TeamStaffAssignmentView,
     TeamSummary,
 )
+from app.team_management.staff_service import STAFF_ROLE_KEYS
 
 
 def _invalid(detail: str) -> ProblemError:
@@ -49,8 +53,15 @@ def _pagination(page: int, page_size: int) -> None:
 
 
 class TeamQueryService:
-    def __init__(self, db: Session) -> None:
+    def __init__(
+        self,
+        db: Session,
+        *,
+        cipher: EnvelopeCipher | None = None,
+        lookup: LookupDigest | None = None,
+    ) -> None:
         self.db = db
+        self.cipher, self.lookup = cipher, lookup
         self.access = TeamAccessService(db)
 
     def _require_team(self, actor: AuthContext, team_id: UUID, action: TeamAction) -> None:
@@ -256,22 +267,32 @@ class TeamQueryService:
         actor: AuthContext,
         team_id: UUID,
         *,
-        kind: Literal["member", "manager"],
+        kind: Literal["member", "manager", "staff"],
         query: str,
         cursor: str | None,
         page_size: int = 20,
+        staff_role: StaffRole | None = None,
     ) -> TeamCandidatePage:
         normalized = normalize_name_query(query)
         if not normalized or len(query) > 120 or not 1 <= page_size <= 20:
             raise _invalid("请输入姓名、昵称或首字母，每页数量须为 1 至 20")
-        if kind not in {"member", "manager"}:
+        if kind not in {"member", "manager", "staff"} or (
+            kind == "staff" and staff_role not in STAFF_ROLE_KEYS
+        ):
             raise _invalid("候选类型无效")
         self._require_team(actor, team_id, "manage" if kind == "member" else "assign_managers")
+        if kind == "staff":
+            from app.team_management.write_support import require_active_team
+
+            team = self.db.get(ProfessionalTeam, team_id)
+            assert team is not None
+            require_active_team(self.db, team)
+        cursor_kind = f"staff:{staff_role}" if kind == "staff" else kind
         position = None
         if cursor:
             try:
                 decoded = json.loads(base64.urlsafe_b64decode(cursor.encode("ascii")))
-                if decoded[:3] != [str(team_id), kind, normalized] or len(decoded) != 4:
+                if decoded[:3] != [str(team_id), cursor_kind, normalized] or len(decoded) != 4:
                     raise ValueError
                 position = UUID(decoded[3])
             except (ValueError, TypeError, UnicodeError, IndexError) as exc:
@@ -281,7 +302,12 @@ class TeamQueryService:
             .join(Role)
             .where(
                 UserRole.user_id == UserAccount.id,
-                Role.key == f"team_{kind}",
+                Role.key
+                == (
+                    STAFF_ROLE_KEYS[staff_role]
+                    if staff_role is not None and kind == "staff"
+                    else f"team_{kind}"
+                ),
             )
         )
         statement = (
@@ -338,6 +364,13 @@ class TeamQueryService:
             rows = list(self.db.execute(batch).mappings())
             for row in rows:
                 position = row["person_id"]
+                if kind == "member" and row["account_id"] is None:
+                    from app.identity.assignments.team_eligibility import trusted_business_player
+
+                    if not trusted_business_player(
+                        self.db, row["person_id"], cipher=self.cipher, lookup=self.lookup
+                    ):
+                        continue
                 if initials and not any(
                     name_matches_query(value, normalized)
                     for value in (row["full_name"], row["nickname"] or "")
@@ -346,7 +379,7 @@ class TeamQueryService:
                 if len(items) == page_size:
                     token = base64.urlsafe_b64encode(
                         json.dumps(
-                            [str(team_id), kind, normalized, str(last_match)],
+                            [str(team_id), cursor_kind, normalized, str(last_match)],
                             separators=(",", ":"),
                             ensure_ascii=True,
                         ).encode("ascii")
@@ -354,7 +387,57 @@ class TeamQueryService:
                     return TeamCandidatePage(items=items, next_cursor=token)
                 data = dict(row)
                 age = _age(data.pop("date_of_birth"), today)
-                items.append(TeamCandidate(**data, age=age, is_minor=age < 18 if age is not None else None))
+                items.append(
+                    TeamCandidate(**data, age=age, is_minor=age < 18 if age is not None else None)
+                )
                 last_match = position
             if len(rows) < 200:
                 return TeamCandidatePage(items=items, next_cursor=None)
+
+    def list_staff_assignments(
+        self,
+        actor: AuthContext,
+        team_id: UUID,
+        *,
+        status: Literal["current", "ended"],
+        page: int,
+        page_size: int,
+    ) -> TeamPage[TeamStaffAssignmentView]:
+        _pagination(page, page_size)
+        self._require_team(actor, team_id, "assign_managers")
+        query = (
+            select(
+                TeamStaffAssignment.id,
+                TeamStaffAssignment.account_id,
+                TeamStaffAssignment.staff_role,
+                Person.full_name,
+                Person.nickname,
+                case((Person.deleted_at.is_not(None), "deleted"), else_=UserAccount.status).label(
+                    "account_status"
+                ),
+                TeamStaffAssignment.created_at,
+                TeamStaffAssignment.ended_at,
+            )
+            .join(UserAccount, UserAccount.id == TeamStaffAssignment.account_id)
+            .join(Person, Person.id == UserAccount.person_id)
+            .where(TeamStaffAssignment.team_id == team_id)
+        )
+        if status == "current":
+            query = query.where(TeamStaffAssignment.ended_at.is_(None))
+        elif status == "ended":
+            query = query.where(TeamStaffAssignment.ended_at.is_not(None))
+        else:
+            raise _invalid("工作人员状态无效")
+        total = self.db.scalar(select(func.count()).select_from(query.subquery())) or 0
+        items = []
+        for row in self.db.execute(
+            query.order_by(TeamStaffAssignment.created_at.desc(), TeamStaffAssignment.id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).mappings():
+            data = dict(row)
+            data["started_on"] = business_date_at(data.pop("created_at"))
+            ended_at = data.pop("ended_at")
+            data["ended_on"] = business_date_at(ended_at) if ended_at is not None else None
+            items.append(TeamStaffAssignmentView(**data))
+        return TeamPage(items=items, total=total, page=page, page_size=page_size)

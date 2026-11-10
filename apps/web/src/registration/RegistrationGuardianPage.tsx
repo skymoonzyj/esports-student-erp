@@ -23,6 +23,7 @@ import type {
 } from "./api"
 import { registrationKeys } from "./keys"
 import "./registration.css"
+import { PublicEntryAside } from "./PublicEntryAside"
 
 const STATUS_LABELS: Record<GuardianInvitation["status"], string> = {
   pending: "等待监护人确认",
@@ -212,6 +213,7 @@ export function RegistrationGuardianPage() {
 
   return (
     <main className="registrationPage">
+      <PublicEntryAside />
       <section className="registrationCard registrationCardWide" aria-labelledby="guardian-completion-title">
         <p className="registrationEyebrow">GUARDIAN COMPLETION</p>
         <h1 id="guardian-completion-title">监护人完善区</h1>

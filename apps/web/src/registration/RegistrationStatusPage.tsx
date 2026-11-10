@@ -10,6 +10,7 @@ import type {
   StaffType,
 } from "./api"
 import "./registration.css"
+import { PublicEntryAside } from "./PublicEntryAside"
 
 const STAFF_TYPE_LABELS: Record<StaffType, string> = {
   coach: "教练",
@@ -116,6 +117,7 @@ export function RegistrationStatusPage() {
 
   return (
     <main className="registrationPage">
+      <PublicEntryAside />
       <section className="registrationCard" aria-labelledby="registration-status-title">
         <p className="registrationEyebrow">APPLICATION STATUS</p>
         <h1 id="registration-status-title">注册状态</h1>

@@ -42,10 +42,12 @@ from app.housing.occupancy_export_service import (
 )
 from app.housing.occupancy_router import _authorize_locked_room_care, _require_current_care_actor
 from app.housing.occupancy_service import HousingOccupancyService
+from app.housing.room_status_export_router import _current_access
 from app.housing.schemas import (
     BuildingCreate,
     BuildingResponse,
     BuildingUpdate,
+    CleaningFrequency,
     CleaningStatus,
     FloorCreate,
     FloorResponse,
@@ -53,7 +55,9 @@ from app.housing.schemas import (
     HousingCatalogResponse,
     HousingOccupancyExportRequest,
     HousingOverviewResponse,
+    HousingQuickFilter,
     HousingRoomCard,
+    RoomBatchServiceStatusRequest,
     RoomBatchVerifyRequest,
     RoomCreate,
     RoomResponse,
@@ -67,7 +71,7 @@ from app.security.encryption import EnvelopeCipher, LookupDigest
 
 CurrentGender = Literal["male", "female", "unspecified"]
 Occupancy = Literal["occupied", "unoccupied"]
-Assignability = Literal["assignable", "unassignable"]
+Assignability = Literal["assignable", "unassignable", "full"]
 
 
 router = APIRouter(
@@ -186,10 +190,12 @@ def overview(
     verification_status: Annotated[list[VerificationStatus] | None, Query()] = None,
     service_status: Annotated[list[ServiceStatus] | None, Query()] = None,
     cleaning_statuses: Annotated[list[CleaningStatus] | None, Query()] = None,
+    cleaning_frequency: Annotated[list[CleaningFrequency] | None, Query()] = None,
     daily_cleaning_enabled: bool | None = None,
     current_gender: CurrentGender | None = None,
     occupancy: Occupancy | None = None,
     assignability: Assignability | None = None,
+    quick_filter: HousingQuickFilter | None = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> HousingOverviewResponse:
@@ -209,9 +215,11 @@ def overview(
             service_statuses=frozenset(service_status or ()),
             cleaning_statuses=frozenset(cleaning_statuses or ()),
             daily_cleaning_enabled=daily_cleaning_enabled,
+            cleaning_frequencies=frozenset(cleaning_frequency or ()),
             current_gender=current_gender,
             occupancy=occupancy,
             assignability=assignability,
+            quick_filter=quick_filter,
         ),
         page,
         page_size,
@@ -231,7 +239,7 @@ def export_occupancy(
     """Export actual room stays with the sensitive fields authorized by RBAC."""
 
     occurred_at = datetime.now(UTC)
-    access = _access(db, context, occurred_at)
+    access = _current_access(db, context)
     action = "housing.occupancy.export"
     if db.scalar(
         select(HousingFloor.id)
@@ -260,6 +268,13 @@ def export_occupancy(
             format=input.format,
             occurred_at=occurred_at,
         )
+        current_access = _current_access(db, context)
+        if access.access_revision != current_access.access_revision:
+            raise ProblemError(
+                status=409,
+                code="housing_access_changed",
+                detail="房态权限已发生变化，请刷新后重新导出",
+            )
         _audit(
             db,
             request,
@@ -365,15 +380,18 @@ def verify_rooms(
             resource_id=None,
             metadata=metadata,
         )
+
+    def authorize_rooms(locked_rooms: Sequence[HousingRoom]) -> None:
+        _require_current_care_actor(db, context)
+        _authorize_locked_rooms(_access(db, context, datetime.now(UTC)), locked_rooms)
+
     try:
         db.commit()
         with db.begin():
             verified_rows = HousingInventoryService(db).verify_rooms(
                 input.rooms,
                 actor_user_id=context.account.id,
-                authorize_rooms=lambda locked_rooms: _authorize_locked_rooms(
-                    access, locked_rooms
-                ),
+                authorize_rooms=authorize_rooms,
             )
             refreshed_by_id = {
                 room.id: room
@@ -437,6 +455,84 @@ def verify_rooms(
             detail="房态审计记录失败",
         ) from exc
     return verified
+
+
+@router.post("/rooms/batch-service-status", response_model=list[RoomResponse])
+def update_rooms_service_status(
+    input: RoomBatchServiceStatusRequest,
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_standard_account)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[RoomResponse]:
+    action = f"housing.room.service_status_batch.{input.service_status}"
+    access = _access(db, context, datetime.now(UTC))
+    requested_ids = [item.room_id for item in input.rooms]
+    rooms_by_id = {
+        room.id: room
+        for room in db.scalars(select(HousingRoom).where(HousingRoom.id.in_(requested_ids)))
+    }
+    metadata: dict[str, Any] = {"scope_kind": "global", "result_count": len(input.rooms)}
+    if set(rooms_by_id) != set(requested_ids) or any(
+        not access.can_read_room(room) for room in rooms_by_id.values()
+    ):
+        _deny_mutation(
+            db, request, context, action=action, resource_type="housing_room",
+            resource_id=None, metadata=metadata, not_found=True,
+        )
+    rooms = [rooms_by_id[item.room_id] for item in input.rooms]
+    metadata = {**_batch_scope(rooms), "result_count": len(rooms)}
+    if any(not access.can_manage_room(room) for room in rooms):
+        _deny_mutation(
+            db, request, context, action=action, resource_type="housing_room",
+            resource_id=None, metadata=metadata,
+        )
+
+    def authorize_rooms(locked_rooms: Sequence[HousingRoom]) -> None:
+        _require_current_care_actor(db, context)
+        _authorize_locked_rooms(_access(db, context, datetime.now(UTC)), locked_rooms)
+
+    try:
+        db.commit()
+        with db.begin():
+            updated_rows = HousingInventoryService(db).update_rooms_service_status(
+                input.rooms,
+                service_status=input.service_status,
+                actor_user_id=context.account.id,
+                authorize_rooms=authorize_rooms,
+            )
+            refreshed_by_id = {
+                room.id: room
+                for room in db.scalars(
+                    select(HousingRoom)
+                    .where(HousingRoom.id.in_(requested_ids))
+                    .execution_options(populate_existing=True)
+                )
+            }
+            updated = [RoomResponse.model_validate(refreshed_by_id[room.id]) for room in updated_rows]
+            _audit(
+                db, request, context, action=action, resource_type="housing_room",
+                resource_id=None, outcome="allowed", metadata=metadata,
+            )
+    except _LockedAuthorizationDenied as exc:
+        _deny_mutation(
+            db, request, context, action=action, resource_type="housing_room",
+            resource_id=None, metadata=metadata, not_found=exc.not_found,
+        )
+    except HousingResourceNotFound:
+        _deny_mutation(
+            db, request, context, action=action, resource_type="housing_room",
+            resource_id=None, metadata=metadata, not_found=True,
+        )
+    except HousingServiceError as exc:
+        _failed_mutation(
+            db, request, context, exc, action=action, resource_type="housing_room",
+            resource_id=None, metadata=metadata,
+        )
+    except AuditMetadataRejected as exc:
+        raise ProblemError(
+            status=500, code="housing_audit_failed", detail="房态审计记录失败",
+        ) from exc
+    return updated
 
 
 @router.get("/rooms/{room_id}", response_model=HousingRoomCard)
@@ -679,7 +775,7 @@ def create_room(
         _deny_mutation(db, request, context, action=action, resource_type="housing_room", resource_id=None, metadata=metadata, not_found=True)
     if not access.can_manage_floor(floor):
         _deny_mutation(db, request, context, action=action, resource_type="housing_room", resource_id=None, metadata=metadata)
-    protected = "daily_cleaning_enabled" in input.model_fields_set
+    protected = bool({"daily_cleaning_enabled", "cleaning_frequency"} & input.model_fields_set)
     if protected and not access.has_room_care_role:
         _deny_mutation(db, request, context, action=action, resource_type="housing_room", resource_id=None, metadata=metadata)
 
@@ -735,7 +831,7 @@ def update_room(
     action = "housing.room.update"
     access = _access(db, context, datetime.now(UTC))
     existing = _authorize_room_mutation(room_id, request, context, db, access, action)
-    protected = "daily_cleaning_enabled" in input.model_fields_set
+    protected = bool({"daily_cleaning_enabled", "cleaning_frequency"} & input.model_fields_set)
     if protected and not access.can_manage_room_care(existing):
         _deny_mutation(db, request, context, action=action, resource_type="housing_room", resource_id=room_id, metadata={"room_id": str(room_id)})
     if input.floor_id is not None:
@@ -747,12 +843,14 @@ def update_room(
     metadata = {"room_id": str(room_id)}
 
     previous_daily_cleaning_enabled: bool | None = None
+    previous_cleaning_frequency: str | None = None
 
     def authorize_room(locked_room: HousingRoom) -> None:
-        nonlocal previous_daily_cleaning_enabled
+        nonlocal previous_daily_cleaning_enabled, previous_cleaning_frequency
         if protected:
             _authorize_locked_room_care(db, context, datetime.now(UTC), locked_room)
             previous_daily_cleaning_enabled = locked_room.daily_cleaning_enabled
+            previous_cleaning_frequency = locked_room.cleaning_frequency
         else:
             _require_current_care_actor(db, context)
             _authorize_locked_room(_access(db, context, datetime.now(UTC)), locked_room)
@@ -774,6 +872,14 @@ def update_room(
                 authorize_floor=authorize_floor,
             )
             result_metadata: dict[str, object] = dict(metadata)
+            if (
+                "cleaning_frequency" in input.model_fields_set
+                and previous_cleaning_frequency != room.cleaning_frequency
+            ):
+                result_metadata.update(
+                    previous_cleaning_frequency=previous_cleaning_frequency,
+                    cleaning_frequency=room.cleaning_frequency,
+                )
             if protected and previous_daily_cleaning_enabled != room.daily_cleaning_enabled:
                 result_metadata.update(
                     previous_daily_cleaning_enabled=previous_daily_cleaning_enabled,
@@ -802,14 +908,17 @@ def delete_room(
     access = _access(db, context, datetime.now(UTC))
     _authorize_room_mutation(room_id, request, context, db, access, action)
     metadata = {"room_id": str(room_id)}
+
+    def authorize_room(locked_room: HousingRoom) -> None:
+        _require_current_care_actor(db, context)
+        _authorize_locked_room(_access(db, context, datetime.now(UTC)), locked_room)
+
     try:
         db.commit()
         with db.begin():
             HousingInventoryService(db).delete_room(
                 room_id,
-                authorize_room=lambda locked_room: _authorize_locked_room(
-                    access, locked_room
-                ),
+                authorize_room=authorize_room,
             )
             _audit(db, request, context, action=action, resource_type="housing_room", resource_id=room_id, outcome="allowed", metadata=metadata)
     except _LockedAuthorizationDenied as exc:
@@ -838,6 +947,11 @@ def verify_room(
     if room.verification_status != "pending_verification":
         exc = HousingInvalidRoomConfiguration("housing room is already verified")
         _failed_mutation(db, request, context, exc, action=action, resource_type="housing_room", resource_id=room_id, metadata=metadata)
+
+    def authorize_room(locked_room: HousingRoom) -> None:
+        _require_current_care_actor(db, context)
+        _authorize_locked_room(_access(db, context, datetime.now(UTC)), locked_room)
+
     try:
         db.commit()
         with db.begin():
@@ -845,9 +959,7 @@ def verify_room(
                 room_id,
                 expected_version=input.version,
                 actor_user_id=context.account.id,
-                authorize_room=lambda locked_room: _authorize_locked_room(
-                    access, locked_room
-                ),
+                authorize_room=authorize_room,
             )
             _audit(db, request, context, action=action, resource_type="housing_room", resource_id=room_id, outcome="allowed", metadata=metadata)
     except _LockedAuthorizationDenied as exc:

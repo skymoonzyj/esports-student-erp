@@ -8,7 +8,7 @@ import {
   practiceResultSchema,
   resultSaveViewSchema,
   sessionViewSchema,
-  suiteMembers,
+  isSupportedSuiteTest,
   suiteConfigSchema,
   suiteIdSchema,
   taskConfigSchema,
@@ -68,7 +68,7 @@ export const assessmentContextViewSchema = z.strictObject({
   ) {
     context.addIssue({ code: 'custom', message: 'active formal run is not an ongoing session' })
   }
-  if (value.active_run && !suiteMembers[value.active_run.suite_id].includes(value.active_run.test_id)) {
+  if (value.active_run && !isSupportedSuiteTest(value.active_run.suite_id, value.active_run.test_id)) {
     context.addIssue({ code: 'custom', message: 'active run test does not belong to suite' })
   }
   if (!value.can_read_self && (value.own_in_progress_sessions.length > 0 || value.active_run !== null)) {
@@ -100,7 +100,7 @@ export const recoveryItemSchema = z.strictObject({
     && Date.parse(value.submit_until) > Date.parse(value.run_until),
   'invalid recovery identity or deadlines',
 ).refine(
-  (value) => suiteMembers[value.suite_id].includes(value.test_id),
+  (value) => isSupportedSuiteTest(value.suite_id, value.test_id),
   'recovery test does not belong to suite',
 )
 

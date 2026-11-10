@@ -13,6 +13,7 @@ from app.admissions.api_support import (
     audit_amount_access,
     authorized_admission_case,
     raise_admissions_error,
+    require_admission_case_permission,
     require_payment_permission,
     require_permission,
 )
@@ -33,7 +34,7 @@ from app.admissions.errors import (
     ServiceAccountDisabled,
     ServiceCredentialDisabled,
 )
-from app.admissions.models import ServiceAccount
+from app.admissions.models import AdmissionCase, ServiceAccount
 from app.admissions.payment_service import PaymentListItem, PaymentService
 from app.admissions.routing import PrivateAdmissionsRoute
 from app.admissions.schemas import (
@@ -53,7 +54,7 @@ from app.admissions.schemas import (
     ServiceAccountResponse,
 )
 from app.audit.service import AuditMetadataRejected, AuditService
-from app.auth.dependencies import require_standard_account
+from app.auth.dependencies import require_current_standard_account, require_standard_account
 from app.auth.service import AuthContext
 from app.core.database import get_db
 from app.core.errors import ProblemError
@@ -551,11 +552,20 @@ def create_manual_payment(
         )
     else:
         require_permission(context, db, "payments.manage")
+
+    def authorize_case(admission_case: AdmissionCase) -> None:
+        current = require_current_standard_account(db, context)
+        if input.admission_case_id is None:
+            require_permission(current, db, "payments.manage")
+        else:
+            require_admission_case_permission(current, db, admission_case, "payments.manage")
+
     try:
         result = service.create_manual_payment(
             input,
             actor_user_id=context.account.id,
             request_id=str(request.state.request_id),
+            authorize_case=authorize_case,
         )
     except AdmissionsServiceError as exc:
         raise_admissions_error(exc)
@@ -587,12 +597,19 @@ def create_refund(
 ) -> RefundResponse:
     admission_case = require_payment_permission(context, db, payment_id, "refunds.manage")
     require_payment_permission(context, db, payment_id, "payments.read")
+
+    def authorize_case(_admission_case: AdmissionCase) -> None:
+        current = require_current_standard_account(db, context)
+        require_payment_permission(current, db, payment_id, "refunds.manage")
+        require_payment_permission(current, db, payment_id, "payments.read")
+
     try:
         refund = service.create_refund(
             payment_id,
             input,
             actor_user_id=context.account.id,
             request_id=str(request.state.request_id),
+            authorize_case=authorize_case,
         )
     except AdmissionsServiceError as exc:
         raise_admissions_error(exc)

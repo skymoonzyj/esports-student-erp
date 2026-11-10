@@ -5,12 +5,14 @@ import { Link } from "react-router-dom"
 import { ProblemDetailsError } from "../api/client"
 import { formatShanghaiDate } from "../teaching/datetime"
 import { AssessmentRankingPanel } from "../assessmentRankings/AssessmentRankingPanel"
-import { getTalentReport, getTalentReportRanking } from "./api"
+import { ItemRankingPanel } from "../assessmentRankings/ItemRankingPanel"
+import { getTalentReport, getTalentReportRanking, getTalentSession, useTalentItemRanking } from "./api"
 import type {
   DynamicVisionRule,
   Grade,
   NormalizedResult,
   RawByTest,
+  ReportView,
   TestId,
   TestRule,
 } from "./contracts"
@@ -206,6 +208,57 @@ function DynamicVisionDetails({
   )
 }
 
+function HistoricalItemRanking({ accountId, personId, resultId, testId }: {
+  accountId: string
+  personId: string
+  resultId: string
+  testId: TestId
+}) {
+  const ranking = useTalentItemRanking(accountId, personId, resultId)
+  return (
+    <section aria-label={`${TALENT_TEST_NAMES[testId]}单项排名`}>
+      <h3>{TALENT_TEST_NAMES[testId]}</h3>
+      <ItemRankingPanel view={ranking.data} loading={ranking.isFetching} error={ranking.error} onRetry={() => { void ranking.refetch() }} />
+    </section>
+  )
+}
+
+function HistoricalItemRankings({ accountId, report }: { accountId: string; report: ReportView }) {
+  // Old immutable report snapshots predate saved result IDs. Read their original
+  // session once instead of guessing IDs or using a report ID as a result ID.
+  const savedResults = useQuery({
+    queryKey: ["talent-tests", accountId, "report", report.id, "saved-results", report.person.id, report.session_id],
+    queryFn: async ({ signal }) => {
+      const session = await getTalentSession(report.session_id, signal)
+      if (session.id !== report.session_id || session.person_id !== report.person.id || session.status !== "completed" || session.report_id !== report.id || !Array.isArray(session.results)) {
+        throw new Error("无法验证已保存项目归属。")
+      }
+      return report.results.map(result => {
+        const saved = session.results.find(candidate => candidate.test_id === result.test_id)
+        if (!saved || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(saved.id)) {
+          throw new Error("缺少已保存项目标识。")
+        }
+        return { testId: result.test_id, resultId: saved.id }
+      })
+    },
+    retry: false, gcTime: 0, refetchOnMount: "always", refetchOnWindowFocus: false, refetchOnReconnect: false,
+  })
+  return (
+    <section aria-label="各项目当前排名">
+      <h2>各项目当前排名</h2>
+      <p>以下按本报告每项已保存成绩查询当前数据库排名，不是报告完成时的历史排名快照；与上方最佳整轮综合排名分别计算。</p>
+      {savedResults.isPending ? <p role="status">正在读取已保存项目…</p> : savedResults.isError ? (
+        <div>
+          <p role="alert">无法读取已保存项目，单项排名暂不可用；报告原始成绩仍然保留。</p>
+          <button type="button" disabled={savedResults.isFetching} onClick={() => { void savedResults.refetch() }}>重新读取已保存项目</button>
+        </div>
+      ) : savedResults.data?.map(item => (
+        <HistoricalItemRanking key={`${accountId}:${item.resultId}`} accountId={accountId} personId={report.person.id} resultId={item.resultId} testId={item.testId} />
+      ))}
+    </section>
+  )
+}
+
 export function TalentReportPage({
   accountId,
   reportId,
@@ -217,7 +270,7 @@ export function TalentReportPage({
   const rootKey = useMemo(() => ["talent-tests", accountId, "report"] as const, [accountId])
   const report = useQuery({
     queryKey: [...rootKey, reportId],
-    queryFn: () => getTalentReport(reportId),
+    queryFn: ({ signal }) => getTalentReport(reportId, signal),
     retry: false, gcTime: 0,
   })
 
@@ -304,6 +357,8 @@ export function TalentReportPage({
           </tbody>
         </table>
       </div>
+
+      <HistoricalItemRankings key={`${accountId}:${reportId}`} accountId={accountId} report={value} />
 
       {dynamicResult && isDynamicVisionRule(dynamicRule) ? (
         <DynamicVisionDetails result={dynamicResult} rule={dynamicRule} />

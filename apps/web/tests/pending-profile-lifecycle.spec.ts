@@ -69,6 +69,7 @@ function facts(row: SeedCase) {
     phone: `19900007${row.sequence.toString().padStart(3, "0")}`,
     sex: "male" as const, date_of_birth: row.minor ? "2015-01-02" : "2000-01-02",
     guardians: row.minor ? [{ full_name: `E2E待补监护${row.sequence}`,
+      document_type: "cn_id", document_issuing_country: null,
       identity_number: makeCnId("19800102", 751 + row.sequence * 2), phone: "19900007777",
       email: null, relationship: "father", sex: "male" as const, date_of_birth: "1980-01-02", is_primary: true }] : [],
   }
@@ -334,7 +335,7 @@ test("pending browser creation → rejection/reapply → revoked binding denies 
     await loginAsAdmin(page)
     await page.goto("/people/assisted-create")
     await page.getByRole("button", { name: "资料待补建档", exact: true }).click()
-    await page.getByLabel("人员身份", { exact: true }).selectOption("staff")
+    await page.getByLabel("主要身份", { exact: true }).selectOption("registered_user")
     await page.getByLabel("姓名", { exact: true }).fill(input.full_name)
     await page.getByLabel("身份证", { exact: true }).fill(input.identity_number)
     await page.getByRole("checkbox", { name: "我已核对资料，确认直接创建已通过档案", exact: true }).check()

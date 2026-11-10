@@ -1,5 +1,8 @@
-import { apiFetch } from "../api/client"
+import { useQuery } from "@tanstack/react-query"
+import { useEffect } from "react"
+import { apiFetch, ProblemDetailsError } from "../api/client"
 import { parseAssessmentRanking, type AssessmentRanking } from "../assessmentRankings/contracts"
+import { parseItemRankingView, type ItemRankingView } from "../assessmentRankings/itemContracts"
 import type {
   ContextView,
   Page,
@@ -36,8 +39,8 @@ export function createTalentSession(
   )
 }
 
-export function getTalentSession(sessionId: string): Promise<SessionView> {
-  return apiFetch<SessionView>(`${ROOT}/sessions/${sessionId}`)
+export function getTalentSession(sessionId: string, signal?: AbortSignal): Promise<SessionView> {
+  return apiFetch<SessionView>(`${ROOT}/sessions/${sessionId}`, { signal, cache: "no-store" })
 }
 
 function pageQuery(page: number, pageSize: number): URLSearchParams {
@@ -71,8 +74,35 @@ export function listTalentReports(
   return apiFetch<Page<ReportSummary>>(`${ROOT}/reports?${query}`)
 }
 
-export function getTalentReport(reportId: string): Promise<ReportView> {
-  return apiFetch<ReportView>(`${ROOT}/reports/${reportId}`)
+export function getTalentReport(reportId: string, signal?: AbortSignal): Promise<ReportView> {
+  return apiFetch<ReportView>(`${ROOT}/reports/${reportId}`, { signal })
+}
+
+export async function getTalentItemRanking(resultId: string, signal?: AbortSignal): Promise<ItemRankingView> {
+  const raw = await apiFetch<unknown>(`${ROOT}/results/${encodeURIComponent(resultId)}/ranking`, { signal, cache: "no-store" })
+  return parseItemRankingView(raw)
+}
+
+export function useTalentItemRanking(accountId: string, personId: string, resultId: string | undefined) {
+  const ranking = useQuery({
+    queryKey: ["talent-tests", accountId, "item-ranking", personId, resultId],
+    queryFn: ({ signal }) => getTalentItemRanking(resultId!, signal),
+    enabled: query => Boolean(resultId) && !(query.state.error instanceof ProblemDetailsError && [401, 403, 404].includes(query.state.error.problem.status)),
+    retry: false, gcTime: 0, refetchOnMount: "always",
+    refetchOnWindowFocus: false, refetchOnReconnect: false,
+  })
+  const { refetch, error } = ranking
+  useEffect(() => {
+    if (!resultId || (error instanceof ProblemDetailsError && [401, 403, 404].includes(error.problem.status))) return
+    const refresh = () => { if (document.visibilityState === "visible") void refetch() }
+    window.addEventListener("focus", refresh)
+    document.addEventListener("visibilitychange", refresh)
+    return () => {
+      window.removeEventListener("focus", refresh)
+      document.removeEventListener("visibilitychange", refresh)
+    }
+  }, [error, refetch, resultId])
+  return ranking
 }
 
 export async function getTalentReportRanking(reportId: string, signal: AbortSignal): Promise<AssessmentRanking> {

@@ -15,6 +15,7 @@ import {
   getHousingCatalog,
   listHousingOverview,
   updateHousingRoom,
+  updateHousingRoomsServiceStatus,
   verifyHousingRoom,
   verifyHousingRooms,
 } from "./api"
@@ -22,7 +23,11 @@ import { HousingFilters } from "./HousingFilters"
 import { HousingOverviewPage } from "./HousingOverviewPage"
 import type { HousingOverviewPageProps } from "./HousingOverviewPage"
 import { housingKeys } from "./housingKeys"
-import { updateHousingSelection } from "./selection"
+import { housingRoomSelection, updateHousingSelection } from "./selection"
+import type { HousingRoomSelection } from "./selection"
+import { getHousingPropertyCapabilities } from "./propertyApi"
+
+vi.mock(import("./propertyApi"), async (importOriginal) => ({ ...await importOriginal(), getHousingPropertyCapabilities: vi.fn().mockResolvedValue({ can_submit: false, can_review: false, can_export: false, show_basic_export: false }), listHousingPropertyChanges: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }) }))
 
 const accountId = "account-housing-manager"
 const exportAuth = vi.hoisted(() => ({ permissions: ["housing.read"] }))
@@ -52,13 +57,14 @@ vi.mock(import("./api"), async (importOriginal) => ({
   getHousingCatalog: vi.fn(),
   listHousingOverview: vi.fn(),
   updateHousingRoom: vi.fn(),
+  updateHousingRoomsServiceStatus: vi.fn(),
   verifyHousingRoom: vi.fn(),
   verifyHousingRooms: vi.fn(),
 }))
 
 vi.mock(import("./selection"), async (importOriginal) => {
   const actual = await importOriginal()
-  return { ...actual, updateHousingSelection: vi.fn(actual.updateHousingSelection) }
+  return { ...actual, updateHousingSelection: vi.fn(actual.updateHousingSelection) as typeof actual.updateHousingSelection }
 })
 
 const catalogMock = vi.mocked(getHousingCatalog)
@@ -92,7 +98,7 @@ const ignoreReset = (): void => undefined
 
 it("labels ready as absence of pending cleaning rather than a recorded cleaning event", () => {
   render(<HousingFilters catalog={catalog} value={{}} open onOpenChange={ignoreOpenChange} onApply={ignoreApply} onReset={ignoreReset} />)
-  expect(screen.getByRole("checkbox", { name: "无待保洁" })).toBeVisible()
+  expect(screen.getByRole("checkbox", { name: "无退房待保洁" })).toBeVisible()
   expect(screen.queryByRole("checkbox", { name: "已清洁" })).toBeNull()
 })
 
@@ -125,7 +131,7 @@ function overview(overrides: Partial<HousingOverview> = {}): HousingOverview {
     as_of: "2026-08-04T01:30:00Z",
     summary: {
       pending_cleaning_rooms: 0,
-      total_rooms: 8, occupied_rooms: 3, unoccupied_rooms: 5, assignable_rooms: 4, unassignable_rooms: 4,
+      total_rooms: 8, occupied_rooms: 3, unoccupied_rooms: 5, assignable_rooms: 4, unassignable_rooms: 4, full_rooms: 4,
       problem_rooms: 1, pending_verification_rooms: 2, total_capacity: 12, current_occupants: 3,
       remaining_capacity: 9, occupancy_rate: "25.00", single_rooms: 4, double_rooms: 2,
       triple_rooms: 1, custom_rooms: 0, functional_rooms: 1,
@@ -151,6 +157,7 @@ function renderPage(
 }
 
 beforeEach(() => {
+  vi.mocked(getHousingPropertyCapabilities).mockResolvedValue({ can_submit: false, can_review: false, can_export: false, show_basic_export: false })
   exportAuth.permissions = ["housing.read"]
   setWidth(1024)
   catalogMock.mockReset()
@@ -159,8 +166,261 @@ beforeEach(() => {
   updateRoomMock.mockReset().mockResolvedValue(room())
   verifyRoomMock.mockReset().mockResolvedValue(room())
   verifyRoomsMock.mockReset().mockResolvedValue([])
+  vi.mocked(updateHousingRoomsServiceStatus).mockReset().mockResolvedValue([])
   catalogMock.mockResolvedValue(catalog)
   overviewMock.mockResolvedValue(overview())
+})
+
+it("keeps the dedicated basic export but no property approvals on the overview", async () => {
+  vi.mocked(getHousingPropertyCapabilities).mockResolvedValue({ can_submit: false, can_review: true, can_export: true, show_basic_export: true })
+  renderPage()
+  expect(await screen.findByRole("region", { name: "物业基础导出" })).toBeVisible()
+  expect(screen.queryByRole("region", { name: "物业变更申请" })).toBeNull()
+  expect(screen.queryByRole("region", { name: "物业变更审批" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "导出" })).not.toBeInTheDocument()
+})
+
+it.each([['maintenance', '设为维修'], ['available', '设为可用'], ['disabled', '设为停用']] as const)("submits confirmed %s status from the visible bulk toolbar without opening the catalog", async (status, label) => {
+  overviewMock.mockResolvedValue(overview({ rooms: [room({ version: 7, allowed_actions: { ...noLifecycleActions, edit: true, verify: false, delete: false } })] }))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const invalidate = vi.spyOn(client, 'invalidateQueries')
+  renderPage(client)
+  const user = userEvent.setup()
+  await user.selectOptions(await screen.findByRole('combobox', { name: '批量操作' }), status)
+  expect(screen.queryByRole('heading', { name: '目录管理' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('checkbox', { name: `选择房间 409` }))
+  await user.click(screen.getByRole('button', { name: `批量${label} 1 间房` }))
+  const confirmation = screen.getByRole('dialog', { name: '确认批量操作' })
+  expect(confirmation).toHaveTextContent(label)
+  expect(confirmation).toHaveTextContent('1 间')
+  expect(confirmation).toHaveTextContent('整批不修改')
+  expect(updateHousingRoomsServiceStatus).not.toHaveBeenCalled()
+  await user.click(within(confirmation).getByRole('button', { name: '取消' }))
+  expect(screen.getByRole('checkbox', { name: `选择房间 409` })).toBeChecked()
+  await user.click(screen.getByRole('button', { name: `批量${label} 1 间房` }))
+  await user.click(screen.getByRole('button', { name: '确认执行' }))
+  await waitFor(() => expect(updateHousingRoomsServiceStatus).toHaveBeenCalledWith([{ room_id: 'room-409', version: 7 }], status))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(screen.queryByText(/已选择 1 间/)).not.toBeInTheDocument()
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: housingKeys.catalog(accountId), exact: true })
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: housingKeys.overviews(accountId, 'revision-a') })
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: personHousingKeys.root(accountId) })
+})
+
+it('keeps verify-only room selection when switching actions but blocks incompatible status actions', async () => {
+  overviewMock.mockResolvedValue(overview({ rooms: [room({ verification_status: 'pending_verification', allowed_actions: { ...noLifecycleActions, edit: false, verify: true, delete: false } })] }))
+  renderPage()
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('checkbox', { name: '选择房间 409' }))
+  await user.selectOptions(screen.getByRole('combobox', { name: '批量操作' }), 'maintenance')
+  expect(screen.getByRole('checkbox', { name: '选择房间 409' })).toBeChecked()
+  expect(screen.getByRole('button', { name: '批量设为维修 1 间房' })).toBeDisabled()
+  expect(screen.getByRole('alert')).toHaveTextContent('409')
+  expect(screen.getByRole('alert')).toHaveTextContent('无房间编辑权限')
+  await user.selectOptions(screen.getByRole('combobox', { name: '批量操作' }), 'verify')
+  expect(screen.getByRole('checkbox', { name: '选择房间 409' })).toBeChecked()
+  expect(screen.getByRole('button', { name: '批量核对 1 间房' })).toBeEnabled()
+})
+
+it('selects an already verified available room before choosing a compatible bulk action', async () => {
+  overviewMock.mockResolvedValue(overview({ rooms: [room({ allowed_actions: { ...noLifecycleActions, edit: true, verify: false, delete: false } })] }))
+  renderPage()
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('checkbox', { name: '选择房间 409' }))
+  expect(screen.getByRole('button', { name: '批量核对 1 间房' })).toBeDisabled()
+  expect(screen.getByRole('alert')).toHaveTextContent('409：已核对，请选择维修/可用/停用或取消该房间')
+  await user.selectOptions(screen.getByRole('combobox', { name: '批量操作' }), 'maintenance')
+  expect(screen.getByRole('checkbox', { name: '选择房间 409' })).toBeChecked()
+  await user.click(screen.getByRole('button', { name: '批量设为维修 1 间房' }))
+  await user.click(screen.getByRole('button', { name: '确认执行' }))
+  await waitFor(() => expect(updateHousingRoomsServiceStatus).toHaveBeenCalledWith([{ room_id: 'room-409', version: 1 }], 'maintenance'))
+  expect(verifyHousingRooms).not.toHaveBeenCalled()
+})
+
+it('validates off-page selected room eligibility without silently dropping incompatible selections', async () => {
+  const first = room({ allowed_actions: { ...noLifecycleActions, edit: true, verify: false, delete: false } })
+  const second = room({ id: 'verify-only', room_number: '410', verification_status: 'pending_verification', allowed_actions: { ...noLifecycleActions, edit: false, verify: true, delete: false } })
+  overviewMock.mockImplementation(async (filters) => overview({ rooms: [(filters?.page ?? 1) === 1 ? first : second], page: filters?.page ?? 1, total: 40 }))
+  renderPage()
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('checkbox', { name: '选择房间 409' }))
+  await user.click(screen.getByRole('button', { name: '下一页' }))
+  await user.click(await screen.findByRole('checkbox', { name: '选择房间 410' }))
+  expect(screen.getByRole('button', { name: '批量核对 2 间房' })).toBeDisabled()
+  expect(screen.getByRole('alert')).toHaveTextContent('409')
+  await user.selectOptions(screen.getByRole('combobox', { name: '批量操作' }), 'maintenance')
+  expect(screen.getByRole('button', { name: '批量设为维修 2 间房' })).toBeDisabled()
+  expect(screen.getByRole('alert')).toHaveTextContent('410：无房间编辑权限')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(updateHousingRoomsServiceStatus).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('checkbox', { name: '选择房间 410' }))
+  expect(screen.getByRole('button', { name: '批量设为维修 1 间房' })).toBeEnabled()
+  await user.click(screen.getByRole('button', { name: '上一页' }))
+  expect(await screen.findByRole('checkbox', { name: '选择房间 409' })).toBeChecked()
+})
+
+it('blocks submission when refresh changes selected room action eligibility inside confirmation', async () => {
+  const selectable = room({ verification_status: 'pending_verification', allowed_actions: { ...noLifecycleActions, edit: true, verify: true, delete: false } })
+  overviewMock.mockResolvedValue(overview({ rooms: [selectable] }))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  renderPage(client)
+  const user = userEvent.setup()
+  await user.selectOptions(await screen.findByRole('combobox', { name: '批量操作' }), 'maintenance')
+  await user.click(screen.getByRole('checkbox', { name: '选择房间 409' }))
+  await user.click(screen.getByRole('button', { name: '批量设为维修 1 间房' }))
+  overviewMock.mockResolvedValue(overview({ rooms: [{ ...selectable, version: 2, allowed_actions: { ...selectable.allowed_actions, edit: false } }] }))
+  await act(() => client.refetchQueries({ queryKey: housingKeys.overviews(accountId, 'revision-a') }))
+  expect(await screen.findByRole('button', { name: '确认执行' })).toBeDisabled()
+  expect(within(screen.getByRole('dialog')).getByText(/409：无房间编辑权限/)).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '确认执行' }))
+  expect(updateHousingRoomsServiceStatus).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: '取消' }))
+  expect(screen.getByRole('checkbox', { name: '选择房间 409' })).toBeChecked()
+  await user.selectOptions(screen.getByRole('combobox', { name: '批量操作' }), 'verify')
+  await user.click(screen.getByRole('button', { name: '批量核对 1 间房' }))
+  await user.click(screen.getByRole('button', { name: '确认执行' }))
+  await waitFor(() => expect(verifyHousingRooms).toHaveBeenCalledWith([{ room_id: 'room-409', version: 2 }]))
+})
+
+it('closes confirmation after a selected room loses all selection authority and requires review of the reduced batch', async () => {
+  const first = room({ allowed_actions: { ...noLifecycleActions, edit: true, verify: false, delete: false } })
+  const second = room({ id: 'room-410', room_number: '410', allowed_actions: first.allowed_actions })
+  overviewMock.mockResolvedValue(overview({ rooms: [first, second], total: 2 }))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  renderPage(client)
+  const user = userEvent.setup()
+  await user.selectOptions(await screen.findByRole('combobox', { name: '批量操作' }), 'maintenance')
+  await user.click(screen.getByRole('checkbox', { name: '选择房间 409' }))
+  await user.click(screen.getByRole('checkbox', { name: '选择房间 410' }))
+  await user.click(screen.getByRole('button', { name: '批量设为维修 2 间房' }))
+  const oldConfirm = screen.getByRole('button', { name: '确认执行' })
+  overviewMock.mockResolvedValue(overview({ rooms: [{ ...first, allowed_actions: { ...first.allowed_actions, edit: false } }, second], total: 2 }))
+  await act(() => client.refetchQueries({ queryKey: housingKeys.overviews(accountId, 'revision-a') }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(screen.queryByRole('checkbox', { name: '选择房间 409' })).not.toBeInTheDocument()
+  expect(screen.getByRole('checkbox', { name: '选择房间 410' })).toBeChecked()
+  expect(screen.getByText('已选择 1 间房间')).toBeVisible()
+  const notice = screen.getByRole('alert')
+  expect(notice).toHaveTextContent('请重新核对所选房间后确认')
+  expect(notice).not.toHaveTextContent('409')
+  fireEvent.click(oldConfirm)
+  expect(updateHousingRoomsServiceStatus).not.toHaveBeenCalled()
+})
+
+it('clears status selection and confirmation when local permissions change even before an access revision refresh', async () => {
+  overviewMock.mockResolvedValue(overview({ rooms: [room({ allowed_actions: { ...noLifecycleActions, edit: true, verify: false, delete: false } })] }))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const { rerender } = renderPage(client)
+  const user = userEvent.setup()
+  await user.selectOptions(await screen.findByRole('combobox', { name: '批量操作' }), 'maintenance')
+  await user.click(screen.getByRole('checkbox', { name: '选择房间 409' }))
+  await user.click(screen.getByRole('button', { name: '批量设为维修 1 间房' }))
+  exportAuth.permissions = []
+  rerender(<QueryClientProvider client={client}><HousingOverviewPage /></QueryClientProvider>)
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(screen.queryByText(/已选择/)).not.toBeInTheDocument()
+})
+
+it('disables export until initial catalog and revision-matching overview are ready', async () => {
+  exportAuth.permissions = ['housing.read', 'housing.reports.export_sensitive']
+  let resolveCatalog!: (value: HousingCatalog) => void
+  let resolveOverview!: (value: HousingOverview) => void
+  catalogMock.mockReturnValue(new Promise((resolve) => { resolveCatalog = resolve }))
+  overviewMock.mockReturnValue(new Promise((resolve) => { resolveOverview = resolve }))
+  renderPage()
+  expect(screen.getByRole('button', { name: '导出' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: '导出' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await act(async () => resolveCatalog(catalog))
+  expect(screen.getByRole('button', { name: '导出' })).toBeDisabled()
+  await act(async () => resolveOverview(overview()))
+  await waitFor(() => expect(screen.getByRole('button', { name: '导出' })).toBeEnabled())
+  await userEvent.click(screen.getByRole('button', { name: '导出' }))
+  expect(screen.getByRole('dialog')).toBeVisible()
+})
+
+it('does not expose bulk mutations for read-only room access', async () => {
+  renderPage()
+  await screen.findByRole('article')
+  expect(screen.queryByRole('combobox', { name: '批量操作' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('checkbox', { name: /选择房间/ })).not.toBeInTheDocument()
+})
+
+it('preserves latest cross-page status versions and enforces the 500-room ceiling', async () => {
+  const first = room({ id: 'room-1', version: 3, allowed_actions: { ...noLifecycleActions, edit: true, verify: false, delete: false } })
+  const second = room({ id: 'room-2', room_number: '410', version: 4, allowed_actions: first.allowed_actions })
+  overviewMock.mockImplementation(async (filters) => overview({ rooms: [(filters?.page ?? 1) === 1 ? first : second], page: filters?.page ?? 1, total: 40 }))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  renderPage(client)
+  const user = userEvent.setup()
+  await user.selectOptions(await screen.findByRole('combobox', { name: '批量操作' }), 'disabled')
+  await user.click(screen.getByRole('checkbox', { name: '选择房间 409' }))
+  await user.click(screen.getByRole('button', { name: '下一页' }))
+  await user.click(await screen.findByRole('checkbox', { name: '选择房间 410' }))
+  overviewMock.mockResolvedValueOnce(overview({ rooms: [{ ...second, version: 9 }], page: 2, total: 40 }))
+  await act(() => client.refetchQueries({ queryKey: housingKeys.overview(accountId, 'revision-a', { page: 2, pageSize: 20 }), exact: true }))
+  await user.click(screen.getByRole('button', { name: '批量设为停用 2 间房' }))
+  await user.click(screen.getByRole('button', { name: '确认执行' }))
+  await waitFor(() => expect(updateHousingRoomsServiceStatus).toHaveBeenCalledWith([{ room_id: 'room-1', version: 3 }, { room_id: 'room-2', version: 9 }], 'disabled'))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  const atLimit = new Map(Array.from({ length: 500 }, (_, index) => [`off-page-${index}`, housingRoomSelection({ ...second, id: `off-page-${index}` })]))
+  updateSelectionMock.mockImplementationOnce(() => ({ next: atLimit, limited: false }))
+  await user.click(await screen.findByRole('checkbox', { name: '选择房间 410' }))
+  await user.click(screen.getByRole('checkbox', { name: '选择房间 410' }))
+  expect(await screen.findByText('跨页选择最多支持 500 间房，请先取消部分选择。')).toBeVisible()
+  expect(screen.getByLabelText('跨页已选总数 500 间')).toBeVisible()
+})
+
+it('retains failed batch selection and renders per-room conflict reasons without reporting success', async () => {
+  overviewMock.mockResolvedValue(overview({ rooms: [room({ allowed_actions: { ...noLifecycleActions, edit: true, verify: false, delete: false } })] }))
+  vi.mocked(updateHousingRoomsServiceStatus).mockRejectedValue(new ProblemDetailsError({ type: 'about:blank', title: 'Conflict', status: 409, code: 'housing_batch_conflict', detail: '整批未修改', request_id: 'batch-conflict', errors: [{ field: 'rooms.room-409', message: '409：已入住，不能设为维修' }] }))
+  renderPage()
+  const user = userEvent.setup()
+  await user.selectOptions(await screen.findByRole('combobox', { name: '批量操作' }), 'maintenance')
+  await user.click(screen.getByRole('checkbox', { name: '选择房间 409' }))
+  await user.click(screen.getByRole('button', { name: '批量设为维修 1 间房' }))
+  await user.click(screen.getByRole('button', { name: '确认执行' }))
+  expect(await screen.findByText('409：已入住，不能设为维修')).toBeVisible()
+  expect(screen.getByRole('alert')).toHaveTextContent('整批未修改')
+  expect(updateHousingRoomsServiceStatus).toHaveBeenCalledTimes(1)
+  expect(screen.getByRole('dialog')).toBeVisible()
+  expect(screen.getByRole('checkbox', { name: '选择房间 409' })).toBeChecked()
+  expect(screen.queryByText('批量操作已完成')).not.toBeInTheDocument()
+})
+
+it('removes an earlier success notice before a later batch fails', async () => {
+  overviewMock.mockResolvedValue(overview({ rooms: [room({ allowed_actions: { ...noLifecycleActions, edit: true, verify: false, delete: false } })] }))
+  renderPage()
+  const user = userEvent.setup()
+  await user.selectOptions(await screen.findByRole('combobox', { name: '批量操作' }), 'maintenance')
+  await user.click(screen.getByRole('checkbox', { name: '选择房间 409' }))
+  await user.click(screen.getByRole('button', { name: '批量设为维修 1 间房' }))
+  await user.click(screen.getByRole('button', { name: '确认执行' }))
+  expect(await screen.findByText('批量操作已完成')).toBeVisible()
+  vi.mocked(updateHousingRoomsServiceStatus).mockRejectedValueOnce(new Error('network failure'))
+  await user.click(screen.getByRole('checkbox', { name: '选择房间 409' }))
+  await user.click(screen.getByRole('button', { name: '批量设为维修 1 间房' }))
+  await user.click(screen.getByRole('button', { name: '确认执行' }))
+  expect(await screen.findByText('操作暂时失败，请稍后重试')).toBeVisible()
+  expect(screen.queryByText('批量操作已完成')).not.toBeInTheDocument()
+  expect(updateHousingRoomsServiceStatus).toHaveBeenCalledTimes(2)
+})
+
+it.each([403, 404])('purges private selected rooms after a batch status %s', async (status) => {
+  overviewMock.mockResolvedValue(overview({ rooms: [room({ allowed_actions: { ...noLifecycleActions, edit: true, verify: false, delete: false } })] }))
+  vi.mocked(updateHousingRoomsServiceStatus).mockRejectedValue(new ProblemDetailsError({ type: 'about:blank', title: 'Private', status, code: 'housing_access_denied', detail: '目标不可用', request_id: 'batch-private', errors: [{ field: 'rooms.private', message: '不得显示的房间信息' }] }))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  renderPage(client)
+  const user = userEvent.setup()
+  await user.selectOptions(await screen.findByRole('combobox', { name: '批量操作' }), 'disabled')
+  await user.click(screen.getByRole('checkbox', { name: '选择房间 409' }))
+  await user.click(screen.getByRole('button', { name: '批量设为停用 1 间房' }))
+  await user.click(screen.getByRole('button', { name: '确认执行' }))
+  expect(await screen.findByText('房态数据不可访问')).toBeVisible()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(screen.queryByText(/已选择/)).not.toBeInTheDocument()
+  expect(screen.queryByText('不得显示的房间信息')).not.toBeInTheDocument()
+  expect(client.getQueriesData({ queryKey: housingKeys.root(accountId) }).every(([, value]) => value === undefined)).toBe(true)
 })
 
 it.each([["housing.read"], ["housing.read", "housing.reports.export_sensitive", "housing.rooms.manage"]])("discards a late snapshot download after access changes to %j", async (...permissions) => {
@@ -180,16 +440,15 @@ it.each([["housing.read"], ["housing.read", "housing.reports.export_sensitive", 
   click.mockRestore()
 })
 
-it("applies pending-cleaning and false daily-cleaning filters and a summary shortcut", async () => {
+it("applies turnover cleaning and weekly frequency filters and a summary shortcut", async () => {
   renderPage()
   await screen.findByRole("article")
   const user = userEvent.setup()
-  await user.click(screen.getByLabelText("待保洁"))
-  await user.selectOptions(screen.getByLabelText("每日保洁安排"), "false")
-  await user.click(screen.getByRole("button", { name: "应用筛选" }))
-  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith(expect.objectContaining({ cleaningStatuses: ["pending"], dailyCleaningEnabled: false })))
+  await user.click(screen.getByLabelText("退房待保洁"))
+  await user.selectOptions(screen.getByLabelText("保洁频率"), "weekly")
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith(expect.objectContaining({ cleaningStatuses: ["pending"], cleaningFrequencies: ["weekly"] })))
   await screen.findByRole("article")
-  await user.click(screen.getByRole("button", { name: "按待保洁筛选房间" }))
+  await user.click(screen.getByRole("button", { name: "按退房待保洁筛选房间" }))
   await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith(expect.objectContaining({ cleaningStatuses: ["pending"] })))
 })
 
@@ -202,8 +461,8 @@ it("renders every summary, filtered count, semantic grid, and Shanghai as-of tim
   renderPage()
 
   expect(await screen.findByRole("article", { name: /房间 409/ })).toBeVisible()
-  for (const text of ["房间总数 8", "已入住 3", "空房 5", "可入住 4", "不可入住 4", "问题房 1", "待核对 2", "总床位 12", "当前入住 3", "剩余床位 9", "入住率 25.00%", "单人间 4", "双人间 2", "三人间 1", "自定义房型 0", "功能间 1"]) {
-    expect(screen.getByText(text)).toBeVisible()
+  for (const text of ["房间总数 8", "已用房间数 3", "空房 5", "可入住 4", "满房 4", "问题房 1", "待核对 2", "总床位 12", "当前入住 3", "剩余床位 9", "入住率 25.00%", "单人间 4", "双人间 2", "三人间 1", "自定义房型 0", "功能间 1"]) {
+    expect(screen.getByRole("button", { description: text })).toBeVisible()
   }
   expect(screen.getByText("数据截至 2026-08-04")).toBeVisible()
   expect(screen.getByText("筛选结果 1 间")).toBeVisible()
@@ -211,20 +470,170 @@ it("renders every summary, filtered count, semantic grid, and Shanghai as-of tim
   expect(screen.getByRole("article", { name: "房间 409：空闲，可入住" })).toBeVisible()
 })
 
+it("uses the returned vacant count instead of subtracting occupied rooms from all rooms", async () => {
+  overviewMock.mockResolvedValue(overview({ summary: { ...overview().summary, total_rooms: 8, occupied_rooms: 3, unoccupied_rooms: 4 } }))
+  renderPage()
+  expect(await screen.findByRole("button", { name: "按空房筛选房间", description: "空房 4" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "查看全部房间", description: "房间总数 8" })).toBeVisible()
+})
+
+it("counts occupied rooms separately from people and keeps unique summary descriptions", async () => {
+  overviewMock.mockResolvedValue(overview({ summary: { ...overview().summary, occupied_rooms: 2, current_occupants: 7 } }))
+  renderPage()
+  expect(await screen.findByRole("button", { name: "按已用房间数筛选房间", description: "已用房间数 2" })).toBeVisible()
+  expect(screen.getByRole("button", { name: "按已入住筛选房间（当前入住）", description: "当前入住 7" })).toBeVisible()
+  const ids = Array.from(document.querySelectorAll('[id^="housing-summary-"]'), (element) => element.id)
+  expect(new Set(ids).size).toBe(ids.length)
+})
+
 it.each([
-  ["已入住", "按已入住筛选房间", { occupancy: "occupied" }],
-  ["空房", "按空房筛选房间", { occupancy: "unoccupied" }],
-  ["可入住", "按可入住筛选房间", { assignability: "assignable" }],
-  ["不可入住", "按不可入住筛选房间", { assignability: "unassignable" }],
-  ["问题房", "按问题房筛选房间", { serviceStatuses: ["problem"] }],
-  ["待核对", "按待核对筛选房间", { verificationStatuses: ["pending_verification"] }],
-  ["当前入住", "按已入住筛选房间（当前入住）", { occupancy: "occupied" }],
-  ["剩余床位", "按可入住筛选房间（剩余床位）", { assignability: "assignable" }],
-  ["单人间", "按单人间筛选房间", { roomTypes: ["single"] }],
-  ["双人间", "按双人间筛选房间", { roomTypes: ["double"] }],
-  ["三人间", "按三人间筛选房间", { roomTypes: ["triple"] }],
-  ["自定义房型", "按自定义房型筛选房间", { roomTypes: ["custom"] }],
-  ["功能间", "按功能间筛选房间", { roomTypes: ["functional"] }],
+  ["每日保洁", "cleaning_daily", "daily_cleaning_rooms", 2],
+  ["每周保洁", "cleaning_weekly", "weekly_cleaning_rooms", 3],
+  ["按需保洁", "cleaning_on_demand", "on_demand_cleaning_rooms", 1],
+] as const)("keeps building and summary scope when applying the %s shortcut", async (label, quickFilter, key, count) => {
+  const actionLabel = label === "按需保洁" ? "按需保洁筛选房间" : `按${label}筛选房间`
+  const data = overview()
+  overviewMock.mockResolvedValue({ ...data, summary: { ...data.summary, [key]: count } })
+  renderPage()
+  const user = userEvent.setup()
+  await screen.findByRole("article")
+  await user.selectOptions(screen.getByLabelText("楼栋"), "a")
+  const button = await screen.findByRole("button", { name: actionLabel, description: `${label} ${count}` })
+  await user.click(button)
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({ buildingId: "a", quickFilter, page: 1, pageSize: 20 }))
+  expect(await screen.findByRole("button", { name: actionLabel })).toHaveAccessibleDescription(`${label} ${count}`)
+  await user.selectOptions(screen.getByLabelText("保洁频率"), "weekly")
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({ buildingId: "a", cleaningFrequencies: ["weekly"], page: 1, pageSize: 20 }))
+})
+
+it("withholds room actions and blocks an open bulk confirmation during a delayed same-scope refresh", async () => {
+  overviewMock.mockResolvedValue(overview({ rooms: [room({ verification_status: "pending_verification", allowed_actions: { ...noLifecycleActions, edit: true, delete: false, verify: true } })] }))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const user = userEvent.setup()
+  renderPage(client)
+  await user.click(await screen.findByRole("button", { name: "目录管理" }))
+  await user.click(within(screen.getByRole("list", { name: "房间列表" })).getByRole("checkbox", { name: "选择房间 409" }))
+  await user.click(screen.getByRole("button", { name: "批量核对 1 间房" }))
+  let finish!: (value: HousingOverview) => void
+  overviewMock.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+  let refresh!: Promise<void>
+  act(() => { refresh = client.refetchQueries({ queryKey: housingKeys.overviews(accountId, "revision-a") }) })
+  await waitFor(() => expect(screen.getByRole("button", { name: "确认执行" })).toBeDisabled())
+  expect(screen.queryByRole("article", { name: /房间 409/ })).not.toBeInTheDocument()
+  expect(screen.getByLabelText("搜索房间")).toBeVisible()
+  fireEvent.click(screen.getByRole("button", { name: "确认执行" }))
+  expect(verifyRoomsMock).not.toHaveBeenCalled()
+  await act(async () => { finish(overview()); await refresh })
+})
+
+it("replaces shortcuts without changing sidebar predicates or summaries and clears them on a left change", async () => {
+  let finish!: (value: HousingOverview) => void
+  const user = userEvent.setup()
+  renderPage()
+  await user.selectOptions(await screen.findByLabelText("楼栋"), "a")
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({ buildingId: "a", page: 1, pageSize: 20 }))
+  await user.click(screen.getByRole("checkbox", { name: "双人间" }))
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({ buildingId: "a", roomTypes: ["double"], page: 1, pageSize: 20 }))
+  overviewMock.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+  await user.click(screen.getByRole("button", { name: "按空房筛选房间" }))
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({ buildingId: "a", roomTypes: ["double"], quickFilter: "vacant", page: 1, pageSize: 20 }))
+  expect(screen.getByRole("button", { name: "查看全部房间", description: "房间总数 8" })).toBeVisible()
+  expect(screen.queryByRole("article")).not.toBeInTheDocument()
+  expect(screen.getByLabelText("楼栋")).toHaveValue("a")
+  await act(async () => finish(overview()))
+  await user.click(screen.getByRole("button", { name: "按可入住筛选房间" }))
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({ buildingId: "a", roomTypes: ["double"], quickFilter: "assignable", page: 1, pageSize: 20 }))
+  expect(screen.getByLabelText("可入住状态")).toHaveValue("")
+  await user.selectOptions(screen.getByLabelText("可入住状态"), "full")
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({ buildingId: "a", roomTypes: ["double"], assignability: "full", page: 1, pageSize: 20 }))
+})
+
+it.each(["林晨", "星河Ace"])("searches current resident %s and preserves building, floor and shortcuts", async (query) => {
+  const user = userEvent.setup()
+  renderPage()
+  await user.selectOptions(await screen.findByLabelText("楼栋"), "a")
+  await user.selectOptions(screen.getByLabelText("楼层"), "a4")
+  const input = screen.getByRole("textbox", { name: "搜索房间" })
+  expect(input).toHaveAttribute("placeholder", "房号、楼栋、楼层、入住人姓名或昵称")
+  overviewMock.mockResolvedValue(overview({ rooms: [room({ room_number: "A-名字命中" })] }))
+  await user.type(input, ` ${query} `)
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({
+    buildingId: "a", floorId: "a4", query, page: 1, pageSize: 20,
+  }))
+  expect(await screen.findByRole("heading", { name: "A-名字命中" })).toBeVisible()
+  await user.click(screen.getByRole("button", { name: "按已用房间数筛选房间" }))
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({
+    buildingId: "a", floorId: "a4", query, quickFilter: "occupied", page: 1, pageSize: 20,
+  }))
+  expect(screen.getByLabelText("楼栋")).toHaveValue("a")
+  expect(screen.getByLabelText("楼层")).toHaveValue("a4")
+  expect(input).toHaveValue(` ${query} `)
+})
+
+it("keeps the actual search node focused through delayed requests and debounces raw search after IME", async () => {
+  const pending: Array<(value: HousingOverview) => void> = []
+  renderPage()
+  const input = await screen.findByLabelText("搜索房间")
+  overviewMock.mockImplementation(() => new Promise((resolve) => pending.push(resolve)))
+  const user = userEvent.setup()
+  await user.type(input, " 4 ")
+  expect(input).toHaveValue(" 4 ")
+  expect(overviewMock).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({ query: "4", page: 1, pageSize: 20 }))
+  expect(screen.getByLabelText("搜索房间")).toBe(input)
+  expect(input).toHaveFocus()
+  await user.type(input, "09")
+  expect(input).toHaveValue(" 4 09")
+  await act(async () => pending[0](overview()))
+  expect(screen.getByLabelText("搜索房间")).toBe(input)
+  expect(input).toHaveFocus()
+  fireEvent.compositionStart(input)
+  fireEvent.change(input, { target: { value: "  中文 " } })
+  const calls = overviewMock.mock.calls.length
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)) })
+  expect(overviewMock).toHaveBeenCalledTimes(calls)
+  fireEvent.compositionEnd(input)
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({ query: "中文", page: 1, pageSize: 20 }))
+  expect(input).toHaveValue("  中文 ")
+  expect(input).toHaveFocus()
+})
+
+it("ignores a late response from the previous base scope while successive selects remain mounted", async () => {
+  const pending = new Map<string, (value: HousingOverview) => void>()
+  renderPage()
+  const building = await screen.findByLabelText("楼栋")
+  overviewMock.mockImplementation((filters) => new Promise((resolve) => pending.set(filters!.buildingId!, resolve)))
+  const user = userEvent.setup()
+  await user.selectOptions(building, "a")
+  expect(screen.getByLabelText("楼栋")).toBe(building)
+  expect(building).toHaveFocus()
+  await user.selectOptions(building, "b")
+  expect(screen.getByLabelText("楼栋")).toBe(building)
+  await act(async () => pending.get("b")!(overview({ summary: { ...overview().summary, total_rooms: 2 } })))
+  expect(await screen.findByRole("button", { name: "查看全部房间", description: "房间总数 2" })).toBeVisible()
+  await act(async () => pending.get("a")!(overview({ summary: { ...overview().summary, total_rooms: 99 } })))
+  expect(screen.getByRole("button", { name: "查看全部房间", description: "房间总数 2" })).toBeVisible()
+  expect(building).toHaveValue("b")
+  expect(building).toHaveFocus()
+})
+
+it.each([
+  ["已用房间数", "按已用房间数筛选房间", { quickFilter: "occupied" }],
+  ["空房", "按空房筛选房间", { quickFilter: "vacant" }],
+  ["可入住", "按可入住筛选房间", { quickFilter: "assignable" }],
+  ["满房", "按满房筛选房间", { quickFilter: "full" }],
+  ["问题房", "按问题房筛选房间", { quickFilter: "problem" }],
+  ["待核对", "按待核对筛选房间", { quickFilter: "pending_verification" }],
+  ["退房待保洁", "按退房待保洁筛选房间", { quickFilter: "pending_cleaning" }],
+  ["总床位", "按有效住宿床位房间筛选（总床位统计）", { quickFilter: "usable" }],
+  ["入住率", "按有效住宿床位房间筛选（入住率统计）", { quickFilter: "usable" }],
+  ["当前入住", "按已入住筛选房间（当前入住）", { quickFilter: "occupied" }],
+  ["剩余床位", "按有剩余床位房间筛选（剩余床位）", { quickFilter: "remaining" }],
+  ["单人间", "按单人间筛选房间", { quickFilter: "single" }],
+  ["双人间", "按双人间筛选房间", { quickFilter: "double" }],
+  ["三人间", "按三人间筛选房间", { quickFilter: "triple" }],
+  ["自定义房型", "按自定义房型筛选房间", { quickFilter: "custom" }],
+  ["功能间", "按功能间筛选房间", { quickFilter: "functional" }],
 ] as const)("filters the room list when the %s summary is clicked", async (_label, actionName, expected) => {
   const user = userEvent.setup()
   renderPage()
@@ -235,19 +644,47 @@ it.each([
   ))
 })
 
-it("supports keyboard activation and clears an existing filter from the total-room summary", async () => {
+it("keeps the building, floor and other predicates when switching summary filters", async () => {
+  const user = userEvent.setup()
+  renderPage()
+  await user.selectOptions(await screen.findByLabelText("楼栋"), "a")
+  await user.selectOptions(screen.getByLabelText("楼层"), "a4")
+  await user.type(screen.getByLabelText("搜索房间"), "409")
+  await user.click(screen.getByRole("checkbox", { name: "双人间" }))
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({
+    buildingId: "a", floorId: "a4", query: "409", roomTypes: ["double"], page: 1, pageSize: 20,
+  }))
+
+  await user.click(await screen.findByRole("button", { name: "按空房筛选房间" }))
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({
+    buildingId: "a", floorId: "a4", query: "409", roomTypes: ["double"], quickFilter: "vacant", page: 1, pageSize: 20,
+  }))
+  await user.click(await screen.findByRole("button", { name: "按可入住筛选房间" }))
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({
+    buildingId: "a", floorId: "a4", query: "409", roomTypes: ["double"], quickFilter: "assignable", page: 1, pageSize: 20,
+  }))
+  expect(screen.getByLabelText("楼栋")).toHaveValue("a")
+  expect(screen.getByLabelText("楼层")).toHaveValue("a4")
+  expect(screen.getByLabelText("可入住状态")).toHaveValue("")
+  expect(screen.queryByLabelText("入住状态")).not.toBeInTheDocument()
+})
+
+it("supports keyboard activation and clears room predicates without leaving the selected building", async () => {
   const user = userEvent.setup()
   renderPage()
 
-  await user.selectOptions(await screen.findByLabelText("入住状态"), "occupied")
-  await user.click(screen.getByRole("button", { name: "应用筛选" }))
+  await user.selectOptions(await screen.findByLabelText("楼栋"), "a")
+  await user.selectOptions(screen.getByLabelText("楼层"), "a4")
+  await user.click(await screen.findByRole("button", { name: "按已用房间数筛选房间" }))
   await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith(
-    expect.objectContaining({ occupancy: "occupied", page: 1, pageSize: 20 }),
+    { buildingId: "a", floorId: "a4", quickFilter: "occupied", page: 1, pageSize: 20 },
   ))
 
   const totalRooms = screen.getByRole("button", { name: "查看全部房间" })
   totalRooms.focus()
   await user.keyboard("{Enter}")
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({ buildingId: "a", floorId: "a4", page: 1, pageSize: 20 }))
+  await user.click(screen.getByRole("button", { name: "重置筛选" }))
   await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({ page: 1, pageSize: 20 }))
 })
 
@@ -510,7 +947,7 @@ it("keeps management state and selection when catalog data changes under the sam
   const user = userEvent.setup()
   renderPage(client)
 
-  await user.click(await screen.findByRole("checkbox", { name: "选择房间 409进行核对" }))
+  await user.click(await screen.findByRole("checkbox", { name: "选择房间 409" }))
   await user.click(screen.getByRole("button", { name: "目录管理" }))
   const panel = screen.getByRole("heading", { name: "目录管理", level: 2 }).closest("section")!
   await user.click(within(panel).getByRole("button", { name: "编辑房间 409" }))
@@ -526,7 +963,7 @@ it("keeps management state and selection when catalog data changes under the sam
 
   expect(screen.getByRole("heading", { name: "目录管理", level: 2 })).toBeVisible()
   expect(screen.getByRole("dialog", { name: "编辑房间 409" })).toBeVisible()
-  expect(screen.getByText("已选择 1 间待核对房间")).toBeVisible()
+  expect(screen.getByText("已选择 1 间房间")).toBeVisible()
 })
 
 it("hides revision A rooms as soon as catalog revision B arrives", async () => {
@@ -561,7 +998,6 @@ it("normalizes stale catalog filters before requesting a new access revision", a
   await screen.findByRole("article", { name: /房间 409/ })
   await user.selectOptions(screen.getByLabelText("楼栋"), "a")
   await user.selectOptions(screen.getByLabelText("楼层"), "a4")
-  await user.click(screen.getByRole("button", { name: "应用筛选" }))
   await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith(expect.objectContaining({ buildingId: "a", floorId: "a4" })))
 
   revision = "revision-b"
@@ -663,15 +1099,15 @@ it("removes a successfully deleted room from the cross-page batch selection", as
   const user = userEvent.setup()
   renderPage(client)
 
-  await user.click(await screen.findByRole("checkbox", { name: "选择房间 409进行核对" }))
+  await user.click(await screen.findByRole("checkbox", { name: "选择房间 409" }))
   await user.click(screen.getByRole("button", { name: "目录管理" }))
-  expect(screen.getByText("已选择 1 间待核对房间")).toBeVisible()
+  expect(screen.getByText("已选择 1 间房间")).toBeVisible()
 
   await user.click(within(screen.getByRole("article", { name: /房间 409/ })).getByRole("button", { name: "删除房间 409" }))
   await user.click(screen.getByRole("button", { name: "确认删除房间 409" }))
 
   await waitFor(() => expect(deleteRoomMock).toHaveBeenCalledWith("room-409"))
-  expect(screen.queryByText("已选择 1 间待核对房间")).not.toBeInTheDocument()
+  expect(screen.queryByText("已选择 1 间房间")).not.toBeInTheDocument()
 })
 
 it("keeps batch selections across pagination loading and submits latest versions from each seen page", async () => {
@@ -694,21 +1130,23 @@ it("keeps batch selections across pagination loading and submits latest versions
   const user = userEvent.setup()
   renderPage(client)
 
-  await user.click(await screen.findByRole("checkbox", { name: "选择房间 401进行核对" }))
+  await user.click(await screen.findByRole("checkbox", { name: "选择房间 401" }))
   await user.click(screen.getByRole("button", { name: "目录管理" }))
-  expect(screen.getByText("已选择 1 间待核对房间")).toBeVisible()
+  expect(screen.getByText("已选择 1 间房间")).toBeVisible()
 
   await user.click(screen.getByRole("button", { name: "下一页" }))
   expect(await screen.findByText("正在读取房态数据")).toBeVisible()
   resolveSecondPage?.(overview({ rooms: [second], page: 2, total: 40 }))
   const roomList = await screen.findByRole("list", { name: "房间列表" })
-  await user.click(within(roomList).getByRole("checkbox", { name: "选择房间 402进行核对" }))
-  expect(screen.getByText("已选择 2 间待核对房间")).toBeVisible()
+  await user.click(within(roomList).getByRole("checkbox", { name: "选择房间 402" }))
+  expect(screen.getByText("已选择 2 间房间")).toBeVisible()
 
   overviewMock.mockResolvedValueOnce(overview({ rooms: [{ ...second, version: 9 }], page: 2, total: 40 }))
   await client.refetchQueries({ queryKey: housingKeys.overview(accountId, "revision-a", { page: 2, pageSize: 20 }), exact: true })
-  await waitFor(() => expect(within(screen.getByRole("list", { name: "房间列表" })).getByRole("checkbox", { name: "选择房间 402进行核对" })).toBeChecked())
+  await waitFor(() => expect(within(screen.getByRole("list", { name: "房间列表" })).getByRole("checkbox", { name: "选择房间 402" })).toBeChecked())
   await user.click(screen.getByRole("button", { name: "批量核对 2 间房" }))
+
+  await user.click(screen.getByRole("button", { name: "确认执行" }))
 
   expect(verifyRoomsMock).toHaveBeenCalledWith([
     { room_id: "room-page-1", version: 3 },
@@ -765,11 +1203,11 @@ it("revokes off-page selections and old overview caches when the authorized cata
   const user = userEvent.setup()
   renderPage(client)
 
-  await user.click(await screen.findByRole("checkbox", { name: "选择房间 401进行核对" }))
+  await user.click(await screen.findByRole("checkbox", { name: "选择房间 401" }))
   await user.click(screen.getByRole("button", { name: "下一页" }))
   expect(await screen.findByRole("article", { name: /房间 402/ })).toBeVisible()
   await user.click(screen.getByRole("button", { name: "目录管理" }))
-  expect(screen.getByText("已选择 1 间待核对房间")).toBeVisible()
+  expect(screen.getByText("已选择 1 间房间")).toBeVisible()
 
   scope = "b"
   await act(async () => {
@@ -780,7 +1218,7 @@ it("revokes off-page selections and old overview caches when the authorized cata
   })
 
   expect(await screen.findByRole("article", { name: /房间 201/ })).toBeVisible()
-  await waitFor(() => expect(screen.queryByText("已选择 1 间待核对房间")).not.toBeInTheDocument())
+  await waitFor(() => expect(screen.queryByText("已选择 1 间房间")).not.toBeInTheDocument())
   expect(screen.queryByRole("heading", { name: "目录管理", level: 2 })).not.toBeInTheDocument()
   expect(client.getQueryData(housingKeys.overview(accountId, "revision-a", { page: 1, pageSize: 20 }))).toBeUndefined()
   expect(client.getQueryData(oldDetailKey)).toBeUndefined()
@@ -790,9 +1228,10 @@ it("revokes off-page selections and old overview caches when the authorized cata
   expect(client.getQueryData(otherAccountKey)).toEqual({ private_name: "其他账号详情" })
   expect(verifyRoomsMock).not.toHaveBeenCalled()
 
-  await user.click(screen.getByRole("checkbox", { name: "选择房间 201进行核对" }))
+  await user.click(screen.getByRole("checkbox", { name: "选择房间 201" }))
   await user.click(screen.getByRole("button", { name: "目录管理" }))
   await user.click(screen.getByRole("button", { name: "批量核对 1 间房" }))
+  await user.click(screen.getByRole("button", { name: "确认执行" }))
   expect(verifyRoomsMock).toHaveBeenCalledWith([{ room_id: "room-b-201", version: 7 }])
 })
 
@@ -913,21 +1352,20 @@ it("clears cross-page selection when applying or resetting business filters", as
   const user = userEvent.setup()
   renderPage()
 
-  await user.click(await screen.findByRole("checkbox", { name: "选择房间 409进行核对" }))
+  await user.click(await screen.findByRole("checkbox", { name: "选择房间 409" }))
   await user.click(screen.getByRole("button", { name: "目录管理" }))
-  expect(screen.getByText("已选择 1 间待核对房间")).toBeVisible()
+  expect(screen.getByText("已选择 1 间房间")).toBeVisible()
   await user.type(screen.getByLabelText("搜索房间"), "409")
-  await user.click(screen.getByRole("button", { name: "应用筛选" }))
   await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith(expect.objectContaining({ query: "409", page: 1 })))
-  expect(screen.queryByText("已选择 1 间待核对房间")).not.toBeInTheDocument()
-  expect(screen.getAllByRole("checkbox", { name: "选择房间 409进行核对" })[0]).not.toBeChecked()
+  expect(screen.queryByText("已选择 1 间房间")).not.toBeInTheDocument()
+  expect(screen.getAllByRole("checkbox", { name: "选择房间 409" })[0]).not.toBeChecked()
 
-  await user.click(screen.getAllByRole("checkbox", { name: "选择房间 409进行核对" })[0])
-  expect(screen.getByText("已选择 1 间待核对房间")).toBeVisible()
+  await user.click(screen.getAllByRole("checkbox", { name: "选择房间 409" })[0])
+  expect(screen.getByText("已选择 1 间房间")).toBeVisible()
   await user.click(screen.getByRole("button", { name: "重置筛选" }))
   await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({ page: 1, pageSize: 20 }))
-  expect(screen.queryByText("已选择 1 间待核对房间")).not.toBeInTheDocument()
-  expect(screen.getAllByRole("checkbox", { name: "选择房间 409进行核对" })[0]).not.toBeChecked()
+  expect(screen.queryByText("已选择 1 间房间")).not.toBeInTheDocument()
+  expect(screen.getAllByRole("checkbox", { name: "选择房间 409" })[0]).not.toBeChecked()
 })
 
 it.each([
@@ -944,7 +1382,7 @@ it.each([
   const user = userEvent.setup()
   renderPage(client)
 
-  await user.click(await screen.findByRole("checkbox", { name: "选择房间 409进行核对" }))
+  await user.click(await screen.findByRole("checkbox", { name: "选择房间 409" }))
   client.setQueryData(
     housingKeys.overview(accountId, "revision-a", { buildingId: "a", page: 1, pageSize: 20 }),
     overview({ rooms: [staleFilteredRoom] }),
@@ -978,7 +1416,7 @@ it.each([
   if (target === "overview") overviewMock.mockResolvedValueOnce(overview({ rooms: [selectable] }))
   else catalogMock.mockResolvedValueOnce(catalog)
   await user.click(screen.getByRole("button", { name: "重试" }))
-  expect(await screen.findByRole("checkbox", { name: "选择房间 409进行核对" })).not.toBeChecked()
+  expect(await screen.findByRole("checkbox", { name: "选择房间 409" })).not.toBeChecked()
 })
 
 it.each([
@@ -1010,14 +1448,15 @@ it.each([
   const user = userEvent.setup()
   renderPage(client)
 
-  await user.click(await screen.findByRole("checkbox", { name: "选择房间 401进行核对" }))
+  await user.click(await screen.findByRole("checkbox", { name: "选择房间 401" }))
   await user.click(screen.getByRole("button", { name: "下一页" }))
-  await user.click(await screen.findByRole("checkbox", { name: "选择房间 402进行核对" }))
+  await user.click(await screen.findByRole("checkbox", { name: "选择房间 402" }))
   await user.click(screen.getByRole("button", { name: "目录管理" }))
   await user.click(screen.getByRole("button", { name: "批量核对 2 间房" }))
+  await user.click(screen.getByRole("button", { name: "确认执行" }))
 
   expect(await screen.findByText("房态数据不可访问")).toBeVisible()
-  expect(screen.queryByText("已选择 2 间待核对房间")).not.toBeInTheDocument()
+  expect(screen.queryByText("已选择 2 间房间")).not.toBeInTheDocument()
   expect(screen.queryByRole("checkbox", { name: /选择房间/ })).not.toBeInTheDocument()
   await waitFor(() => {
     expect(client.getQueriesData({ queryKey: housingKeys.root(accountId) }).every(([, data]) => data === undefined)).toBe(true)
@@ -1117,7 +1556,7 @@ it("focuses the stable page owner when a private refetch removes the dialog trig
   await waitFor(() => expect(pageOwner).toHaveFocus())
 })
 
-it("clears room-card and catalog selection-limit notices when selection shrinks from the other surface", async () => {
+it("keeps only one shared batch toolbar and clears the selection-limit notice when selection shrinks", async () => {
   const selectableRooms = ["500", "501"].map((roomNumber, index) => room({
     id: `room-limit-${roomNumber}`,
     room_number: roomNumber,
@@ -1132,24 +1571,26 @@ it("clears room-card and catalog selection-limit notices when selection shrinks 
   await user.click(await screen.findByRole("button", { name: "目录管理" }))
   const roomList = screen.getByRole("list", { name: "房间列表" })
   const panel = screen.getByRole("heading", { name: "目录管理", level: 2 }).closest("section")!
-  const selectionAtLimit = new Map<string, number>()
-  for (let index = 0; index < 499; index += 1) selectionAtLimit.set(`cross-page-${index}`, index + 1)
-  selectionAtLimit.set("room-limit-500", 1)
+  const selectionAtLimit = new Map<string, HousingRoomSelection>()
+  for (let index = 0; index < 499; index += 1) selectionAtLimit.set(`cross-page-${index}`, housingRoomSelection({ ...selectableRooms[0], id: `cross-page-${index}`, version: index + 1 }))
+  selectionAtLimit.set("room-limit-500", housingRoomSelection(selectableRooms[0]))
   updateSelectionMock.mockImplementationOnce(() => ({ next: selectionAtLimit, limited: false }))
-  await user.click(within(roomList).getByRole("checkbox", { name: "选择房间 500进行核对" }))
-  expect(within(panel).getByText("已选择 500 间待核对房间")).toBeVisible()
+  await user.click(within(roomList).getByRole("checkbox", { name: "选择房间 500" }))
+  expect(screen.getByText("已选择 500 间房间")).toBeVisible()
+  expect(within(panel).queryByRole('checkbox', { name: /选择房间/ })).not.toBeInTheDocument()
+  expect(screen.getAllByRole('region', { name: '房间批量操作' })).toHaveLength(1)
 
-  await user.click(within(roomList).getByRole("checkbox", { name: "选择房间 501进行核对" }))
+  await user.click(within(roomList).getByRole("checkbox", { name: "选择房间 501" }))
   expect(await screen.findByText("跨页选择最多支持 500 间房，请先取消部分选择。")).toBeVisible()
-  await user.click(within(panel).getByRole("button", { name: "清空选择" }))
+  await user.click(screen.getByRole("button", { name: "清空选择" }))
   await waitFor(() => expect(screen.queryByText("跨页选择最多支持 500 间房，请先取消部分选择。")).not.toBeInTheDocument())
 
   updateSelectionMock.mockImplementationOnce(() => ({ next: selectionAtLimit, limited: false }))
-  await user.click(within(roomList).getByRole("checkbox", { name: "选择房间 500进行核对" }))
-  await user.click(within(panel).getByRole("checkbox", { name: "选择房间 501进行核对" }))
-  expect(await within(panel).findByText("跨页选择最多支持 500 间房，请先取消部分选择。")).toBeVisible()
-  await user.click(within(roomList).getByRole("checkbox", { name: "选择房间 500进行核对" }))
-  await waitFor(() => expect(within(panel).queryByText("跨页选择最多支持 500 间房，请先取消部分选择。")).not.toBeInTheDocument())
+  await user.click(within(roomList).getByRole("checkbox", { name: "选择房间 500" }))
+  await user.click(within(roomList).getByRole("checkbox", { name: "选择房间 501" }))
+  expect(await screen.findByText("跨页选择最多支持 500 间房，请先取消部分选择。")).toBeVisible()
+  await user.click(within(roomList).getByRole("checkbox", { name: "选择房间 500" }))
+  await waitFor(() => expect(screen.queryByText("跨页选择最多支持 500 间房，请先取消部分选择。")).not.toBeInTheDocument())
 })
 
 it("uses a heading-labelled section instead of nesting another main landmark", async () => {
@@ -1215,6 +1656,8 @@ it("applies every filter independently and resets pagination on filter changes",
   const user = userEvent.setup()
   renderPage()
   await screen.findByRole("article", { name: /房间 409/ })
+  await user.click(screen.getByRole("button", { name: "按已用房间数筛选房间" }))
+  await screen.findByRole("article", { name: /房间 409/ })
 
   await user.click(screen.getByRole("button", { name: "下一页" }))
   await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 })))
@@ -1226,16 +1669,14 @@ it("applies every filter independently and resets pagination on filter changes",
   await user.click(screen.getByRole("checkbox", { name: "已核对" }))
   await user.click(screen.getByRole("checkbox", { name: "问题房" }))
   await user.selectOptions(screen.getByLabelText("当前入住性别"), "unspecified")
-  await user.selectOptions(screen.getByLabelText("入住状态"), "occupied")
   await user.selectOptions(screen.getByLabelText("可入住状态"), "assignable")
-  await user.click(screen.getByRole("button", { name: "应用筛选" }))
 
   await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({
     buildingId: "a", floorId: "a4", query: "409", roomTypes: ["single", "double"],
     verificationStatuses: ["verified"], serviceStatuses: ["problem"], currentGender: "unspecified",
-    occupancy: "occupied", assignability: "assignable", page: 1, pageSize: 20,
+    assignability: "assignable", page: 1, pageSize: 20,
   } satisfies HousingFiltersValue))
-  expect(screen.getByLabelText("入住状态")).toHaveValue("occupied")
+  expect(screen.queryByLabelText("入住状态")).not.toBeInTheDocument()
   expect(screen.getByLabelText("可入住状态")).toHaveValue("assignable")
 })
 
@@ -1247,7 +1688,6 @@ it("normalizes reverse-order multi-select clicks before building the query key",
   for (const label of ["功能间", "单人间", "已核对", "待核对", "已停用", "正常"]) {
     await user.click(screen.getByRole("checkbox", { name: label }))
   }
-  await user.click(screen.getByRole("button", { name: "应用筛选" }))
 
   await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({
     roomTypes: ["single", "functional"],
@@ -1279,7 +1719,6 @@ it("hides old cards while a changed query loads and then shows the empty state",
   await screen.findByRole("article", { name: /房间 409/ })
 
   await user.type(screen.getByLabelText("搜索房间"), "none")
-  await user.click(screen.getByRole("button", { name: "应用筛选" }))
   expect(await screen.findByText("正在读取房态数据")).toBeVisible()
   expect(screen.queryByRole("article", { name: /房间 409/ })).not.toBeInTheDocument()
   resolveNext?.(overview({ rooms: [], total: 0, summary: { ...overview().summary, total_rooms: 0 } }))
@@ -1386,7 +1825,7 @@ it("uses a collapsed modal filter sheet below 720px and restores focus on close"
   expect(document.body.style.overflow).toBe("")
 })
 
-it.each(["Escape", "关闭筛选"] as const)("discards an unapplied mobile draft after %s and reopen", async (closeAction) => {
+it.each(["Escape", "关闭筛选"] as const)("retains immediate mobile search after %s and reopen", async (closeAction) => {
   setWidth(360)
   const user = userEvent.setup()
   renderPage()
@@ -1400,8 +1839,8 @@ it.each(["Escape", "关闭筛选"] as const)("discards an unapplied mobile draft
 
   expect(screen.queryByRole("dialog", { name: "筛选房间" })).not.toBeInTheDocument()
   await user.click(trigger)
-  expect(screen.getByLabelText("搜索房间")).toHaveValue("")
-  expect(overviewMock).toHaveBeenLastCalledWith({ page: 1, pageSize: 20 })
+  expect(screen.getByLabelText("搜索房间")).toHaveValue("draft-only")
+  await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({ query: "draft-only", page: 1, pageSize: 20 }))
 })
 
 it.each(["first", "second"] as const)("keeps body scroll locked when the %s of two filter sheets closes first", (firstToClose) => {
@@ -1437,12 +1876,10 @@ it("closes the mobile filter sheet while reset refetches and restores focus with
 
   await user.click(screen.getByRole("button", { name: "打开筛选" }))
   await user.type(screen.getByLabelText("搜索房间"), "409")
-  await user.click(screen.getByRole("button", { name: "应用筛选" }))
   await waitFor(() => expect(overviewMock).toHaveBeenLastCalledWith({ query: "409", page: 1, pageSize: 20 }))
   expect(await screen.findByRole("article", { name: /房间 409/ })).toBeVisible()
 
   const trigger = screen.getByRole("button", { name: "打开筛选" })
-  await user.click(trigger)
   const dialog = screen.getByRole("dialog", { name: "筛选房间" })
   expect(document.body.style.overflow).toBe("hidden")
   await user.click(within(dialog).getByRole("button", { name: "重置筛选" }))
@@ -1477,12 +1914,12 @@ it("closes the mobile filter sheet across the 720px breakpoint without focusing 
   expect(screen.queryByRole("dialog", { name: "筛选房间" })).not.toBeInTheDocument()
   expect(document.body.style.overflow).toBe("")
   expect(focusSpy).not.toHaveBeenCalled()
-  expect(screen.getByLabelText("搜索房间")).toHaveValue("")
+  expect(screen.getByLabelText("搜索房间")).toHaveValue("draft-only")
 
   setWidth(360)
   const reopenedTrigger = await screen.findByRole("button", { name: "打开筛选" })
   expect(screen.queryByRole("dialog", { name: "筛选房间" })).not.toBeInTheDocument()
   expect(document.body.style.overflow).toBe("")
   await user.click(reopenedTrigger)
-  expect(screen.getByLabelText("搜索房间")).toHaveValue("")
+  expect(screen.getByLabelText("搜索房间")).toHaveValue("draft-only")
 })

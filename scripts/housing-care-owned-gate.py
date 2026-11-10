@@ -17,12 +17,37 @@ import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import NamedTuple
 
 POSTGRES_IMAGE = (
     "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685"
 )
 SPEC = "housing-cleaning-photos-export.spec.ts"
 LABEL = "erp.assisted.restore.owner"
+
+
+class GateProfile(NamedTuple):
+    database: str
+    task_label: str
+    ledger_environment: str
+    launcher: str
+    scratch_prefix: str
+    network_prefix: str
+    spec: str
+
+
+PROFILES = {
+    "housing-care": GateProfile(
+        "erp_housing_care_test", "housing-care-20261023",
+        "E2E_HOUSING_CARE_RUNTIME_LEDGER", "scripts/run-housing-care-e2e.sh",
+        "assisted-restore-0069.care_gate_", "housing-care-gate-", SPEC,
+    ),
+    "departure-reminders": GateProfile(
+        "erp_departure_reminders_test", "departure-reminders-20261024",
+        "E2E_DEPARTURE_RUNTIME_LEDGER", "scripts/run-departure-reminders-checks.sh",
+        "assisted-restore-0069.departure_gate_", "departure-reminders-gate-", "departure-reminders.spec.ts",
+    ),
+}
 
 
 def ownership_reference(root):
@@ -84,6 +109,8 @@ def run_gate(
     image,
     environment,
     *,
+    profile="housing-care",
+    phase=None,
     process=subprocess.run,
     launcher=run_launcher,
     scratch_parent=None,
@@ -98,6 +125,7 @@ def run_gate(
         "spec": SPEC,
         "delegate": "scripts/run-housing-care-e2e.sh",
     }
+    selected_phase = phase
     owner, network, scratch, phase = None, None, None, "preflight"
     old_umask = os.umask(0o077)
     clean = {key: environment[key] for key in ("PATH", "HOME") if environment.get(key)}
@@ -128,6 +156,13 @@ def run_gate(
         return details
 
     try:
+        config = PROFILES.get(profile)
+        if config is None:
+            raise ValueError("unknown_profile")
+        selected_phase = selected_phase or ("all" if profile == "housing-care" else "api")
+        if selected_phase not in {"api", "browser", "all"}:
+            raise ValueError("unknown_phase")
+        result.update(spec=config.spec, delegate=config.launcher)
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", image):
             raise ValueError("immutable_image_required")
         host, context = (
@@ -227,7 +262,7 @@ def run_gate(
             else Path(tempfile.gettempdir())
         )
         scratch = Path(
-            tempfile.mkdtemp(prefix="assisted-restore-0069.care_gate_", dir=parent)
+            tempfile.mkdtemp(prefix=config.scratch_prefix, dir=parent)
         )
         owner.scratch = scratch
         reference.private_write(scratch / "owner", owner.owner)
@@ -240,7 +275,7 @@ def run_gate(
                 "bridge",
                 "--label",
                 LABEL + "=" + owner.owner,
-                "housing-care-gate-" + owner.owner,
+                config.network_prefix + owner.owner,
             )
             .decode()
             .strip()
@@ -270,7 +305,7 @@ def run_gate(
                 "-e",
                 "POSTGRES_USER=erp_e2e",
                 "-e",
-                "POSTGRES_DB=erp_housing_care_test",
+                "POSTGRES_DB=" + config.database,
                 "-e",
                 "POSTGRES_PASSWORD=" + password,
                 image,
@@ -303,7 +338,7 @@ def run_gate(
                     "-U",
                     "erp_e2e",
                     "-d",
-                    "erp_housing_care_test",
+                    config.database,
                 ],
                 capture_output=True,
             )
@@ -312,13 +347,15 @@ def run_gate(
             time.sleep(0.25)
         else:
             raise ValueError("owned_database_not_ready")
-        dsn = f"postgresql+psycopg://erp_e2e:{password}@127.0.0.1:{owner.mapped_port}/erp_housing_care_test"
+        dsn = f"postgresql+psycopg://erp_e2e:{password}@127.0.0.1:{owner.mapped_port}/{config.database}"
         ledger = scratch / "runtime.json"
         reference.private_write(
             ledger,
             json.dumps(
                 {
-                    "task_label": "housing-care-20261023",
+                    "task_label": config.task_label,
+                    "owner": owner.owner,
+                    "postgres_image": image,
                     "container_id": identifier,
                     "volume": volumes[0],
                     "test_database_url": dsn,
@@ -335,10 +372,12 @@ def run_gate(
             APP_ENV="test",
             TEST_DATABASE_URL=dsn,
             E2E_PYTHON_BIN=python_bin,
-            E2E_HOUSING_CARE_RUNTIME_LEDGER=str(ledger),
             E2E_API_PORT="18144",
             E2E_WEB_PORT="15144",
         )
+        child[config.ledger_environment] = str(ledger)
+        if profile == "departure-reminders":
+            child["DATABASE_URL"] = dsn
         for key in (
             "FIELD_ENCRYPTION_MASTER_KEY",
             "FIELD_LOOKUP_KEY",
@@ -352,12 +391,15 @@ def run_gate(
             child[key] = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
         owner.guard(identifier)
         inspect_network()
-        phase = "existing_care_launcher"
+        phase = "existing_care_launcher" if profile == "housing-care" else f"departure_{selected_phase}_launcher"
+        command = ["bash", str(root / config.launcher)]
+        if profile == "departure-reminders":
+            command.append(selected_phase)
         status = launcher(
-            ["bash", str(root / "scripts/run-housing-care-e2e.sh")],
+            command,
             cwd=root,
             env=child,
-            timeout=1800,
+            timeout=(5400 if selected_phase == "all" else 3600 if selected_phase == "browser" else 1800) if profile == "departure-reminders" else 1800,
         ).returncode
         result.update(
             exit_code=status,
@@ -400,6 +442,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--python", required=True)
     parser.add_argument("--postgres-image", default=POSTGRES_IMAGE)
+    parser.add_argument("--profile", choices=PROFILES, default="housing-care")
+    parser.add_argument("--phase", choices=("api", "browser", "all"))
     args = parser.parse_args()
     signal.signal(
         signal.SIGTERM, lambda *_args: (_ for _ in ()).throw(KeyboardInterrupt())
@@ -409,6 +453,8 @@ def main():
         args.python,
         args.postgres_image,
         os.environ,
+        profile=args.profile,
+        phase=args.phase,
     )
     print(json.dumps(result, sort_keys=True))
     return result["exit_code"]

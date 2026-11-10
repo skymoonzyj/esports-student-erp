@@ -119,6 +119,7 @@ def _rooms(
                 HousingFloor.is_active,
                 HousingRoom.verification_status == "verified",
                 HousingRoom.service_status == "available",
+                HousingRoom.cleaning_status == "ready",
                 HousingRoom.room_type != "functional",
                 HousingRoom.capacity > 0,
                 occupants < HousingRoom.capacity,

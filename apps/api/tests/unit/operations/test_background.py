@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from app.operations.metrics import RequestMetricsStore
-from app.operations.monitor import OperationsBackgroundMonitor
+from app.operations.monitor import OperationsBackgroundMonitor, service_conditions
 from app.operations.runtime import RuntimeSampler
 
 
@@ -42,3 +44,33 @@ def test_probe_and_flush_failures_are_isolated_and_logs_omit_secrets(
     assert "operations_metrics_flush_failed" in caplog.text
     assert "operations_monitor_tick_failed" in caplog.text
     monitor.engine.dispose()
+
+
+def test_dropped_error_warning_resolves_after_pressure_window(monkeypatch) -> None:
+    from app.operations import monitor as module
+
+    store = RequestMetricsStore(max_pending_errors=1, clock=lambda: 1_000)
+    for _ in range(2):
+        store.record(method="GET", route="/safe", status_code=500,
+                     duration_ms=1, occurred_at=1_000)
+    monkeypatch.setattr(module, "persistent_snapshot", lambda *a, **k: SimpleNamespace(
+        server_error_count=0, top_routes=[],
+    ))
+    monkeypatch.setattr(module, "OperationsMonitorService", lambda *a, **k: SimpleNamespace(
+        _background_metrics=lambda now: SimpleNamespace(
+            scheduler_status="healthy", failed_tasks=0,
+        ),
+    ))
+    sampler = SimpleNamespace(sample=lambda: SimpleNamespace(cpu_percent=0, memory_percent=0))
+    initial = service_conditions(None, store, sampler,
+                                 now=datetime.fromtimestamp(1_001, tz=UTC),
+                                 scheduler_interval_seconds=30)
+    batch = store.pending_batch()
+    assert batch is not None
+    store.acknowledge_batch(batch.id)
+    recovered = service_conditions(None, store, sampler,
+                                   now=datetime.fromtimestamp(1_001, tz=UTC) + timedelta(minutes=6),
+                                   scheduler_interval_seconds=30)
+    assert [row.key for row in initial] == ["request_error_detail_buffer_pressure"]
+    assert recovered == []
+    assert store.dropped_error_details == 1

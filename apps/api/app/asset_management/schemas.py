@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 from uuid import UUID
 
 from pydantic import (
@@ -10,9 +10,18 @@ from pydantic import (
     ConfigDict,
     Field,
     HttpUrl,
+    StringConstraints,
     TypeAdapter,
     field_validator,
     model_validator,
+)
+
+from app.asset_management.hardware import AssetHardware, validate_computer_hardware
+from app.asset_management.rental_schemas import (
+    OwnershipFilter,
+    RentalFacts,
+    RentalProjection,
+    validate_rental_facts,
 )
 
 AssetStatus = Literal["available", "assigned", "maintenance", "retired"]
@@ -45,7 +54,7 @@ class AssetWarrantyDetails(BaseModel):
         return str(url)
 
 
-class AssetCreate(AssetInputModel, AssetWarrantyDetails):
+class AssetCreate(AssetInputModel, AssetWarrantyDetails, RentalFacts, AssetHardware):
     name: str = Field(min_length=1, max_length=120)
     category: str | None = Field(default=None, max_length=80)
     brand: str | None = Field(default=None, max_length=80)
@@ -58,6 +67,8 @@ class AssetCreate(AssetInputModel, AssetWarrantyDetails):
 
     @model_validator(mode="after")
     def validate_warranty_range(self) -> Self:
+        validate_computer_hardware(self.category, self.model_dump())
+        validate_rental_facts(self)
         if (
             self.purchase_date is not None
             and self.warranty_expires_on is not None
@@ -67,7 +78,8 @@ class AssetCreate(AssetInputModel, AssetWarrantyDetails):
         return self
 
 
-class AssetUpdate(AssetInputModel, AssetWarrantyDetails):
+class AssetUpdate(AssetInputModel, AssetWarrantyDetails, RentalFacts, AssetHardware):
+    expected_rental_revision: int | None = Field(default=None, ge=0)
     name: str | None = Field(default=None, min_length=1, max_length=120)
     category: str | None = Field(default=None, max_length=80)
     brand: str | None = Field(default=None, max_length=80)
@@ -130,7 +142,7 @@ class AssetPhotoResponse(BaseModel):
     url: str
 
 
-class AssetResponse(AssetWarrantyDetails):
+class AssetResponse(AssetWarrantyDetails, RentalFacts, AssetHardware):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -150,9 +162,11 @@ class AssetResponse(AssetWarrantyDetails):
     updated_at: datetime
     current_assignment: AssetAssignmentResponse | None = None
     photo: AssetPhotoResponse | None = None
+    rental_returned_on: date | None = None
+    rental_revision: int = 0
 
 
-class AssetSelfResponse(AssetWarrantyDetails):
+class AssetSelfResponse(AssetWarrantyDetails, RentalProjection, AssetHardware):
     id: UUID
     asset_code: str
     name: str
@@ -176,7 +190,18 @@ class AssetPage(BaseModel):
     total: int
 
 
-class AssetScanResponse(BaseModel):
+class AssetCategoryGroup(BaseModel):
+    key: str
+    label: str
+    options: list[str]
+
+
+class AssetCategoryDirectory(BaseModel):
+    groups: list[AssetCategoryGroup]
+    legacy_categories: list[str]
+
+
+class AssetScanResponse(RentalProjection, AssetHardware):
     asset_code: str
     name: str
     category: str | None
@@ -189,9 +214,32 @@ class AssetScanResponse(BaseModel):
     scanned_at: datetime
 
 
+class AssetBatchCreate(AssetInputModel):
+    operation_key: UUID
+    quantity: int = Field(ge=1, le=100, strict=True)
+    asset: AssetCreate
+
+    @model_validator(mode="after")
+    def validate_batch_asset(self) -> Self:
+        if self.asset.ownership_type != "rented":
+            raise ValueError("批量新增仅支持租用资产")
+        if self.asset.serial_number is not None:
+            raise ValueError("批量资产不能复制序列号，请在创建后逐台补充")
+        return self
+
+
+class AssetBatchResponse(BaseModel):
+    operation_key: UUID
+    items: list[AssetResponse]
+    total: int
+
+
 class AssetExportRequest(AssetInputModel):
+    ownership_type: OwnershipFilter | None = None
     format: AssetExportFormat = "xlsx"
     purpose: str = Field(min_length=4, max_length=200)
     query: str | None = Field(default=None, max_length=120)
     status: AssetStatus | None = None
-    category: str | None = Field(default=None, max_length=80)
+    category: Annotated[str, StringConstraints(strip_whitespace=False)] | None = Field(
+        default=None, max_length=80
+    )

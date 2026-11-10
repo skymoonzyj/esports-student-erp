@@ -6,13 +6,17 @@ import { Link, useParams } from "react-router-dom"
 import { ProblemDetailsError } from "../api/client"
 import { useAuth } from "../auth/AuthProvider"
 import { formatShanghaiDate } from "../teaching/datetime"
-import { getHousingCatalog, getHousingRoomDetail, uploadRoomPhoto, deleteRoomPhoto } from "./api"
+import { getHousingCatalog, getHousingRoomDetail, uploadRoomPhoto, deleteRoomPhoto, roomCleaningFrequencyLabel, updateHousingRoom } from "./api"
 import type { HousingRoomIssue, HousingStay, HousingTransfer } from "./api"
 import { housingKeys } from "./housingKeys"
 import { STAY_ACTION_LABELS, useHousingRoomLifecycle } from "./useHousingRoomLifecycle"
 import type { StayActionKind } from "./useHousingRoomLifecycle"
 import { HousingRoomPhotos } from "./HousingRoomPhotos"
-import type { HousingRoomDetail } from "./api"
+import { HousingRoomCardsPanel } from "./HousingRoomCardsPanel"
+import { HousingPropertyChangesPanel } from "./HousingPropertyChangesPanel"
+import { isHousingRoomDestinationAllowed, RoomDialog } from "./HousingCatalogDialogs"
+import { personHousingKeys } from "../people/housingApi"
+import type { HousingRoomDetail, HousingRoomUpdate } from "./api"
 
 import "./housing.css"
 
@@ -21,7 +25,9 @@ const PERSON_TYPE_LABELS = {
   student: "学员",
   player: "队员",
   student_player: "学员兼队员",
+  team_manager: "战队经理",
   coach: "教练",
+  assistant_coach: "助教",
   life_teacher: "生活老师",
   customer_service: "客服",
   administration: "行政人员",
@@ -120,7 +126,7 @@ export function HousingRoomDetailPage() {
   const housingRoot = useMemo(() => housingKeys.root(accountId), [accountId])
   const catalog = useQuery({
     queryKey: housingKeys.catalog(accountId),
-    queryFn: getHousingCatalog,
+    queryFn: ({ signal }) => getHousingCatalog(signal),
     enabled: Boolean(user?.account_id && roomId && accessState === "active" && !authChanged),
   })
   const accessRevision = catalog.data?.access_revision ?? "pending"
@@ -220,6 +226,53 @@ export function HousingRoomDetailPage() {
     onAccessRevisionMismatch: handleLifecycleRevisionMismatch,
   })
 
+  const editScope = JSON.stringify([requestScope, authSignature, accessState])
+  const editScopeRef = useRef(editScope)
+  editScopeRef.current = editScope
+  const [editState, setEditState] = useState<{ scope: string; baseVersion: number } | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editNotice, setEditNotice] = useState<string | null>(null)
+  const editReady = accessState === "active" && !authChanged && !catalog.isFetching && !catalog.isError && !detail.isFetching && !detail.isError && acceptedDetail?.room.allowed_actions.edit === true
+  const editVisible = editState?.scope === editScope && acceptedDetail?.room.allowed_actions.edit === true
+  useEffect(() => {
+    if (editState && (editState.scope !== editScope || (!detail.isFetching && !acceptedDetail?.room.allowed_actions.edit))) {
+      setEditState(null)
+      setEditError(null)
+    }
+  }, [acceptedDetail?.room.allowed_actions.edit, detail.isFetching, editScope, editState])
+
+  async function submitRoomEdit(input: HousingRoomUpdate): Promise<void> {
+    if (!editReady || !editVisible || !editState || !acceptedDetail || !catalog.data) return
+    const currentDetail = queryClient.getQueryState<HousingRoomDetail>(detailKey)
+    if (currentDetail?.status !== "success" || currentDetail.fetchStatus !== "idle" || !currentDetail.data?.room.allowed_actions.edit) return
+    if (input.floor_id && !isHousingRoomDestinationAllowed(catalog.data, input.floor_id)) return
+    const token = lifecycle.coordinator.acquire()
+    if (!token) return
+    const epoch = clientStateEpochRef.current
+    const scope = editScope
+    const current = () => epoch === clientStateEpochRef.current && scope === editScopeRef.current
+    setEditError(null)
+    setEditNotice(null)
+    try {
+      await updateHousingRoom(acceptedDetail.room.id, { ...input, version: editState.baseVersion })
+      if (!current()) return
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: housingKeys.root(accountId) }),
+        queryClient.invalidateQueries({ queryKey: personHousingKeys.root(accountId) }),
+      ])
+      if (!current()) return
+      setEditState(null)
+      setEditNotice("房间已保存，变更已生效。")
+    } catch (caught) {
+      if (!current()) return
+      if (isPrivateFailure(caught)) { purgePrivateHousing("private"); return }
+      if (caught instanceof ProblemDetailsError && caught.problem.status === 409) {
+        setEditError("数据已更新，请关闭并重新编辑，不会覆盖当前房间。")
+        await queryClient.invalidateQueries({ queryKey: housingKeys.root(accountId) })
+      } else setEditError(caught instanceof ProblemDetailsError ? caught.problem.detail : "操作暂时失败，请稍后重试")
+    } finally { lifecycle.coordinator.release(token) }
+  }
+
   const photoScope = JSON.stringify([requestScope, authSignature, acceptedDetail?.room.allowed_actions.manage_photos, accessState])
   const photoScopeRef = useRef(photoScope)
   photoScopeRef.current = photoScope
@@ -282,15 +335,20 @@ export function HousingRoomDetailPage() {
       <header className="housingRoomDetail__header">
         <div><p>{room.building_name} · {room.floor_name}</p><h1>房间 {room.room_number}</h1><span>{room.status_text}</span></div>
         <div className="housingRoomDetail__actions">
+          {room.allowed_actions.edit ? <button type="button" disabled={lifecycle.pending || !editReady} onClick={() => {
+            if (!editReady || lifecycle.coordinator.isPending()) return
+            setEditError(null); setEditNotice(null); setEditState({ scope: editScope, baseVersion: room.version })
+          }}>编辑房间</button> : null}
           {room.allowed_actions.complete_cleaning ? <button type="button" disabled={lifecycle.pending} onClick={lifecycle.openCompleteCleaning}>完成保洁</button> : null}
           {room.allowed_actions.create_stay ? <button type="button" disabled={lifecycle.pending} onClick={lifecycle.openCreateStay}><CalendarPlus aria-hidden="true" />安排入住</button> : null}
           {room.allowed_actions.report_issue ? <button type="button" disabled={lifecycle.pending} onClick={lifecycle.openReportIssue}><Wrench aria-hidden="true" />上报问题</button> : null}
         </div>
       </header>
+      {editNotice && <p role="status">{editNotice}</p>}
       {room.service_status === "problem" ? <p className="housingRoomDetail__warning"><AlertTriangle aria-hidden="true" />该房间当前为问题房，新增入住已暂停。</p> : null}
       <dl className="housingRoomDetail__facts">
-        <div><dt>保洁状态</dt><dd>{room.cleaning_status === "pending" ? "待保洁" : "保洁就绪"}</dd></div>
-        <div><dt>每日保洁</dt><dd>{room.daily_cleaning_enabled ? "需要" : "无需"}</dd></div>
+        <div><dt>保洁状态</dt><dd>{room.cleaning_status === "pending" ? "退房待保洁" : "无退房待保洁"}</dd></div>
+        <div><dt>保洁频率</dt><dd>{roomCleaningFrequencyLabel(room)}</dd></div>
         <div><dt>房间照片</dt><dd>{room.photo_count ?? 0} 张</dd></div>
         <div><dt>房型</dt><dd>{room.room_type === "single" ? "单人间" : room.room_type === "double" ? "双人间" : room.room_type === "triple" ? "三人间" : room.room_type === "functional" ? "功能间" : "自定义房型"}</dd></div>
         <div><dt>当前入住</dt><dd>{room.current_occupants} / {room.capacity}</dd></div>
@@ -299,6 +357,11 @@ export function HousingRoomDetailPage() {
         <div><dt>未来预约</dt><dd>{room.future_reservation_count}</dd></div>
         <div><dt>数据截至</dt><dd>{formatShanghaiDate(acceptedDetail.as_of)}</dd></div>
       </dl>
+      <HousingRoomCardsPanel key={`cards:${requestScope}`} roomId={room.id} />
+      <HousingPropertyChangesPanel mode="submit" key={`property:${requestScope}`} room={acceptedDetail} onChanged={() => {
+        void queryClient.invalidateQueries({ queryKey: housingKeys.scope(accountId, accessRevision) })
+        void queryClient.invalidateQueries({ queryKey: housingKeys.catalog(accountId), exact: true })
+      }} />
       <HousingRoomPhotos key={photoScope} scope={photoScope} detail={acceptedDetail} pending={lifecycle.pending} onUpload={(slot, file, version) => mutatePhoto(() => uploadRoomPhoto(room.id, slot, file, version))} onDelete={(photoId, version) => mutatePhoto(() => deleteRoomPhoto(room.id, photoId, version))} onPrivateFailure={handleLifecyclePrivateFailure} />
       <div className="housingRoomDetail__grid">
         <StayTimeline title="当前入住" stays={acceptedDetail.current_stays} pending={lifecycle.pending} onAction={lifecycle.openStayAction} />
@@ -310,6 +373,9 @@ export function HousingRoomDetailPage() {
         <IssueTimeline issues={acceptedDetail.issues} pending={lifecycle.pending} onResolve={lifecycle.openResolveIssue} />
       </div>
       {lifecycle.dialogs}
+      {editVisible && catalog.data ? <div hidden={!editReady} inert={!editReady}><RoomDialog catalog={catalog.data} room={room} pending={lifecycle.pending || !editReady} error={editError} focusFallbackRef={pageFocusRef} onClose={() => {
+        if (!lifecycle.coordinator.isPending()) { setEditState(null); setEditError(null) }
+      }} onSubmit={(input) => { void submitRoomEdit(input as HousingRoomUpdate) }} /></div> : null}
     </section>
   )
 }

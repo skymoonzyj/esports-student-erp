@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Download, Pencil, Plus, QrCode, RotateCcw, UserRoundPlus } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { FormEvent } from "react"
 
 import { ProblemDetailsError } from "../api/client"
+import { useOptionalAuth } from "../auth/AuthProvider"
 import { dateInputToShanghaiIso, formatDateOnly, todayDateInput } from "../shared/date"
 import { listPeople } from "../people/api"
 import type { PersonSummary } from "../people/api"
@@ -23,12 +24,20 @@ import type {
   AssetInput,
   AssetStatus,
   AssetUpdateInput,
+  OwnershipFilter,
 } from "./api"
 import { assetKeys } from "./keys"
+import { AssetCategorySelect } from "./AssetCategorySelect"
 import { AssetQrDialog } from "./AssetQrDialog"
 import { AssetPhotoLink } from "./AssetPhotoLink"
 import { AssetWarrantyDetails } from "./AssetWarrantyDetails"
+import { AssetHardwareDetails } from "./AssetHardwareDetails"
+import { AssetHardwareFields, hardwareComplete, hardwareRequired, normalizedHardware, isComputer, hardwareChanged } from "./AssetHardwareFields"
+import { AssetBatchCreateDialog } from "./AssetBatchCreateDialog"
 import { statusLabels } from "./status"
+import { OwnershipFields, OwnershipDetails, ownershipPatch } from "./OwnershipFields"
+import { RentalManagement } from "./RentalManagement"
+import { validRentalDate } from "./rentalDates"
 import "./assets.css"
 
 function toIso(value: string): string {
@@ -54,22 +63,39 @@ function emptyInput(): AssetInput {
 }
 
 type AssetFormSubmission = {
+  asset: Asset | null
   input: AssetInput | AssetUpdateInput
   photoFile: File | null
   removePhoto: boolean
 }
 
+class PartialAssetSaveError extends Error {
+  readonly asset: Asset
+
+  constructor(asset: Asset, cause: unknown) {
+    const detail = cause instanceof ProblemDetailsError ? cause.problem.detail : "照片操作暂时失败"
+    super(`资产记录已保存（${asset.asset_code}），照片未保存：${detail}。可重试保存；关闭后记录仍会保留，请从列表编辑并重新选择照片。`, { cause })
+    this.asset = asset
+  }
+}
+
 function AssetFormDialog({
-  asset,
+  asset: initialAsset,
+  accountId,
+  categoryAuthorized,
   pending,
   onClose,
   onSubmit,
 }: {
   asset: Asset | null
+  accountId: string | null
+  categoryAuthorized: boolean
   pending: boolean
   onClose: () => void
   onSubmit: (submission: AssetFormSubmission) => Promise<void>
 }) {
+  // Keep the server-created identity without remounting or clearing the draft/photo.
+  const [asset, setAsset] = useState(initialAsset)
   const [input, setInput] = useState<AssetInput>(() =>
     asset
       ? {
@@ -88,6 +114,13 @@ function AssetFormDialog({
           warranty_product_url: asset.warranty_product_url ?? null,
           warranty_order_number: asset.warranty_order_number ?? null,
           note: asset.note ?? "",
+          ownership_type: asset.ownership_type ?? null,
+          acquisition_method: asset.acquisition_method ?? null,
+          acquisition_channel: asset.acquisition_channel ?? null,
+          acquisition_note: asset.acquisition_note ?? null,
+          rental_started_on: asset.rental_started_on ?? null,
+          rental_expires_on: asset.rental_expires_on ?? null,
+          ...normalizedHardware(asset),
         }
       : emptyInput(),
   )
@@ -106,6 +139,10 @@ function AssetFormDialog({
       setError("请填写资产名称")
       return
     }
+    if (hardwareRequired(input, asset) && !hardwareComplete(input)) { setError("请补齐电脑的 CPU、内存、GPU 和硬盘配置"); return }
+    if (!asset && !input.ownership_type) { setError("请选择资产归属"); return }
+    if (input.ownership_type === "owned" && (!input.acquisition_method || (input.acquisition_method === "purchase" && !input.acquisition_channel) || (input.acquisition_method === "other" && !input.acquisition_note?.trim()))) { setError("请填写完整的取得方式"); return }
+    if (input.ownership_type === "rented" && (!validRentalDate(input.rental_started_on ?? "") || !validRentalDate(input.rental_expires_on ?? "") || input.rental_started_on! > input.rental_expires_on!)) { setError("请填写有效租期，开始日期不能晚于到期日期"); return }
     if (
       input.purchase_date
       && input.warranty_expires_on
@@ -116,13 +153,21 @@ function AssetFormDialog({
     }
     setError(null)
     try {
+      const { ownership_type, acquisition_method, acquisition_channel, acquisition_note, rental_started_on, rental_expires_on, cpu_model, memory_capacity, gpu_model, disk_capacity, ...ordinary } = input
+      const hardware = { cpu_model, memory_capacity, gpu_model, disk_capacity }
+      const hardwareInput = isComputer(input.category) && (!asset || hardwareChanged(hardware, asset) || !isComputer(asset.category)) ? normalizedHardware(hardware) : {}
+      const { category, ...ordinaryWithoutCategory } = ordinary
       await onSubmit({
-        input: asset ? { ...input, status } : input,
+        asset,
+        input: asset
+          ? { ...ordinaryWithoutCategory, ...hardwareInput, ...(category === (asset.category ?? "") ? {} : { category }), ...ownershipPatch(input, asset), status }
+          : { ...ordinary, ...hardwareInput, ownership_type, acquisition_method, acquisition_channel, acquisition_note, rental_started_on, rental_expires_on },
         photoFile,
         removePhoto,
       })
     } catch (caught) {
-      setError(caught instanceof ProblemDetailsError ? caught.problem.detail : "资产暂时无法保存")
+      if (caught instanceof PartialAssetSaveError) setAsset(caught.asset)
+      setError(caught instanceof PartialAssetSaveError ? caught.message : caught instanceof ProblemDetailsError ? caught.problem.detail : "资产暂时无法保存")
     }
   }
 
@@ -139,7 +184,7 @@ function AssetFormDialog({
           </div>
           <div className="assetField">
             <label htmlFor="asset-category">资产分类</label>
-            <input id="asset-category" value={input.category ?? ""} onChange={(event) => update("category", event.target.value)} placeholder="例如：训练设备、办公设备" maxLength={80} />
+            <AssetCategorySelect id="asset-category" value={input.category ?? ""} originalValue={asset?.category ?? ""} onChange={(value) => update("category", value)} mode={asset ? "edit" : "create"} accountId={accountId} authorized={categoryAuthorized} />
           </div>
           <div className="assetFilters">
             <div className="assetField">
@@ -167,6 +212,8 @@ function AssetFormDialog({
             <label htmlFor="asset-location">存放位置</label>
             <input id="asset-location" value={input.location ?? ""} onChange={(event) => update("location", event.target.value)} maxLength={160} placeholder="例如：一号楼 201 室" />
           </div>
+          <OwnershipFields input={input} onChange={setInput} existing={asset !== null} />
+          <AssetHardwareFields value={input} category={input.category} required={hardwareRequired(input, asset)} onChange={(hardware) => setInput((current) => ({ ...current, ...hardware }))} />
           <div className="assetFilters">
             <div className="assetField">
               <label htmlFor="asset-purchase-date">采购日期（选填）</label>
@@ -410,7 +457,7 @@ function AssetExportDialog({
   onClose,
   onSubmit,
 }: {
-  filters: { query: string; status: AssetStatus | ""; category: string }
+  filters: { query: string; status: AssetStatus | ""; category: string; ownership_type: OwnershipFilter }
   pending: boolean
   onClose: () => void
   onSubmit: (input: AssetExportInput) => Promise<void>
@@ -428,7 +475,7 @@ function AssetExportDialog({
     }
     setError(null)
     try {
-      await onSubmit({ ...filters, purpose: normalized, format })
+      await onSubmit({ query: filters.query, status: filters.status, category: filters.category, ownership_type: filters.ownership_type, purpose: normalized, format })
     } catch (caught) {
       setError(caught instanceof ProblemDetailsError ? caught.problem.detail : "导出暂时失败")
     }
@@ -463,28 +510,46 @@ function AssetExportDialog({
   )
 }
 
-export function AssetsPage({
-  canManage = true,
-  canAssign = true,
-  canExport = true,
-}: {
+type AssetsPageProps = {
   canManage?: boolean
   canAssign?: boolean
   canExport?: boolean
-}) {
+}
+
+export function AssetsPage(props: AssetsPageProps) {
+  const auth = useOptionalAuth()
+  const accountId = auth?.status === "authenticated" ? auth.user?.account_id ?? null : null
+  const categoryAuthorized = Boolean(accountId && (auth?.user?.is_super_admin || auth?.user?.permissions.some((permission) => permission === "assets.read" || permission === "assets.manage")))
+  return <AccountAssetsPage key={accountId ?? "no-account"} {...props} accountId={accountId} categoryAuthorized={categoryAuthorized} />
+}
+
+function AccountAssetsPage({
+  canManage = true,
+  canAssign = true,
+  canExport = true,
+  accountId,
+  categoryAuthorized,
+}: AssetsPageProps & { accountId: string | null; categoryAuthorized: boolean }) {
   const queryClient = useQueryClient()
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState<AssetStatus | "">("")
   const [category, setCategory] = useState("")
-  const [filters, setFilters] = useState({ query: "", status: "" as AssetStatus | "", category: "" })
+  const [ownership, setOwnership] = useState<OwnershipFilter>("")
+  const [filters, setFilters] = useState({ query: "", status: "" as AssetStatus | "", category: "", ownership_type: "" as OwnershipFilter, page: 1 })
   const [editing, setEditing] = useState<Asset | null | undefined>(undefined)
   const [assigning, setAssigning] = useState<Asset | null>(null)
   const [returning, setReturning] = useState<Asset | null>(null)
   const [qrAsset, setQrAsset] = useState<Asset | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
+  const [batchOpen, setBatchOpen] = useState(false)
   const [pending, setPending] = useState(false)
   const [pageError, setPageError] = useState<string | null>(null)
-  const assets = useQuery({ queryKey: assetKeys.list(filters), queryFn: () => listAssets(filters) })
+  const assets = useQuery({ queryKey: assetKeys.list(accountId, filters), queryFn: () => listAssets(filters), enabled: Boolean(accountId) })
+  useEffect(() => {
+    if (!assets.isSuccess || assets.isFetching || !assets.data) return
+    const lastPage = Math.max(1, Math.ceil(assets.data.total / assets.data.page_size))
+    if (filters.page > lastPage) setFilters((current) => ({ ...current, page: lastPage }))
+  }, [assets.data, assets.isSuccess, assets.isFetching, filters.page])
   const counts = useMemo(() => {
     const items = assets.data?.items ?? []
     return {
@@ -495,24 +560,34 @@ export function AssetsPage({
     }
   }, [assets.data])
 
-  async function refresh(): Promise<void> { await queryClient.invalidateQueries({ queryKey: assetKeys.root }) }
+  async function refresh(): Promise<void> { await Promise.all([queryClient.invalidateQueries({ queryKey: assetKeys.root }), queryClient.invalidateQueries({ queryKey: ["portal"] })]) }
 
   function search(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    setFilters({ query: query.trim(), status, category: category.trim() })
+    setFilters({ query: query.trim(), status, category, ownership_type: ownership, page: 1 })
   }
 
-  async function save({ input, photoFile, removePhoto }: AssetFormSubmission): Promise<void> {
+  function selectStatus(nextStatus: AssetStatus | ""): void {
+    setStatus(nextStatus)
+    setFilters({ query: query.trim(), status: nextStatus, category, ownership_type: ownership, page: 1 })
+  }
+
+  async function save({ asset, input, photoFile, removePhoto }: AssetFormSubmission): Promise<void> {
     setPending(true); setPageError(null)
     try {
-      let saved = editing
-        ? await updateAsset(editing.id, input as AssetUpdateInput)
+      let saved = asset
+        ? await updateAsset(asset.id, input as AssetUpdateInput)
         : await createAsset(input as AssetInput)
-      if (photoFile) saved = await uploadAssetPhoto(saved.id, photoFile)
-      else if (removePhoto && saved.photo) saved = await deleteAssetPhoto(saved.id)
+      try {
+        if (photoFile) saved = await uploadAssetPhoto(saved.id, photoFile)
+        else if (removePhoto && saved.photo) saved = await deleteAssetPhoto(saved.id)
+      } catch (caught) {
+        await refresh()
+        throw new PartialAssetSaveError(saved, caught)
+      }
       setEditing(undefined); await refresh()
     } catch (caught) {
-      setPageError(caught instanceof ProblemDetailsError ? caught.problem.detail : "资产暂时无法保存")
+      setPageError(caught instanceof PartialAssetSaveError ? caught.message : caught instanceof ProblemDetailsError ? caught.problem.detail : "资产暂时无法保存")
       throw caught
     } finally { setPending(false) }
   }
@@ -550,20 +625,21 @@ export function AssetsPage({
         <div><p className="pageEyebrow">ASSET INVENTORY</p><h1>资产管理</h1><p>统一登记、分配和追踪训练设备、办公设备及其他固定资产。</p></div>
         <div className="assetHeaderActions">
           {canExport ? <button className="secondaryButton" type="button" onClick={() => { setPageError(null); setExportOpen(true) }}><Download aria-hidden="true" />导出</button> : null}
-          {canManage ? <button className="primaryButton" type="button" onClick={() => { setPageError(null); setEditing(null) }}><Plus aria-hidden="true" />新增资产</button> : null}
+          {canManage ? <><button className="secondaryButton" type="button" onClick={() => setBatchOpen(true)}>批量新增租用资产</button><button className="primaryButton" type="button" onClick={() => { setPageError(null); setEditing(null) }}><Plus aria-hidden="true" />新增资产</button></> : null}
         </div>
       </header>
       <section className="assetStats" aria-label="资产数量统计">
-        <div className="assetStat"><span>资产总数</span><strong>{counts.total}</strong></div>
-        <div className="assetStat"><span>当前可用</span><strong>{counts.available}</strong></div>
-        <div className="assetStat"><span>使用中</span><strong>{counts.assigned}</strong></div>
-        <div className="assetStat"><span>维修/停用</span><strong>{counts.attention}</strong></div>
+        <button type="button" className="assetStat assetStatFilter" aria-labelledby="asset-total-label" aria-describedby="asset-total-count asset-total-scope" aria-pressed={filters.status === ""} onClick={() => selectStatus("")}><span id="asset-total-label">资产总数</span><strong id="asset-total-count">{counts.total}</strong><small id="asset-total-scope">当前筛选总数</small></button>
+        <button type="button" className="assetStat assetStatFilter" aria-labelledby="asset-available-label" aria-describedby="asset-available-count asset-available-scope" aria-pressed={filters.status === "available"} onClick={() => selectStatus("available")}><span id="asset-available-label">当前可用</span><strong id="asset-available-count">{counts.available}</strong><small id="asset-available-scope">当前页数量</small></button>
+        <button type="button" className="assetStat assetStatFilter" aria-labelledby="asset-assigned-label" aria-describedby="asset-assigned-count asset-assigned-scope" aria-pressed={filters.status === "assigned"} onClick={() => selectStatus("assigned")}><span id="asset-assigned-label">使用中</span><strong id="asset-assigned-count">{counts.assigned}</strong><small id="asset-assigned-scope">当前页数量</small></button>
+        <div className="assetStat"><span>维修/停用</span><strong>{counts.attention}</strong><small>当前页数量</small></div>
       </section>
       <form className="assetFilters" onSubmit={search}>
         <div className="assetField"><label htmlFor="asset-query">搜索资产</label><input id="asset-query" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="名称、资产代码、序列号" /></div>
         <div className="assetField"><label htmlFor="asset-status-filter">状态</label><select id="asset-status-filter" value={status} onChange={(event) => setStatus(event.target.value as AssetStatus | "")}><option value="">全部状态</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
-        <div className="assetField"><label htmlFor="asset-category-filter">分类</label><input id="asset-category-filter" value={category} onChange={(event) => setCategory(event.target.value)} placeholder="例如：训练设备" /></div>
-        <div className="assetFiltersActions"><button className="primaryButton" type="submit">查询</button><button className="secondaryButton" type="button" onClick={() => { setQuery(""); setStatus(""); setCategory(""); setFilters({ query: "", status: "", category: "" }) }}>清空</button></div>
+        <div className="assetField"><label htmlFor="asset-category-filter">分类</label><AssetCategorySelect id="asset-category-filter" value={category} onChange={setCategory} mode="filter" accountId={accountId} authorized={categoryAuthorized} /></div>
+        <div className="assetField"><label htmlFor="asset-ownership-filter">归属筛选</label><select id="asset-ownership-filter" value={ownership} onChange={(event) => setOwnership(event.target.value as OwnershipFilter)}><option value="">全部归属</option><option value="owned">自有</option><option value="rented">租用</option><option value="unconfirmed">待确认</option></select></div>
+        <div className="assetFiltersActions"><button className="primaryButton" type="submit">查询</button><button className="secondaryButton" type="button" onClick={() => { setQuery(""); setStatus(""); setCategory(""); setOwnership(""); setFilters({ query: "", status: "", category: "", ownership_type: "", page: 1 }) }}>清空</button></div>
       </form>
       {pageError ? <p className="formError" role="alert">{pageError}</p> : null}
       <section className="assetDirectory" aria-labelledby="asset-directory-title">
@@ -571,7 +647,7 @@ export function AssetsPage({
         {assets.isPending ? <div className="assetState">正在读取资产台账…</div> : null}
         {assets.isError ? <div className="assetState" role="alert">暂时无法读取资产台账，请稍后重试。</div> : null}
         {assets.data && assets.data.items.length === 0 ? <div className="assetState">暂无资产记录，先新增一项资产。</div> : null}
-        {assets.data && assets.data.items.length > 0 ? <>
+        {assets.data && assets.data.items.length > 0 && !assets.isError ? <RentalManagement key={JSON.stringify([filters, canManage, canAssign, canExport])} items={assets.data.items} canManage={canManage} refresh={refresh}>{(rentalActions) => <>
           <div className="assetTableHeader"><span>资产</span><span>分类</span><span>使用人</span><span>状态</span><span>操作</span></div>
           {assets.data.items.map((asset) => <div className="assetTableRow" key={asset.id}>
             <div><strong>{asset.name}</strong><small className="assetCode">{asset.asset_code}</small>{asset.photo ? <AssetPhotoLink assetId={asset.id} photo={asset.photo} /> : null}</div>
@@ -580,18 +656,23 @@ export function AssetsPage({
               <small>{asset.brand || asset.model ? [asset.brand, asset.model].filter(Boolean).join(" · ") : "未填写品牌型号"}</small>
               <small>采购 {asset.purchase_date ?? "未填写"} · 保修至 {asset.warranty_expires_on ?? "未填写"}</small>
               <AssetWarrantyDetails asset={asset} />
+              <AssetHardwareDetails asset={asset} />
+              <OwnershipDetails asset={asset} />
             </div>
             <div><span>{asset.current_assignment?.person_name ?? "未分配"}</span><small>{asset.current_assignment ? displayTime(asset.current_assignment.assigned_at) : asset.location ?? ""}</small></div>
             <div><span className={`assetStatus ${asset.status}`}>{statusLabels[asset.status]}</span></div>
             <div className="assetRowActions">
-              {canAssign && asset.status === "available" ? <button className="assetActionButton" type="button" onClick={() => setAssigning(asset)} title="分配资产"><UserRoundPlus aria-hidden="true" />分配</button> : null}
+              {canAssign && asset.status === "available" && !asset.rental_returned_on ? <button className="assetActionButton" type="button" onClick={() => setAssigning(asset)} title="分配资产"><UserRoundPlus aria-hidden="true" />分配</button> : null}
               {canAssign && asset.status === "assigned" ? <button className="assetActionButton" type="button" onClick={() => setReturning(asset)} title="归还资产"><RotateCcw aria-hidden="true" />归还</button> : null}
-              {canManage ? <button className="assetActionButton" type="button" onClick={() => setEditing(asset)} title="编辑资产"><Pencil aria-hidden="true" />编辑</button> : null}
+              {canManage ? <button className="assetActionButton" type="button" onClick={() => { setPageError(null); setEditing(asset) }} title="编辑资产"><Pencil aria-hidden="true" />编辑</button> : null}
+              {rentalActions(asset)}
               <button className="assetActionButton" type="button" onClick={() => setQrAsset(asset)} title="查看并打印二维码"><QrCode aria-hidden="true" />二维码</button>
             </div>
-          </div>)}</> : null}
+          </div>)}</>}</RentalManagement> : null}
+        {assets.data && assets.data.total > assets.data.page_size ? <nav className="rentalToolbar" aria-label="资产分页"><button type="button" className="secondaryButton" disabled={filters.page <= 1 || assets.isFetching} onClick={() => setFilters((current) => ({ ...current, page: current.page - 1 }))}>上一页资产</button><span>第 {filters.page} 页 · 共 {assets.data.total} 项</span><button type="button" className="secondaryButton" disabled={filters.page * assets.data.page_size >= assets.data.total || assets.isFetching} onClick={() => setFilters((current) => ({ ...current, page: current.page + 1 }))}>下一页资产</button></nav> : null}
       </section>
-      {editing !== undefined ? <AssetFormDialog key={editing?.id ?? "new-asset"} asset={editing} pending={pending} onClose={() => setEditing(undefined)} onSubmit={save} /> : null}
+      {editing !== undefined ? <AssetFormDialog key={editing?.id ?? "new-asset"} asset={editing} accountId={accountId} categoryAuthorized={categoryAuthorized} pending={pending} onClose={() => { setPageError(null); setEditing(undefined) }} onSubmit={save} /> : null}
+      {batchOpen && canManage ? <AssetBatchCreateDialog accountId={accountId} categoryAuthorized={categoryAuthorized} onClose={() => setBatchOpen(false)} onCreated={refresh} /> : null}
       {assigning ? <AssetAssignDialog asset={assigning} pending={pending} onClose={() => setAssigning(null)} onSubmit={(input) => mutate(() => assignAsset(assigning.id, input))} /> : null}
       {returning ? <AssetReturnDialog asset={returning} pending={pending} onClose={() => setReturning(null)} onSubmit={(input) => mutate(() => returnAsset(returning.id, input))} /> : null}
       {qrAsset ? <AssetQrDialog asset={qrAsset} onClose={() => setQrAsset(null)} /> : null}

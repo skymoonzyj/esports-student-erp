@@ -123,6 +123,8 @@ function isSensitiveEvaluationPermission(
 }
 
 const talentPermissionNames: Record<string, string> = {
+  "reactionx.manage": "管理 ReactionX 连接器",
+  "reactionx.conduct": "ReactionX 现场代测",
   "talent_tests.take": "参加天赋测试",
   "talent_tests.read": "查看天赋测试报告",
   "esports_assessments.take": "参加天赋评测 2",
@@ -130,7 +132,7 @@ const talentPermissionNames: Record<string, string> = {
 }
 
 function isTalentPermission(permission: { key: string } | undefined): boolean {
-  return permission?.key === "talent_tests.take" ||
+  return permission?.key.startsWith("reactionx.") === true || permission?.key === "talent_tests.take" ||
     permission?.key === "talent_tests.read" ||
     permission?.key === "esports_assessments.take" ||
     permission?.key === "esports_assessments.read"
@@ -142,6 +144,8 @@ function permissionName(permission: { key: string; name: string } | undefined): 
 }
 
 function permissionScopeKinds(permission: { key: string } | undefined): readonly ScopeKind[] | null {
+  if (permission?.key === "reactionx.manage") return ["global"]
+  if (permission?.key === "reactionx.conduct") return ["global", "person"]
   if (permission?.key === "referrals.read_invited_housing") return ["self", "global", "person"]
   if (
     permission?.key === "talent_tests.take" ||

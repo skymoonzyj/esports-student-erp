@@ -17,6 +17,7 @@ import type {
   RegistrationPurpose,
 } from "./api"
 import "./registration.css"
+import { PublicEntryAside } from "./PublicEntryAside"
 
 const PURPOSES: ReadonlyArray<{
   value: RegistrationPurpose
@@ -247,6 +248,7 @@ export function RegistrationStartPage({
 
   return (
     <main className="registrationPage">
+      <PublicEntryAside />
       <section className="registrationCard registrationCardWide" aria-labelledby="registration-start-title">
         <div className="registrationBrand" aria-hidden="true">竞</div>
         <p className="registrationEyebrow">SELF REGISTRATION</p>

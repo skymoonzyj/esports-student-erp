@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from app.cli.summarize_esports_assessments_e2e import REQUIRED_CASE_IDS
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 LAUNCHER = REPOSITORY_ROOT / "scripts/run-esports-assessments-e2e.sh"
 CORE_LAUNCHER = REPOSITORY_ROOT / "scripts/run-core-e2e.sh"
@@ -130,18 +132,27 @@ def test_wrapper_rejects_non_loopback_origin_before_exec(
     assert not invocation.exists()
 
 
-def test_core_rejects_unknown_mode_before_environment_or_processes() -> None:
+def test_core_rejects_unknown_mode_before_environment_or_processes(tmp_path: Path) -> None:
+    python_wrapper, invocation_log = _python_wrapper(tmp_path)
     result = subprocess.run(
         ["/bin/bash", str(CORE_LAUNCHER)],
         cwd=REPOSITORY_ROOT,
-        env={**os.environ, "E2E_CORE_MODE": "production"},
+        # Missing required secrets must not mask unknown-mode rejection. Any
+        # premature Python/Vite child also leaves the executable sentinel log.
+        env={
+            "PATH": os.environ["PATH"],
+            "E2E_CORE_MODE": "production",
+            "E2E_PYTHON_BIN": str(python_wrapper),
+            "E2E_VITE_BIN": str(python_wrapper),
+        },
         capture_output=True,
         text=True,
         check=False,
     )
 
     assert result.returncode == 2
-    assert result.stderr == "E2E_CORE_MODE 只允许 core、talent、esports、invited-housing 或 all\n"
+    assert result.stderr == "E2E_CORE_MODE 只允许 core、talent、esports、reactionx、invited-housing 或 all\n"
+    assert not invocation_log.exists()
 
 
 def _python_wrapper(tmp_path: Path) -> tuple[Path, Path]:
@@ -412,11 +423,51 @@ def test_production_image_does_not_copy_esports_e2e_cli_tools() -> None:
 def test_playwright_projects_isolate_esports_specs_and_private_artifacts() -> None:
     source = PLAYWRIGHT_CONFIG.read_text(encoding="utf-8")
 
-    assert source.count("testIgnore: esportsTestFiles") == 5
+    # Resolve the real config: the five ordinary projects now share an esports
+    # AND ReactionX ignore list. Check ownership/privacy, not its source alias.
+    script = """
+import config from './apps/web/playwright.config.ts'
+const files = [
+  'esports-pc.spec.ts', 'esports-touch.spec.ts', 'esports-recovery.spec.ts',
+  'esports-capabilities.spec.ts', 'reactionx-integration.spec.ts',
+  'platform-foundation.spec.ts', 'talent-tests.spec.ts',
+]
+function matches(pattern, file, fallback) {
+  if (pattern === undefined) return fallback
+  return (Array.isArray(pattern) ? pattern : [pattern]).some(item => {
+    if (!(item instanceof RegExp)) throw new Error('expected regex project boundary')
+    return item.test(file)
+  })
+}
+process.stdout.write(JSON.stringify(config.projects.map(project => ({
+  name: project.name,
+  owns: files.filter(file => matches(project.testMatch, file, true)
+    && !matches(project.testIgnore, file, false)),
+  privacy: [project.use?.trace, project.use?.screenshot, project.use?.video],
+}))))
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=REPOSITORY_ROOT, env=os.environ, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    projects = {project["name"]: project for project in json.loads(result.stdout)}
+    ordinary = {"desktop-1440", "desktop-1024", "tablet-768", "mobile-360", "touch-mobile-390"}
+    private = {
+        "esports-desktop-1440": ["esports-pc.spec.ts", "esports-recovery.spec.ts", "esports-capabilities.spec.ts"],
+        "esports-touch-844x390": ["esports-touch.spec.ts", "esports-capabilities.spec.ts"],
+        "esports-webkit-capabilities": ["esports-capabilities.spec.ts"],
+        "reactionx-desktop-1440": ["reactionx-integration.spec.ts"],
+    }
+    assert set(projects) == ordinary | set(private)
+    for name in ordinary:
+        assert projects[name]["owns"] == ["platform-foundation.spec.ts", "talent-tests.spec.ts"]
+    for name, owned in private.items():
+        assert projects[name]["owns"] == owned
+        assert projects[name]["privacy"] == ["off", "off", "off"]
     assert 'name: "esports-desktop-1440"' in source
     assert 'name: "esports-touch-844x390"' in source
     assert 'name: "esports-webkit-capabilities"' in source
-    assert source.count("...privateEsportsArtifacts") == 3
     assert 'grep: /EA-(?:PC|REC|CAP-(?:DESKTOP|NONPHONE))/' in source
     assert 'grep: /EA-(?:TOUCH|CAP-(?:RESPONSIVE|ROTATE))/' in source
     assert 'grep: /EA-CAP-WEBKIT/' in source
@@ -471,7 +522,7 @@ process.stdout.write(JSON.stringify(project.use))
             "tests/esports-capabilities.spec.ts",
         ],
         cwd=REPOSITORY_ROOT / "apps/web",
-        env=os.environ,
+        env={**os.environ, "ESPORTS_E2E_FIXED_BOARD_ACCEPTANCE": "0"},
         capture_output=True,
         text=True,
         check=False,
@@ -491,5 +542,23 @@ process.stdout.write(JSON.stringify(project.use))
         "EA-CAP-WEBKIT-005",
     }
     assert collection.returncode == 0, collection.stderr
-    assert set(re.findall(r"› (EA-[A-Z-]+-\d{3})\b", collection.stdout)) == expected_ids
+    assert set(re.findall(r"› (EA-[A-Z][A-Z0-9-]*-\d{3})\b", collection.stdout)) == expected_ids
     assert "Total: 12 tests in 4 files" in collection.stdout
+    default_pc_cases = tuple(re.findall(r"› (EA-PC-[A-Z0-9-]+)\b", collection.stdout))
+    assert default_pc_cases == REQUIRED_CASE_IDS[("esports-pc.spec.ts", "esports-desktop-1440")]
+
+    opt_in = subprocess.run(
+        [
+            str(REPOSITORY_ROOT / "apps/web/node_modules/.bin/playwright"),
+            "test", "--list", "--project=esports-desktop-1440",
+            "--grep=EA-PC-V5", "tests/esports-pc.spec.ts",
+        ],
+        cwd=REPOSITORY_ROOT / "apps/web",
+        env={**os.environ, "ESPORTS_E2E_FIXED_BOARD_ACCEPTANCE": "1"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert opt_in.returncode == 0, opt_in.stderr
+    assert re.findall(r"› (EA-PC-[A-Z0-9-]+)\b", opt_in.stdout) == ["EA-PC-V5-001"]
+    assert "Total: 1 test in 1 file" in opt_in.stdout

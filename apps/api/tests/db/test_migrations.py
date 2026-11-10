@@ -147,8 +147,41 @@ FOOD_PREFERENCE_TABLES = {
 }
 EXPECTED_TABLES |= FOOD_PREFERENCE_TABLES
 
-CURRENT_HEAD = "0071_housing_room_care"
+CURRENT_HEAD = "0090_administration_team_mgmt"
+TEAM_STAFF_TABLES = {"team_staff_assignments"}
+EXPECTED_TABLES |= TEAM_STAFF_TABLES
+TEAM_STAFF_ROLE_GRANTS = {
+    ("assistant_coach", "team_memberships.read", "assigned_team"),
+    ("assistant_coach", "personnel_intake.housing.read", "global"),
+    ("coach", "team_memberships.read", "assigned_team"),
+}
+HOUSING_PROPERTY_TABLES = {"housing_room_cards", "housing_property_changes"}
+EXPECTED_TABLES |= HOUSING_PROPERTY_TABLES
+HOUSING_PROPERTY_PERMISSIONS = {
+    "housing.changes.submit": UUID("20000000-0000-4000-8000-000000000094"),
+    "housing.changes.review": UUID("20000000-0000-4000-8000-000000000095"),
+    "housing.keycards.manage": UUID("20000000-0000-4000-8000-000000000096"),
+    "housing.exports.basic": UUID("20000000-0000-4000-8000-000000000097"),
+}
+
+
+ASSET_BATCH_TABLES = {"asset_batch_operations"}
+EXPECTED_TABLES |= ASSET_BATCH_TABLES
+APPEARANCE_TABLES = {"global_appearance"}
+EXPECTED_TABLES |= APPEARANCE_TABLES
+PERSON_ASSIGNMENT_TABLES = {
+    "person_assignment_states",
+    "person_project_assignments",
+    "person_assignment_operations",
+}
+EXPECTED_TABLES |= PERSON_ASSIGNMENT_TABLES
+ASSET_RENTAL_TABLES = {"asset_rental_operations", "asset_rental_renewals"}
+EXPECTED_TABLES |= ASSET_RENTAL_TABLES
 ASSISTED_PERSONNEL_TABLES = {
+    "quick_intake_receipts",
+    "intake_role_intents", "intake_role_decisions",
+    "intake_identity_selections", "person_team_staff_positions", "person_team_staff_authorizations",
+    "intake_activation_role_plans",
     "profile_claim_sessions", "profile_claims", "profile_claim_bindings", "profile_claim_decisions",
     "personnel_intake_requests", "personnel_intake_revisions", "personnel_credential_reservations",
     "assisted_approvals", "assisted_person_profiles", "coach_person_responsibilities",
@@ -242,6 +275,8 @@ OPERATIONS_TABLES = {
     "operations_request_minutes", "operations_alerts",
 }
 EXPECTED_TABLES |= OPERATIONS_TABLES
+OPERATIONS_ERROR_DETAIL_TABLES = {"operations_request_errors"}
+EXPECTED_TABLES |= OPERATIONS_ERROR_DETAIL_TABLES
 
 TRAVEL_REPORT_TABLES = {"travel_report_conversions"}
 EXPECTED_TABLES |= TRAVEL_REPORT_TABLES
@@ -252,6 +287,15 @@ TALENT_TEST_TABLES = {
     "talent_test_reports",
 }
 EXPECTED_TABLES |= TALENT_TEST_TABLES
+REACTIONX_TABLES = {
+    "reactionx_connectors", "reactionx_pairings", "reactionx_commands",
+    "reactionx_runs", "reactionx_events", "reactionx_result_receipts",
+}
+EXPECTED_TABLES |= REACTIONX_TABLES
+REACTIONX_PERMISSION_IDS = {
+    "reactionx.manage": UUID("20000000-0000-4000-8000-000000000092"),
+    "reactionx.conduct": UUID("20000000-0000-4000-8000-000000000093"),
+}
 
 ESPORTS_ASSESSMENT_TABLES = {
     "esports_assessment_sessions",
@@ -446,10 +490,45 @@ def _alembic_config(postgres_engine: Engine) -> Config:
     config = Config(str(API_ROOT / "alembic.ini"))
     config.set_main_option("sqlalchemy.url", database_url)
     config.attributes["database_url"] = database_url
+    config.attributes["migration_test_engine"] = postgres_engine
     return config
 
 
-def _assert_assisted_rbac_transition(connection: Connection, *, installed: bool) -> None:
+def _legacy_downgrade(config: Config, revision: str) -> None:
+    removed_grants = []
+    if revision[:4].isdigit() and int(revision[:4]) < 61:
+        # 0090 intentionally retains grants with unknown provenance. Historical
+        # pre-team-schema tests explicitly revoke the five approved defaults as
+        # fixture preparation, rather than weakening 0061's production guard.
+        # 0090's own roundtrip regression never uses this legacy-only helper.
+        with config.attributes["migration_test_engine"].begin() as connection:
+            removed_grants = [dict(row) for row in connection.execute(text(
+                "DELETE FROM role_permissions rp USING roles r,permissions p "
+                "WHERE rp.role_id=r.id AND rp.permission_id=p.id "
+                "AND r.key='administration' AND rp.scope_kind='global' "
+                "AND p.key IN ('professional_teams.manage','team_memberships.read',"
+                "'team_memberships.manage','team_memberships.transfer',"
+                "'team_manager_assignments.manage') "
+                "RETURNING rp.role_id,rp.permission_id,rp.scope_kind"
+            )).mappings()]
+    try:
+        command.downgrade(config, revision)
+    except Exception:
+        # Failed Alembic transactions retain the original schema and authority.
+        # Undo only this helper's committed preparation, not unrelated grants.
+        if removed_grants:
+            with config.attributes["migration_test_engine"].begin() as connection:
+                connection.execute(text(
+                    "INSERT INTO role_permissions(role_id,permission_id,scope_kind) "
+                    "VALUES (:role_id,:permission_id,:scope_kind) ON CONFLICT DO NOTHING"
+                ), removed_grants)
+        raise
+
+
+def _assert_assisted_rbac_transition(
+    connection: Connection, *, installed: bool, team_staff_installed: bool = False,
+    role_intents_installed: bool = False,
+) -> None:
     permissions = set(
         connection.execute(
             text("SELECT id, key, sensitive FROM permissions WHERE key = ANY(CAST(:keys AS text[]))"),
@@ -461,15 +540,27 @@ def _assert_assisted_rbac_transition(connection: Connection, *, installed: bool)
         if installed else set()
     )
     grants = _role_permission_grants(connection)
-    assert {grant for grant in grants if grant[1] in ASSISTED_PERSONNEL_PERMISSION_IDS} == (
-        ASSISTED_PERSONNEL_GRANTS if installed else set()
-    )
+    expected = ASSISTED_PERSONNEL_GRANTS if installed else set()
+    if team_staff_installed:
+        assert installed
+        expected = expected | {("assistant_coach", "personnel_intake.housing.read", "global")}
+    if role_intents_installed:
+        assert installed
+        expected = expected | {("administration", "personnel_intake.review", "global")}
+    assert {grant for grant in grants if grant[1] in ASSISTED_PERSONNEL_PERMISSION_IDS} == expected
+    assert {
+        grant for grant in grants
+        if grant[0] == "assistant_coach" or (
+            grant[0] == "coach" and grant[1:] == ("team_memberships.read", "assigned_team")
+        )
+    } == (TEAM_STAFF_ROLE_GRANTS if team_staff_installed else set())
     # 0066 retires this grant; downgrading 0066 does not resurrect global access.
     assert ("coach", "housing.read", "global") not in grants
 
 
 def _unrelated_rbac_snapshot(
-    connection: Connection, excluded_keys: set[str]
+    connection: Connection, excluded_keys: set[str], *, excluded_roles: set[str] | None = None,
+    excluded_grants: set[tuple[str, str, str]] | None = None,
 ) -> tuple[set[tuple], set[tuple[str, str, str]]]:
     permissions = set(
         connection.execute(
@@ -478,9 +569,32 @@ def _unrelated_rbac_snapshot(
         ).tuples()
     )
     grants = {
-        grant for grant in _role_permission_grants(connection) if grant[1] not in excluded_keys
+        grant for grant in _role_permission_grants(connection)
+        if grant[1] not in excluded_keys and grant[0] not in (excluded_roles or set())
+        and grant not in (excluded_grants or set())
     }
     return permissions, grants
+
+
+def _assert_reactionx_rbac_transition(connection: Connection, *, installed: bool) -> None:
+    permissions = set(
+        connection.execute(
+            text("SELECT id, key, sensitive FROM permissions WHERE key = ANY(CAST(:keys AS text[]))"),
+            {"keys": sorted(REACTIONX_PERMISSION_IDS)},
+        ).tuples()
+    )
+    assert permissions == (
+        {(id_, key, True) for key, id_ in REACTIONX_PERMISSION_IDS.items()}
+        if installed else set()
+    )
+    grants = {
+        grant for grant in _role_permission_grants(connection)
+        if grant[1] in REACTIONX_PERMISSION_IDS
+    }
+    assert grants == (
+        {("super_admin", key, "global") for key in REACTIONX_PERMISSION_IDS}
+        if installed else set()
+    )
 
 
 def test_0062_cloud_upgrade_empty_downgrade_preserves_existing_rows(
@@ -489,22 +603,25 @@ def test_0062_cloud_upgrade_empty_downgrade_preserves_existing_rows(
     config = _alembic_config(postgres_engine)
     person_id, account_id = _insert_test_account(postgres_engine)
     excluded_permission_keys = {
-        "referrals.read_invited_housing", "housing.history.void", *ASSISTED_PERSONNEL_PERMISSION_IDS
+        "referrals.read_invited_housing", "housing.history.void", "operations.appearance.manage", *ASSISTED_PERSONNEL_PERMISSION_IDS, *REACTIONX_PERMISSION_IDS, *HOUSING_PROPERTY_PERMISSIONS
     }
 
     def row_counts() -> dict[str, int]:
         with postgres_engine.connect() as connection:
             counts = {}
             for table in inspect(connection).get_table_names():
-                if table in CLOUD_BACKUP_TABLES | CLOUD_AUTH_TABLES | INVITED_HOUSING_TABLES | ASSISTED_PERSONNEL_TABLES | HOUSING_HISTORY_VOID_TABLES | HOUSING_ROOM_CARE_TABLES | {"alembic_version"}:
+                if table in CLOUD_BACKUP_TABLES | CLOUD_AUTH_TABLES | INVITED_HOUSING_TABLES | ASSISTED_PERSONNEL_TABLES | HOUSING_HISTORY_VOID_TABLES | HOUSING_ROOM_CARE_TABLES | OPERATIONS_ERROR_DETAIL_TABLES | ASSET_RENTAL_TABLES | PERSON_ASSIGNMENT_TABLES | APPEARANCE_TABLES | ASSET_BATCH_TABLES | REACTIONX_TABLES | HOUSING_PROPERTY_TABLES | TEAM_STAFF_TABLES | {"alembic_version"}:
                     continue
                 if table == "permissions":
                     statement = text("SELECT count(*) FROM permissions WHERE key <> ALL(CAST(:keys AS text[]))")
                 elif table == "role_permissions":
-                    statement = text(
-                        "SELECT count(*) FROM role_permissions rp JOIN permissions p "
-                        "ON p.id = rp.permission_id WHERE p.key <> ALL(CAST(:keys AS text[]))"
-                    )
+                    counts[table] = len({
+                        grant for grant in _role_permission_grants(connection)
+                        if grant[1] not in excluded_permission_keys and grant[0] != "property"
+                    } - TEAM_STAFF_ROLE_GRANTS)
+                    continue
+                elif table == "roles":
+                    statement = text("SELECT count(*) FROM roles WHERE key NOT IN ('property','assistant_coach')")
                 else:
                     statement = text(f'SELECT count(*) FROM "{table}"')
                 counts[table] = connection.scalar(statement, {"keys": sorted(excluded_permission_keys)})
@@ -527,8 +644,13 @@ def test_0062_cloud_upgrade_empty_downgrade_preserves_existing_rows(
             assert connection.scalar(
                 text("SELECT profile_notes FROM people WHERE id = :id"), {"id": person_id}
             ) is None
-            _assert_assisted_rbac_transition(connection, installed=True)
-            before_rbac = _unrelated_rbac_snapshot(connection, excluded_permission_keys)
+            _assert_assisted_rbac_transition(connection, installed=True, team_staff_installed=True, role_intents_installed=True)
+            _assert_reactionx_rbac_transition(connection, installed=True)
+            before_rbac = _unrelated_rbac_snapshot(
+                connection, excluded_permission_keys, excluded_roles={"property"},
+                excluded_grants=TEAM_STAFF_ROLE_GRANTS,
+            )
+            assert connection.scalar(text("SELECT count(*) FROM roles WHERE key='property'")) == 1
             before_tables = set(inspect(connection).get_table_names())
             assert CLOUD_BACKUP_TABLES <= before_tables
             for table in CLOUD_BACKUP_TABLES:
@@ -536,15 +658,25 @@ def test_0062_cloud_upgrade_empty_downgrade_preserves_existing_rows(
         command.downgrade(config, "0061_team_management")
         with postgres_engine.connect() as connection:
             _assert_assisted_rbac_transition(connection, installed=False)
-            assert _unrelated_rbac_snapshot(connection, excluded_permission_keys) == before_rbac
+            _assert_reactionx_rbac_transition(connection, installed=False)
+            assert _unrelated_rbac_snapshot(
+                connection, excluded_permission_keys, excluded_roles={"property"},
+                excluded_grants=TEAM_STAFF_ROLE_GRANTS,
+            ) == before_rbac
+            assert connection.scalar(text("SELECT count(*) FROM roles WHERE key='property'")) == 0
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0061_team_management"
-            assert set(inspect(connection).get_table_names()) == before_tables - CLOUD_BACKUP_TABLES - CLOUD_AUTH_TABLES - INVITED_HOUSING_TABLES - ASSISTED_PERSONNEL_TABLES - HOUSING_HISTORY_VOID_TABLES - HOUSING_ROOM_CARE_TABLES
+            assert set(inspect(connection).get_table_names()) == before_tables - CLOUD_BACKUP_TABLES - CLOUD_AUTH_TABLES - INVITED_HOUSING_TABLES - ASSISTED_PERSONNEL_TABLES - HOUSING_HISTORY_VOID_TABLES - HOUSING_ROOM_CARE_TABLES - OPERATIONS_ERROR_DETAIL_TABLES - ASSET_RENTAL_TABLES - PERSON_ASSIGNMENT_TABLES - APPEARANCE_TABLES - ASSET_BATCH_TABLES - REACTIONX_TABLES - HOUSING_PROPERTY_TABLES - TEAM_STAFF_TABLES
         assert row_counts() == before_counts
         assert sentinel_rows() == before_sentinel
         command.upgrade(config, CURRENT_HEAD)
         with postgres_engine.connect() as connection:
-            _assert_assisted_rbac_transition(connection, installed=True)
-            assert _unrelated_rbac_snapshot(connection, excluded_permission_keys) == before_rbac
+            _assert_assisted_rbac_transition(connection, installed=True, team_staff_installed=True, role_intents_installed=True)
+            _assert_reactionx_rbac_transition(connection, installed=True)
+            assert _unrelated_rbac_snapshot(
+                connection, excluded_permission_keys, excluded_roles={"property"},
+                excluded_grants=TEAM_STAFF_ROLE_GRANTS,
+            ) == before_rbac
+            assert connection.scalar(text("SELECT count(*) FROM roles WHERE key='property'")) == 1
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == CURRENT_HEAD
             assert set(inspect(connection).get_table_names()) == before_tables
             indexes = {index['name']: index for index in inspect(connection).get_indexes('cloud_backup_jobs')}
@@ -891,7 +1023,11 @@ def test_0065_downgrade_serializes_with_grant_holding_referenced_locks(
         return row
 
     def observe_downgrade(connection, cursor, statement, parameters, context, executemany):
-        if downgrade_pid or not statement.startswith(("LOCK TABLE", "ALTER TABLE people ")):
+        # Newer revisions lock RBAC tables and remove referenced FKs before
+        # 0065 reaches its own locks. Observe the actual first DDL/lock wait.
+        if downgrade_pid or not statement.lstrip().startswith(
+            ("LOCK TABLE", "ALTER TABLE people ", "DROP TABLE reactionx_commands")
+        ):
             return
         downgrade_pid.append(connection.connection.driver_connection.info.backend_pid)
         connection.execute(text("SET LOCAL statement_timeout = '10s'"))
@@ -937,7 +1073,9 @@ def test_0065_downgrade_serializes_with_grant_holding_referenced_locks(
                 text(
                     "SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=:pid AND NOT granted "
                     "AND relation IN ('people'::regclass, 'user_accounts'::regclass, "
-                    "'revenue_share_organizations'::regclass))"
+                    "'revenue_share_organizations'::regclass, 'roles'::regclass, "
+                    "'permissions'::regclass, 'role_permissions'::regclass, "
+                    "'user_roles'::regclass, 'user_permission_overrides'::regclass))"
                 ),
                 {"pid": downgrade_pid[0]},
             ):
@@ -2378,7 +2516,7 @@ def test_0045_enrollment_program_migration_roundtrips_cleanly(
 ) -> None:
     config = _alembic_config(postgres_engine)
     try:
-        command.downgrade(config, "0044_travel_report_conversions")
+        _legacy_downgrade(config, "0044_travel_report_conversions")
         inspector = inspect(postgres_engine)
         assert "enrollment_programs" not in inspector.get_table_names()
         admission_columns = {
@@ -2429,7 +2567,7 @@ def test_0046_removes_student_portal_finance_grants_and_roundtrips_cleanly(
     try:
         assert restricted_grants() == set()
 
-        command.downgrade(config, "0045_enrollment_program_catalog")
+        _legacy_downgrade(config, "0045_enrollment_program_catalog")
         assert restricted_grants() == {
             (role_key, permission_key, "self")
             for role_key in role_keys
@@ -2475,7 +2613,7 @@ def test_0047_self_referral_permission_roundtrips_cleanly(
             {("super_admin", "self"), ("admin", "self"), ("coach", "self")},
         )
 
-        command.downgrade(config, "0046_student_portal_permissions")
+        _legacy_downgrade(config, "0046_student_portal_permissions")
         assert permission_and_grants() == (None, set())
 
         command.upgrade(config, CURRENT_HEAD)
@@ -2508,7 +2646,7 @@ def test_0048_removes_ordinary_admin_global_asset_grants_and_roundtrips_cleanly(
     try:
         assert ordinary_admin_asset_grants() == set()
 
-        command.downgrade(config, "0047_self_referral_codes")
+        _legacy_downgrade(config, "0047_self_referral_codes")
         assert ordinary_admin_asset_grants() == expected_legacy_grants
 
         command.upgrade(config, CURRENT_HEAD)
@@ -2528,7 +2666,7 @@ def test_0050_asset_warranty_service_roundtrip(postgres_engine: Engine) -> None:
         assert "ck_assets_warranty_channel" in {
             c["name"] for c in inspect(postgres_engine).get_check_constraints("assets")
         }
-        command.downgrade(config, "0049_project_coach_selection")
+        _legacy_downgrade(config, "0049_project_coach_selection")
         assert columns.isdisjoint(c["name"] for c in inspect(postgres_engine).get_columns("assets"))
         command.upgrade(config, CURRENT_HEAD)
         assert columns <= {c["name"] for c in inspect(postgres_engine).get_columns("assets")}
@@ -2542,7 +2680,7 @@ def test_0051_keeps_historical_settlements_and_reserves_duplicate_references(
     config = _alembic_config(postgres_engine)
     person_id, user_id, first_id, second_id = (uuid4() for _ in range(4))
     try:
-        command.downgrade(config, "0050_asset_warranty_service")
+        _legacy_downgrade(config, "0050_asset_warranty_service")
         with postgres_engine.begin() as connection:
             connection.execute(text(
                 "INSERT INTO people (id,full_name,identity_ciphertext,identity_digest,sex,date_of_birth) "
@@ -2592,7 +2730,7 @@ def test_0052_operations_history_roundtrip(postgres_engine: Engine) -> None:
     tables = {"operations_metric_batches", "operations_request_minutes", "operations_alerts"}
     try:
         assert tables <= set(inspect(postgres_engine).get_table_names())
-        command.downgrade(config, "0051_settlement_idempotency")
+        _legacy_downgrade(config, "0051_settlement_idempotency")
         assert tables.isdisjoint(inspect(postgres_engine).get_table_names())
         command.upgrade(config, CURRENT_HEAD)
         assert tables <= set(inspect(postgres_engine).get_table_names())
@@ -2600,6 +2738,49 @@ def test_0052_operations_history_roundtrip(postgres_engine: Engine) -> None:
             index["name"] for index in inspect(postgres_engine).get_indexes("operations_alerts")
         }
     finally:
+        command.upgrade(config, CURRENT_HEAD)
+
+
+def test_0072_request_error_migration_preserves_existing_schema_and_guards_details(
+    postgres_engine: Engine,
+) -> None:
+    config = _alembic_config(postgres_engine)
+    before = set(inspect(postgres_engine).get_table_names())
+    assert "operations_request_errors" in before
+    indexes = {index["name"] for index in inspect(postgres_engine).get_indexes(
+        "operations_request_errors"
+    )}
+    assert {
+        "ix_operations_request_errors_occurred",
+        "ix_operations_request_errors_account_time",
+        "ix_operations_request_errors_source_time",
+    } <= indexes
+    event_id = uuid4()
+    try:
+        with postgres_engine.begin() as connection:
+            connection.execute(text(
+                "INSERT INTO operations_request_errors "
+                "(id,occurred_at,method,route,status_code,reason) "
+                "VALUES (:id,now(),'GET','/{unmatched}',404,'请求资源不存在')"
+            ), {"id": event_id})
+        with pytest.raises(RuntimeError, match="cannot downgrade request errors"):
+            command.downgrade(config, "0071_housing_room_care")
+        with postgres_engine.begin() as connection:
+            assert connection.scalar(text(
+                "SELECT count(*) FROM operations_request_errors WHERE id=:id"
+            ), {"id": event_id}) == 1
+            connection.execute(text("DELETE FROM operations_request_errors WHERE id=:id"),
+                               {"id": event_id})
+        command.downgrade(config, "0071_housing_room_care")
+        assert "operations_request_errors" not in inspect(postgres_engine).get_table_names()
+        assert before - {"operations_request_errors", "quick_intake_receipts"} - ASSET_RENTAL_TABLES - PERSON_ASSIGNMENT_TABLES - APPEARANCE_TABLES - ASSET_BATCH_TABLES - REACTIONX_TABLES - HOUSING_PROPERTY_TABLES - TEAM_STAFF_TABLES - {"intake_activation_role_plans", "intake_identity_selections", "person_team_staff_positions", "person_team_staff_authorizations", "intake_role_intents", "intake_role_decisions"} == set(inspect(postgres_engine).get_table_names())
+        command.upgrade(config, CURRENT_HEAD)
+        assert before <= set(inspect(postgres_engine).get_table_names())
+    finally:
+        with postgres_engine.begin() as connection:
+            if "operations_request_errors" in inspect(postgres_engine).get_table_names():
+                connection.execute(text("DELETE FROM operations_request_errors WHERE id=:id"),
+                                   {"id": event_id})
         command.upgrade(config, CURRENT_HEAD)
 
 
@@ -2638,7 +2819,7 @@ def test_0055_preserves_money_and_enforces_manual_operation_constraints(
             )]
 
     try:
-        command.downgrade(config, "0054_admission_order_numbers")
+        _legacy_downgrade(config, "0054_admission_order_numbers")
         with postgres_engine.begin() as connection:
             for payment_id, refund_id in zip(payment_ids, refund_ids, strict=True):
                 connection.execute(text(
@@ -2676,7 +2857,7 @@ def test_0055_preserves_money_and_enforces_manual_operation_constraints(
                     "WHERE id=:id"
                 ), {"key": key, "fingerprint": "b" * 64, "id": ids[1]})
         assert financial_snapshot() == before
-        command.downgrade(config, "0054_admission_order_numbers")
+        _legacy_downgrade(config, "0054_admission_order_numbers")
         assert financial_snapshot() == before
         command.upgrade(config, CURRENT_HEAD)
         assert financial_snapshot() == before
@@ -2711,7 +2892,7 @@ def test_0057_preserves_procurement_history_and_enforces_operation_keys(
             ), {"center": center_id}).all() for table in rows]
 
     try:
-        command.downgrade(config, "0056_evaluation_upload_cleanup")
+        _legacy_downgrade(config, "0056_evaluation_upload_cleanup")
         with postgres_engine.begin() as connection:
             connection.execute(text(
                 "INSERT INTO procurement_settlement_centers(id,name,created_by_user_id) "
@@ -2752,7 +2933,7 @@ def test_0057_preserves_procurement_history_and_enforces_operation_keys(
                     f"UPDATE {table} SET operation_key=:key,request_fingerprint=:fingerprint WHERE id=:id"
                 ), {"key": key, "fingerprint": "b" * 64, "id": ids[1]})
         assert business_snapshot() == before
-        command.downgrade(config, "0056_evaluation_upload_cleanup")
+        _legacy_downgrade(config, "0056_evaluation_upload_cleanup")
         assert business_snapshot() == before
         command.upgrade(config, CURRENT_HEAD)
         assert business_snapshot() == before
@@ -2781,7 +2962,7 @@ def test_0056_cleanup_schema_roundtrips_and_preserves_pending_work(
                 "INSERT INTO evaluation_quarantine_cleanup(storage_key) VALUES (:key)"
             ), {"key": key})
         with pytest.raises(DBAPIError, match="pending quarantine cleanup prevents downgrade"):
-            command.downgrade(config, "0055_manual_payment_idempotency")
+            _legacy_downgrade(config, "0055_manual_payment_idempotency")
         with postgres_engine.begin() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == CURRENT_HEAD
             assert connection.scalar(text(
@@ -2790,7 +2971,7 @@ def test_0056_cleanup_schema_roundtrips_and_preserves_pending_work(
             connection.execute(text(
                 "DELETE FROM evaluation_quarantine_cleanup WHERE storage_key=:key"
             ), {"key": key})
-        command.downgrade(config, "0055_manual_payment_idempotency")
+        _legacy_downgrade(config, "0055_manual_payment_idempotency")
         assert "evaluation_quarantine_cleanup" not in inspect(postgres_engine).get_table_names()
         command.upgrade(config, CURRENT_HEAD)
         assert "evaluation_quarantine_cleanup" in inspect(postgres_engine).get_table_names()
@@ -2812,7 +2993,7 @@ def test_0054_backfills_original_china_dates_without_changing_payments(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0053_revenue_share_processing")
+    _legacy_downgrade(config, "0053_revenue_share_processing")
     person_id, account_id = _insert_test_account(postgres_engine)
     case_ids = [uuid4() for _ in range(3)]
     payment_id = uuid4()
@@ -2913,7 +3094,7 @@ def test_0054_backfills_original_china_dates_without_changing_payments(
                 text("SELECT pg_get_serial_sequence('admission_cases', 'order_number')")
             ) == "public.admission_order_number_seq"
 
-        command.downgrade(config, "0053_revenue_share_processing")
+        _legacy_downgrade(config, "0053_revenue_share_processing")
         with postgres_engine.connect() as connection:
             assert business_snapshot(connection) == before
             assert "order_number" not in {
@@ -3067,7 +3248,7 @@ def test_0053_queue_backfill_and_downgrade_preserve_financial_records(
             )}
 
     try:
-        command.downgrade(config, "0052_operations_history")
+        _legacy_downgrade(config, "0052_operations_history")
         with postgres_engine.begin() as connection:
             for kind, payment_id in cases.items():
                 _insert_queue_test_payment(connection, payment_id)
@@ -3105,7 +3286,7 @@ def test_0053_queue_backfill_and_downgrade_preserve_financial_records(
             "ondelete": "CASCADE",
         }
 
-        command.downgrade(config, "0052_operations_history")
+        _legacy_downgrade(config, "0052_operations_history")
         assert "revenue_share_reconcile_queue" not in inspect(postgres_engine).get_table_names()
         with postgres_engine.connect() as connection:
             assert connection.scalar(text(
@@ -3244,7 +3425,7 @@ def test_0049_project_coach_selection_schema_and_permission_roundtrip_cleanly(
 
     try:
         assert_current_schema()
-        command.downgrade(config, "0048_admin_asset_boundary")
+        _legacy_downgrade(config, "0048_admin_asset_boundary")
         inspector = inspect(postgres_engine)
         assert "project_coach_assignments" not in inspector.get_table_names()
         assert {
@@ -3268,7 +3449,7 @@ def test_0044_travel_report_migration_roundtrips_cleanly(
 ) -> None:
     config = _alembic_config(postgres_engine)
     try:
-        command.downgrade(config, "0043_operations_monitoring")
+        _legacy_downgrade(config, "0043_operations_monitoring")
         assert "travel_report_conversions" not in inspect(postgres_engine).get_table_names()
         with postgres_engine.connect() as connection:
             assert (
@@ -3289,7 +3470,7 @@ def test_0037_procurement_invoice_migration_roundtrips_cleanly(
 ) -> None:
     config = _alembic_config(postgres_engine)
     try:
-        command.downgrade(config, "0036_daily_procurement")
+        _legacy_downgrade(config, "0036_daily_procurement")
         assert {
             "procurement_invoices",
             "procurement_invoice_purchases",
@@ -3343,7 +3524,7 @@ def test_0038_removes_ordinary_admin_financial_grants_and_roundtrips_cleanly(
 
     try:
         assert admin_restricted_grants() == set()
-        command.downgrade(config, "0037_procurement_invoices")
+        _legacy_downgrade(config, "0037_procurement_invoices")
         assert admin_restricted_grants() == restricted_permissions
         command.upgrade(config, CURRENT_HEAD)
         assert admin_restricted_grants() == set()
@@ -3360,7 +3541,7 @@ def test_0039_backfills_purchase_channels_and_roundtrips_cleanly(
     actor_person_id: UUID | None = None
     actor_id: UUID | None = None
     try:
-        command.downgrade(config, "0038_admin_finance_boundary")
+        _legacy_downgrade(config, "0038_admin_finance_boundary")
         columns_before = {
             column["name"]
             for column in inspect(postgres_engine).get_columns("daily_purchase_records")
@@ -3431,7 +3612,7 @@ def test_0040_backfills_reimbursement_status_and_roundtrips_cleanly(
     actor_person_id: UUID | None = None
     actor_id: UUID | None = None
     try:
-        command.downgrade(config, "0039_procurement_product_links")
+        _legacy_downgrade(config, "0039_procurement_product_links")
         columns_before = {
             column["name"]
             for column in inspect(postgres_engine).get_columns("daily_purchase_records")
@@ -3507,7 +3688,7 @@ def test_0041_adds_reserve_funds_and_backfills_purchase_source(
     actor_person_id: UUID | None = None
     actor_id: UUID | None = None
     try:
-        command.downgrade(config, "0040_procurement_reimbursement_status")
+        _legacy_downgrade(config, "0040_procurement_reimbursement_status")
         inspector = inspect(postgres_engine)
         assert "procurement_reserve_fund_entries" not in inspector.get_table_names()
         assert "uses_reserve_fund" not in {
@@ -3594,7 +3775,7 @@ def test_0042_adds_asset_purchase_and_warranty_details(
 ) -> None:
     config = _alembic_config(postgres_engine)
     try:
-        command.downgrade(config, "0041_procurement_reserve_funds")
+        _legacy_downgrade(config, "0041_procurement_reserve_funds")
         before_columns = {
             column["name"] for column in inspect(postgres_engine).get_columns("assets")
         }
@@ -3628,7 +3809,7 @@ def test_0043_adds_operations_heartbeat_and_super_admin_permission(
 ) -> None:
     config = _alembic_config(postgres_engine)
     try:
-        command.downgrade(config, "0042_asset_purchase_details")
+        _legacy_downgrade(config, "0042_asset_purchase_details")
         assert "operations_service_heartbeats" not in inspect(postgres_engine).get_table_names()
         with postgres_engine.connect() as connection:
             assert (
@@ -3675,7 +3856,7 @@ def test_0027_promotes_existing_roles_and_roundtrips_to_0026(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0026_verified_login_identifiers")
+    _legacy_downgrade(config, "0026_verified_login_identifiers")
     admin_person_id, admin_account_id = _insert_test_account(postgres_engine)
     staff_person_id, staff_account_id = _insert_test_account(postgres_engine)
     try:
@@ -3747,7 +3928,7 @@ def test_0027_promotes_existing_roles_and_roundtrips_to_0026(
             assert ("coach", "housing.read", "global") not in grants
             assert ("coach", "personnel_intake.housing.read", "global") in grants
 
-        command.downgrade(config, "0026_verified_login_identifiers")
+        _legacy_downgrade(config, "0026_verified_login_identifiers")
         with postgres_engine.connect() as connection:
             account_roles = {
                 account_id: set(
@@ -3808,7 +3989,7 @@ def test_0030_removes_non_super_admin_audit_grants_and_overrides(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0029_staff_approval_optional_reason")
+    _legacy_downgrade(config, "0029_staff_approval_optional_reason")
     person_id, account_id = _insert_test_account(postgres_engine)
     try:
         with postgres_engine.begin() as connection:
@@ -4202,7 +4383,7 @@ def test_0018_adds_registration_review_metadata_without_rewriting_0017(
         "reviewed_at",
     }
     try:
-        command.downgrade(config, "0016_camp_evaluation_surveys")
+        _legacy_downgrade(config, "0016_camp_evaluation_surveys")
         command.upgrade(config, "0017_self_service_registration")
         assert review_columns.isdisjoint(
             {
@@ -4217,7 +4398,7 @@ def test_0018_adds_registration_review_metadata_without_rewriting_0017(
             for column in inspect(postgres_engine).get_columns("registration_applications")
         }
 
-        command.downgrade(config, "0017_self_service_registration")
+        _legacy_downgrade(config, "0017_self_service_registration")
         assert review_columns.isdisjoint(
             {
                 column["name"]
@@ -4252,7 +4433,7 @@ def test_0018_downgrade_refuses_review_history_before_ddl(
             RuntimeError,
             match="cannot downgrade registration review metadata with review history",
         ):
-            command.downgrade(config, "0017_self_service_registration")
+            _legacy_downgrade(config, "0017_self_service_registration")
 
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
@@ -4287,7 +4468,7 @@ def test_0019_invalidates_legacy_pending_links_and_protects_downgrade(
     person_id: UUID | None = None
     account_id: UUID | None = None
     try:
-        command.downgrade(config, "0018_registration_review_metadata")
+        _legacy_downgrade(config, "0018_registration_review_metadata")
         person_id, account_id = _insert_test_account(postgres_engine)
         with postgres_engine.begin() as connection:
             connection.execute(
@@ -4328,14 +4509,14 @@ def test_0019_invalidates_legacy_pending_links_and_protects_downgrade(
             RuntimeError,
             match="cannot downgrade guardian invitation token isolation",
         ):
-            command.downgrade(config, "0018_registration_review_metadata")
+            _legacy_downgrade(config, "0018_registration_review_metadata")
 
         with postgres_engine.begin() as connection:
             connection.execute(
                 text("DELETE FROM guardian_registration_invitations WHERE id = :id"),
                 {"id": invitation_id},
             )
-        command.downgrade(config, "0018_registration_review_metadata")
+        _legacy_downgrade(config, "0018_registration_review_metadata")
         assert "handoff_token_digest" not in {
             column["name"]
             for column in inspect(postgres_engine).get_columns("guardian_registration_invitations")
@@ -4363,7 +4544,7 @@ def test_0019_repairs_committed_0018_schema_and_clears_all_invitation_contacts(
     person_id: UUID | None = None
     account_id: UUID | None = None
     try:
-        command.downgrade(config, "0018_registration_review_metadata")
+        _legacy_downgrade(config, "0018_registration_review_metadata")
         person_id, account_id = _insert_test_account(postgres_engine)
         with postgres_engine.begin() as connection:
             connection.execute(
@@ -4534,7 +4715,7 @@ def test_0020_allows_approved_pending_guardian_and_restores_old_constraint(
         "CURRENT_TIMESTAMP + INTERVAL '30 days')"
     )
     try:
-        command.downgrade(config, "0019_guardian_invitation_tokens")
+        _legacy_downgrade(config, "0019_guardian_invitation_tokens")
         command.upgrade(config, "0020_registration_review_pending_guardian")
         person_id, reviewer_id = _insert_test_account(postgres_engine)
         params["reviewer_id"] = reviewer_id
@@ -4562,7 +4743,7 @@ def test_0020_allows_approved_pending_guardian_and_restores_old_constraint(
                 text("DELETE FROM registration_applications WHERE id = :id"),
                 {"id": application_id},
             )
-        command.downgrade(config, "0019_guardian_invitation_tokens")
+        _legacy_downgrade(config, "0019_guardian_invitation_tokens")
         with pytest.raises(DBAPIError), postgres_engine.begin() as connection:
             connection.execute(insert_sql, params)
     finally:
@@ -4588,7 +4769,7 @@ def test_0020_downgrade_refuses_approved_pending_guardian_before_ddl(
     person_id: UUID | None = None
     reviewer_id: UUID | None = None
     try:
-        command.downgrade(config, "0020_registration_review_pending_guardian")
+        _legacy_downgrade(config, "0020_registration_review_pending_guardian")
         person_id, reviewer_id = _insert_test_account(postgres_engine)
         with postgres_engine.begin() as connection:
             connection.execute(
@@ -4610,7 +4791,7 @@ def test_0020_downgrade_refuses_approved_pending_guardian_before_ddl(
                 "approved pending guardian applications"
             ),
         ):
-            command.downgrade(config, "0019_guardian_invitation_tokens")
+            _legacy_downgrade(config, "0019_guardian_invitation_tokens")
 
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
@@ -4650,7 +4831,7 @@ def test_0021_adds_review_candidate_binding_and_restores_0020(
 ) -> None:
     config = _alembic_config(postgres_engine)
     try:
-        command.downgrade(config, "0020_registration_review_pending_guardian")
+        _legacy_downgrade(config, "0020_registration_review_pending_guardian")
         inspector = inspect(postgres_engine)
         assert "reviewed_candidate_person_id" not in {
             column["name"] for column in inspector.get_columns("registration_applications")
@@ -4675,7 +4856,7 @@ def test_0021_adds_review_candidate_binding_and_restores_0020(
         assert candidate_foreign_keys[0]["referred_columns"] == ["id"]
         assert candidate_foreign_keys[0]["options"] == {"ondelete": "RESTRICT"}
 
-        command.downgrade(config, "0020_registration_review_pending_guardian")
+        _legacy_downgrade(config, "0020_registration_review_pending_guardian")
         assert "reviewed_candidate_person_id" not in {
             column["name"]
             for column in inspect(postgres_engine).get_columns("registration_applications")
@@ -4692,7 +4873,7 @@ def test_0021_upgrade_refuses_unbound_approved_pending_guardian_before_ddl(
     person_id: UUID | None = None
     reviewer_id: UUID | None = None
     try:
-        command.downgrade(config, "0020_registration_review_pending_guardian")
+        _legacy_downgrade(config, "0020_registration_review_pending_guardian")
         person_id, reviewer_id = _insert_test_account(postgres_engine)
         with postgres_engine.begin() as connection:
             connection.execute(
@@ -4786,7 +4967,7 @@ def test_0021_downgrade_refuses_active_review_candidate_binding_before_ddl(
                 "active candidate bindings"
             ),
         ):
-            command.downgrade(
+            _legacy_downgrade(
                 config,
                 "0020_registration_review_pending_guardian",
             )
@@ -4866,7 +5047,7 @@ def test_0021_downgrade_locks_review_candidate_binding_against_concurrent_write(
     monkeypatch.setattr(util, "load_python_file", pausing_load_python_file)
     pool = ThreadPoolExecutor(max_workers=1)
     future = pool.submit(
-        command.downgrade,
+        _legacy_downgrade,
         config,
         "0020_registration_review_pending_guardian",
     )
@@ -4970,7 +5151,7 @@ def test_0022_uses_partial_standard_cuisine_uniqueness_and_protects_downgrade(
             RuntimeError,
             match="cannot downgrade multiple custom cuisines with repeated options",
         ):
-            command.downgrade(
+            _legacy_downgrade(
                 config,
                 "0021_registration_review_candidate_binding",
             )
@@ -5057,7 +5238,7 @@ def test_0029_allows_approval_without_reason_but_keeps_rejection_reason_required
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0028_registration_channel_settings")
+    _legacy_downgrade(config, "0028_registration_channel_settings")
     person_id, account_id = _insert_test_account(postgres_engine)
     approved_id = uuid4()
     try:
@@ -5093,7 +5274,7 @@ def test_0029_allows_approval_without_reason_but_keeps_rejection_reason_required
                 },
             )
 
-        command.downgrade(config, "0028_registration_channel_settings")
+        _legacy_downgrade(config, "0028_registration_channel_settings")
         with postgres_engine.connect() as connection:
             assert (
                 connection.scalar(
@@ -5118,7 +5299,7 @@ def test_0029_allows_approval_without_reason_but_keeps_rejection_reason_required
 
 def test_0026_removes_primary_login_invariant(postgres_engine: Engine) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0025_password_reset_mail_template")
+    _legacy_downgrade(config, "0025_password_reset_mail_template")
     person_id, account_id = _insert_test_account(postgres_engine)
     email_identifier_id = uuid4()
     try:
@@ -5208,7 +5389,7 @@ def test_0026_downgrade_restores_deterministic_primary_identifier(
                 },
             )
 
-        command.downgrade(config, "0025_password_reset_mail_template")
+        _legacy_downgrade(config, "0025_password_reset_mail_template")
         with postgres_engine.connect() as connection:
             rows = list(
                 connection.execute(
@@ -5284,7 +5465,7 @@ def test_food_preference_migration_round_trip_restores_schema_and_grants(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0014_teaching_reports")
+    _legacy_downgrade(config, "0014_teaching_reports")
     try:
         inspector = inspect(postgres_engine)
         assert FOOD_PREFERENCE_TABLES.isdisjoint(inspector.get_table_names())
@@ -5313,7 +5494,7 @@ def test_camp_survey_migration_round_trip_restores_schema_and_grants(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0015_food_preferences")
+    _legacy_downgrade(config, "0015_food_preferences")
     try:
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
@@ -5341,7 +5522,7 @@ def test_0017_backfills_only_legacy_phone_login(postgres_engine: Engine) -> None
     from app.security.encryption import EnvelopeCipher, LookupDigest
 
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     person_id, account_id = _insert_test_account(postgres_engine)
     normalized_email = f"operator-{account_id}@example.com"
     try:
@@ -5456,7 +5637,7 @@ def test_0017_preserves_multi_profile_relationship_guardians(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     guardian_id = uuid4()
     student_id = uuid4()
     relationship_id = uuid4()
@@ -5524,12 +5705,12 @@ def test_0017_preserves_multi_profile_relationship_guardians(
                 is True
             )
 
-        command.downgrade(config, "0016_camp_evaluation_surveys")
+        _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     finally:
         with postgres_engine.connect() as connection:
             current_revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
         if current_revision == CURRENT_HEAD:
-            command.downgrade(config, "0016_camp_evaluation_surveys")
+            _legacy_downgrade(config, "0016_camp_evaluation_surveys")
         with postgres_engine.begin() as connection:
             connection.execute(
                 text("DELETE FROM guardian_relationships WHERE id = :id"),
@@ -5556,7 +5737,7 @@ def test_0017_normalizes_legacy_phone_before_domain_digest(
     from app.security.encryption import EnvelopeCipher, LookupDigest
 
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     legacy_phone = " 13800138000 "
     normalized_phone = "13800138000"
     person_id: UUID | None = None
@@ -5628,7 +5809,7 @@ def test_registration_upgrade_rejects_invalid_legacy_phone_before_ddl(
     from app.security.encryption import EnvelopeCipher
 
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     person_id, account_id = _insert_test_account(postgres_engine)
     try:
         with postgres_engine.begin() as connection:
@@ -5691,7 +5872,7 @@ def test_registration_upgrade_rejects_new_phone_domain_collision_before_ddl(
     from app.security.encryption import LookupDigest
 
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     first_person_id, first_account_id = _insert_test_account(postgres_engine)
     second_person_id, second_account_id = _insert_test_account(postgres_engine)
     original_digest_domain = LookupDigest.digest_domain
@@ -5730,7 +5911,7 @@ def test_registration_migration_round_trip_restores_schema_and_grants(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     person_id, account_id = _insert_test_account(postgres_engine)
     normalized_email = f"operator-{account_id}@example.com"
     try:
@@ -5744,7 +5925,7 @@ def test_registration_migration_round_trip_restores_schema_and_grants(
         schema_calls = _record_registration_schema_calls(monkeypatch)
         command.upgrade(config, CURRENT_HEAD)
         assert schema_calls == ["_create_schema"]
-        command.downgrade(config, "0016_camp_evaluation_surveys")
+        _legacy_downgrade(config, "0016_camp_evaluation_surveys")
         assert schema_calls == ["_create_schema", "_drop_schema"]
 
         inspector = inspect(postgres_engine)
@@ -5801,7 +5982,7 @@ def test_registration_upgrade_rejects_invalid_key_before_ddl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     monkeypatch.setenv("FIELD_ENCRYPTION_MASTER_KEY", "not valid base64!")
     schema_calls = _record_registration_schema_calls(monkeypatch)
     try:
@@ -5836,7 +6017,7 @@ def test_registration_migration_reads_secret_file_fallback(
     secret_name: str,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     key_file = tmp_path / secret_name.casefold()
     key_file.write_text(MIGRATION_TEST_KEY + "\r\n", encoding="utf-8")
     monkeypatch.delenv(secret_name, raising=False)
@@ -5859,7 +6040,7 @@ def test_registration_migration_prefers_direct_secret_over_file(
     secret_name: str,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     key_file = tmp_path / f"invalid-{secret_name.casefold()}"
     key_file.write_text("not valid base64!\r\n", encoding="utf-8")
     monkeypatch.setenv(secret_name, MIGRATION_TEST_KEY)
@@ -5877,7 +6058,7 @@ def test_registration_migration_secret_file_read_error_is_stable(
     tmp_path: Path,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     missing_file = tmp_path / "private-field-key"
     monkeypatch.delenv("FIELD_ENCRYPTION_MASTER_KEY", raising=False)
     monkeypatch.setenv("FIELD_ENCRYPTION_MASTER_KEY_FILE", str(missing_file))
@@ -5897,7 +6078,7 @@ def test_registration_upgrade_rejects_mismatched_legacy_emails_atomically(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     person_id, account_id = _insert_test_account(postgres_engine)
     try:
         with postgres_engine.begin() as connection:
@@ -5940,7 +6121,7 @@ def test_registration_upgrade_rejects_missing_legacy_phone_atomically(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     with postgres_engine.begin() as connection:
         connection.execute(
             text("ALTER TABLE user_accounts ALTER COLUMN login_phone_digest DROP NOT NULL")
@@ -5979,7 +6160,7 @@ def test_registration_upgrade_rejects_duplicate_legacy_phone_atomically(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     with postgres_engine.begin() as connection:
         connection.execute(
             text("ALTER TABLE user_accounts DROP CONSTRAINT user_accounts_login_phone_digest_key")
@@ -6045,7 +6226,7 @@ def test_registration_downgrade_refuses_nonbaseline_state_before_ddl(
     mutation: str,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     person_id, account_id = _insert_test_account(postgres_engine)
     command.upgrade(config, CURRENT_HEAD)
 
@@ -6166,7 +6347,7 @@ def test_registration_downgrade_refuses_nonbaseline_state_before_ddl(
 
         schema_calls = _record_registration_schema_calls(monkeypatch)
         with pytest.raises(RuntimeError, match="cannot downgrade self-service registration"):
-            command.downgrade(config, "0016_camp_evaluation_surveys")
+            _legacy_downgrade(config, "0016_camp_evaluation_surveys")
         assert "_drop_schema" not in schema_calls
 
         with postgres_engine.connect() as connection:
@@ -6220,7 +6401,7 @@ def test_registration_downgrade_refuses_nonbaseline_guardian_profile_before_ddl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     person_id, account_id = _insert_test_account(postgres_engine)
     command.upgrade(config, CURRENT_HEAD)
     student_id = uuid4()
@@ -6254,7 +6435,7 @@ def test_registration_downgrade_refuses_nonbaseline_guardian_profile_before_ddl(
             RuntimeError,
             match="cannot downgrade self-service registration with changed guardian profile",
         ):
-            command.downgrade(config, "0016_camp_evaluation_surveys")
+            _legacy_downgrade(config, "0016_camp_evaluation_surveys")
         assert "_drop_schema" not in schema_calls
 
         with postgres_engine.connect() as connection:
@@ -6296,7 +6477,7 @@ def test_registration_downgrade_refuses_new_standalone_guardian_before_ddl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0016_camp_evaluation_surveys")
+    _legacy_downgrade(config, "0016_camp_evaluation_surveys")
     person_id, account_id = _insert_test_account(postgres_engine)
     command.upgrade(config, CURRENT_HEAD)
     new_guardian_id = uuid4()
@@ -6322,7 +6503,7 @@ def test_registration_downgrade_refuses_new_standalone_guardian_before_ddl(
             RuntimeError,
             match="cannot downgrade self-service registration with changed guardian profile",
         ):
-            command.downgrade(config, "0016_camp_evaluation_surveys")
+            _legacy_downgrade(config, "0016_camp_evaluation_surveys")
         assert "_drop_schema" not in schema_calls
 
         with postgres_engine.connect() as connection:
@@ -6375,7 +6556,7 @@ def test_food_preference_downgrade_refuses_completed_onboarding_before_ddl(
             RuntimeError,
             match="cannot downgrade food preferences with completed onboarding data",
         ):
-            command.downgrade(config, "0014_teaching_reports")
+            _legacy_downgrade(config, "0014_teaching_reports")
 
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
@@ -6436,7 +6617,7 @@ def test_food_preference_downgrade_refuses_account_override_before_ddl(
             RuntimeError,
             match="cannot downgrade food preferences with non-seed permission references",
         ):
-            command.downgrade(config, "0014_teaching_reports")
+            _legacy_downgrade(config, "0014_teaching_reports")
 
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
@@ -6501,6 +6682,7 @@ def test_housing_foundation_migration_seeds_catalog_and_permissions(
                 | HOUSING_OCCUPANCY_PERMISSION_IDS
                 | {"housing.reports.export_sensitive": HOUSING_REPORT_PERMISSION_ID}
                 | {"housing.history.void": UUID("20000000-0000-4000-8000-000000000090")}
+                | HOUSING_PROPERTY_PERMISSIONS
             ).items()
         }
         assert connection.execute(
@@ -6535,7 +6717,7 @@ def test_housing_reporting_upgrade_and_downgrade_preserves_0010_data(
             )
         ).one()
     try:
-        command.downgrade(config, "0010_housing_occupancy_lifecycle")
+        _legacy_downgrade(config, "0010_housing_occupancy_lifecycle")
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
                 "0010_housing_occupancy_lifecycle"
@@ -8741,7 +8923,7 @@ def test_guardian_history_upgrade_preserves_existing_relationship(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0002_seed_rbac")
+    _legacy_downgrade(config, "0002_seed_rbac")
     guardian_id, student_id = _insert_people(postgres_engine)
     try:
         with postgres_engine.begin() as connection:
@@ -8835,7 +9017,7 @@ def test_guardian_history_normal_downgrade_preserves_single_pair(
                 },
             )
 
-        command.downgrade(config, "0002_seed_rbac")
+        _legacy_downgrade(config, "0002_seed_rbac")
 
         inspector = inspect(postgres_engine)
         assert inspector.get_pk_constraint("guardian_relationships")["constrained_columns"] == [
@@ -8916,7 +9098,7 @@ def test_guardian_history_downgrade_refuses_repeated_pair_before_ddl(
             DBAPIError,
             match="cannot downgrade guardian history with repeated pairs",
         ):
-            command.downgrade(config, "0002_seed_rbac")
+            _legacy_downgrade(config, "0002_seed_rbac")
 
         inspector = inspect(postgres_engine)
         assert "id" in {
@@ -9092,7 +9274,7 @@ def test_teaching_seed_only_downgrade_returns_to_guardian_history(
 ) -> None:
     config = _alembic_config(postgres_engine)
     try:
-        command.downgrade(config, "0003_guardian_relationship_history")
+        _legacy_downgrade(config, "0003_guardian_relationship_history")
 
         inspector = inspect(postgres_engine)
         with postgres_engine.connect() as connection:
@@ -9147,7 +9329,7 @@ def test_teaching_downgrade_refuses_non_seed_data_before_changes(
             DBAPIError,
             match="cannot downgrade teaching configuration with non-seed teaching data",
         ):
-            command.downgrade(config, "0003_guardian_relationship_history")
+            _legacy_downgrade(config, "0003_guardian_relationship_history")
 
         with postgres_engine.connect() as connection:
             project_name = connection.scalar(
@@ -9196,7 +9378,7 @@ def test_teaching_downgrade_refuses_modified_initial_project_before_changes(
             DBAPIError,
             match="cannot downgrade teaching configuration with modified initial projects",
         ):
-            command.downgrade(config, "0003_guardian_relationship_history")
+            _legacy_downgrade(config, "0003_guardian_relationship_history")
 
         with postgres_engine.connect() as connection:
             project = connection.execute(
@@ -9249,7 +9431,7 @@ def test_teaching_downgrade_refuses_account_override_before_changes(
             DBAPIError,
             match="cannot downgrade teaching configuration with account permission overrides",
         ):
-            command.downgrade(config, "0003_guardian_relationship_history")
+            _legacy_downgrade(config, "0003_guardian_relationship_history")
 
         with postgres_engine.connect() as connection:
             override = connection.execute(
@@ -9287,7 +9469,7 @@ def test_teaching_downgrade_refuses_modified_permission_before_changes(
             DBAPIError,
             match="cannot downgrade teaching configuration with modified permission seeds",
         ):
-            command.downgrade(config, "0003_guardian_relationship_history")
+            _legacy_downgrade(config, "0003_guardian_relationship_history")
 
         with postgres_engine.connect() as connection:
             permission_name = connection.scalar(
@@ -9323,7 +9505,7 @@ def test_teaching_downgrade_refuses_customized_grant_before_changes(
             DBAPIError,
             match="cannot downgrade teaching configuration with customized role grants",
         ):
-            command.downgrade(config, "0003_guardian_relationship_history")
+            _legacy_downgrade(config, "0003_guardian_relationship_history")
 
         with postgres_engine.connect() as connection:
             grant_exists = connection.scalar(
@@ -9352,7 +9534,7 @@ def test_teaching_downgrade_refuses_customized_grant_before_changes(
 def test_admissions_upgrade_from_teaching_revision(postgres_engine: Engine) -> None:
     config = _alembic_config(postgres_engine)
     try:
-        command.downgrade(config, "0004_teaching_configuration")
+        _legacy_downgrade(config, "0004_teaching_configuration")
 
         with postgres_engine.connect() as connection:
             revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
@@ -9411,7 +9593,7 @@ def test_admissions_downgrade_refuses_business_data_before_changes(
             DBAPIError,
             match="cannot downgrade admissions enrollment with business data",
         ):
-            command.downgrade(config, "0004_teaching_configuration")
+            _legacy_downgrade(config, "0004_teaching_configuration")
 
         with postgres_engine.connect() as connection:
             exists = connection.scalar(
@@ -9461,7 +9643,7 @@ def test_admissions_downgrade_refuses_permission_override_before_changes(
             DBAPIError,
             match="cannot downgrade admissions enrollment with account permission overrides",
         ):
-            command.downgrade(config, "0004_teaching_configuration")
+            _legacy_downgrade(config, "0004_teaching_configuration")
 
         with postgres_engine.connect() as connection:
             exists = connection.scalar(
@@ -9499,7 +9681,7 @@ def test_admissions_downgrade_refuses_customized_grant_before_changes(
             DBAPIError,
             match="cannot downgrade admissions enrollment with customized role grants",
         ):
-            command.downgrade(config, "0004_teaching_configuration")
+            _legacy_downgrade(config, "0004_teaching_configuration")
 
         with postgres_engine.connect() as connection:
             exists = connection.scalar(
@@ -9554,7 +9736,7 @@ def test_portal_migration_upgrades_from_and_downgrades_to_0005(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0005_admissions_enrollment")
+    _legacy_downgrade(config, "0005_admissions_enrollment")
     try:
         with postgres_engine.connect() as connection:
             assert (
@@ -9585,7 +9767,7 @@ def test_portal_migration_upgrades_from_and_downgrades_to_0005(
             )
             assert PORTAL_GRANTS <= _role_permission_grants(connection)
 
-        command.downgrade(config, "0005_admissions_enrollment")
+        _legacy_downgrade(config, "0005_admissions_enrollment")
         with postgres_engine.connect() as connection:
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
@@ -9611,7 +9793,7 @@ def test_evaluation_migration_upgrade_downgrade_upgrade_restores_schema_and_gran
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0006_coach_family_portal")
+    _legacy_downgrade(config, "0006_coach_family_portal")
     try:
         with postgres_engine.connect() as connection:
             assert EVALUATION_TABLES.isdisjoint(set(inspect(connection).get_table_names()))
@@ -9642,7 +9824,7 @@ def test_evaluation_migration_upgrade_downgrade_upgrade_restores_schema_and_gran
                 if grant[1] == "evaluation_center.access"
             } == LEGACY_EVALUATION_ACCESS_GRANTS
 
-        command.downgrade(config, "0006_coach_family_portal")
+        _legacy_downgrade(config, "0006_coach_family_portal")
         with postgres_engine.connect() as connection:
             assert EVALUATION_TABLES.isdisjoint(set(inspect(connection).get_table_names()))
             assert (
@@ -9682,7 +9864,7 @@ def test_evaluation_upgrade_refuses_preexisting_permission_before_ddl(
     permission_key: str,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0006_coach_family_portal")
+    _legacy_downgrade(config, "0006_coach_family_portal")
     params = {
         "permission_id": permission_id,
         "permission_key": permission_key,
@@ -9754,7 +9936,7 @@ def test_evaluation_downgrade_refuses_account_override_before_ddl(
             RuntimeError,
             match="cannot downgrade evaluation page with account permission overrides",
         ):
-            command.downgrade(config, "0006_coach_family_portal")
+            _legacy_downgrade(config, "0006_coach_family_portal")
 
         with postgres_engine.connect() as connection:
             _assert_evaluation_downgrade_state_is_intact(connection, request_id)
@@ -9805,7 +9987,7 @@ def test_evaluation_downgrade_refuses_customized_immutable_permission_before_ddl
             RuntimeError,
             match="cannot downgrade evaluation page with modified permission seed",
         ):
-            command.downgrade(config, "0006_coach_family_portal")
+            _legacy_downgrade(config, "0006_coach_family_portal")
 
         with postgres_engine.connect() as connection:
             _assert_evaluation_downgrade_state_is_intact(connection, request_id)
@@ -9879,7 +10061,7 @@ def test_evaluation_downgrade_refuses_customized_or_missing_fixed_global_grant_b
             RuntimeError,
             match="cannot downgrade evaluation page with customized grants",
         ):
-            command.downgrade(config, "0006_coach_family_portal")
+            _legacy_downgrade(config, "0006_coach_family_portal")
 
         expected_grants = EVALUATION_ACCESS_GRANTS - {fixed_grant}
         if replacement_scope is not None:
@@ -9940,7 +10122,7 @@ def test_evaluation_downgrade_refuses_extra_grant_before_ddl(
             RuntimeError,
             match="cannot downgrade evaluation page with customized grants",
         ):
-            command.downgrade(config, "0006_coach_family_portal")
+            _legacy_downgrade(config, "0006_coach_family_portal")
 
         with postgres_engine.connect() as connection:
             _assert_evaluation_downgrade_state_is_intact(connection, request_id)
@@ -10033,7 +10215,7 @@ def test_evaluation_downgrade_locks_seed_rows_against_concurrent_customization(
         )
         pool = ThreadPoolExecutor(max_workers=1)
         future = pool.submit(
-            command.downgrade,
+            _legacy_downgrade,
             config,
             "0006_coach_family_portal",
         )
@@ -10100,8 +10282,17 @@ def test_0058_talent_upgrade_downgrade_preserves_existing_rows_and_grants(
         | TEAM_MANAGEMENT_PERMISSION_KEYS
         | {"referrals.read_invited_housing"}
         | {"housing.history.void"}
+        | {"operations.appearance.manage"}
         | set(ASSISTED_PERSONNEL_PERMISSION_IDS)
+        | set(REACTIONX_PERMISSION_IDS)
+        | set(HOUSING_PROPERTY_PERMISSIONS)
     )
+
+    # Legacy setup removes this 0090 catalog grant before crossing 0061;
+    # other roles' catalog grants and the permission definition remain unrelated.
+    excluded_grants = TEAM_STAFF_ROLE_GRANTS | {
+        ("administration", "professional_teams.manage", "global"),
+    }
 
     def preserved_row_counts() -> dict[str, int]:
         inspector = inspect(postgres_engine)
@@ -10112,6 +10303,8 @@ def test_0058_talent_upgrade_downgrade_preserves_existing_rows_and_grants(
                     TALENT_TEST_TABLES | ESPORTS_ASSESSMENT_TABLES | TEAM_MANAGEMENT_TABLES
                     | CLOUD_BACKUP_TABLES | CLOUD_AUTH_TABLES | INVITED_HOUSING_TABLES | ASSISTED_PERSONNEL_TABLES
                     | HOUSING_HISTORY_VOID_TABLES | HOUSING_ROOM_CARE_TABLES
+                    | OPERATIONS_ERROR_DETAIL_TABLES | ASSET_RENTAL_TABLES | PERSON_ASSIGNMENT_TABLES | APPEARANCE_TABLES | ASSET_BATCH_TABLES | REACTIONX_TABLES
+                    | HOUSING_PROPERTY_TABLES | TEAM_STAFF_TABLES
                 ):
                     continue
                 if table_name == "permissions":
@@ -10120,11 +10313,11 @@ def test_0058_talent_upgrade_downgrade_preserves_existing_rows_and_grants(
                         "WHERE key <> ALL(CAST(:keys AS text[]))"
                     )
                 elif table_name == "role_permissions":
-                    statement = text(
-                        "SELECT count(*) FROM role_permissions rp "
-                        "JOIN permissions p ON p.id = rp.permission_id "
-                        "WHERE p.key <> ALL(CAST(:keys AS text[]))"
-                    )
+                    counts[table_name] = len({
+                        grant for grant in _role_permission_grants(connection)
+                        if grant[1] not in excluded_permission_keys and grant[0] != "property"
+                    } - excluded_grants)
+                    continue
                 elif table_name == "user_permission_overrides":
                     statement = text(
                         "SELECT count(*) FROM user_permission_overrides upo "
@@ -10134,7 +10327,7 @@ def test_0058_talent_upgrade_downgrade_preserves_existing_rows_and_grants(
                 elif table_name == "roles":
                     statement = text(
                         "SELECT count(*) FROM roles "
-                        "WHERE key NOT IN ('team_member', 'team_manager')"
+                        "WHERE key NOT IN ('team_member', 'team_manager', 'property', 'assistant_coach')"
                     )
                 elif table_name == "game_projects":
                     statement = text(
@@ -10197,13 +10390,24 @@ def test_0058_talent_upgrade_downgrade_preserves_existing_rows_and_grants(
             )
         before = preserved_row_counts()
         with postgres_engine.connect() as connection:
-            _assert_assisted_rbac_transition(connection, installed=True)
-            before_rbac = _unrelated_rbac_snapshot(connection, excluded_permission_keys)
+            _assert_assisted_rbac_transition(connection, installed=True, team_staff_installed=True, role_intents_installed=True)
+            _assert_reactionx_rbac_transition(connection, installed=True)
+            before_rbac = _unrelated_rbac_snapshot(
+                connection, excluded_permission_keys, excluded_roles={"property"},
+                excluded_grants=excluded_grants,
+            )
+            assert connection.scalar(text("SELECT count(*) FROM roles WHERE key='property'")) == 1
 
-        command.downgrade(config, "0057_procurement_idempotency")
+        _legacy_downgrade(config, "0057_procurement_idempotency")
         with postgres_engine.connect() as connection:
             _assert_assisted_rbac_transition(connection, installed=False)
-            assert _unrelated_rbac_snapshot(connection, excluded_permission_keys) == before_rbac
+            _assert_reactionx_rbac_transition(connection, installed=False)
+            assert _unrelated_rbac_snapshot(
+                connection, excluded_permission_keys, excluded_roles={"property"},
+                excluded_grants=excluded_grants,
+            ) == before_rbac
+            assert connection.scalar(text("SELECT count(*) FROM roles WHERE key='property'")) == 0
+            assert REACTIONX_TABLES.isdisjoint(inspect(connection).get_table_names())
             assert TALENT_TEST_TABLES.isdisjoint(
                 set(inspect(connection).get_table_names())
             )
@@ -10256,8 +10460,14 @@ def test_0058_talent_upgrade_downgrade_preserves_existing_rows_and_grants(
         command.upgrade(config, CURRENT_HEAD)
         assert preserved_row_counts() == before
         with postgres_engine.connect() as connection:
-            _assert_assisted_rbac_transition(connection, installed=True)
-            assert _unrelated_rbac_snapshot(connection, excluded_permission_keys) == before_rbac
+            _assert_assisted_rbac_transition(connection, installed=True, team_staff_installed=True, role_intents_installed=True)
+            _assert_reactionx_rbac_transition(connection, installed=True)
+            assert _unrelated_rbac_snapshot(
+                connection, excluded_permission_keys, excluded_roles={"property"},
+                excluded_grants=excluded_grants,
+            ) == before_rbac
+            assert connection.scalar(text("SELECT count(*) FROM roles WHERE key='property'")) == 1
+            assert REACTIONX_TABLES <= set(inspect(connection).get_table_names())
             assert TALENT_TEST_TABLES <= set(inspect(connection).get_table_names())
             assert connection.execute(
                 text(
@@ -10484,7 +10694,7 @@ def test_0059_downgrade_blocks_concurrent_insert_after_guard_through_ddl(
         tables_before = set(inspect(connection).get_table_names())
     pool = ThreadPoolExecutor(max_workers=1)
     event.listen(Engine, "after_cursor_execute", pause_after_guard)
-    future = pool.submit(command.downgrade, config, "0058_talent_tests")
+    future = pool.submit(_legacy_downgrade, config, "0058_talent_tests")
     try:
         assert guard_checked.wait(timeout=10), "downgrade did not reach its guard"
         with postgres_engine.connect() as writer:
@@ -10520,6 +10730,8 @@ def test_0059_downgrade_blocks_concurrent_insert_after_guard_through_ddl(
                 tables_before - ESPORTS_ASSESSMENT_TABLES - TEAM_MANAGEMENT_TABLES
                 - CLOUD_BACKUP_TABLES - CLOUD_AUTH_TABLES - INVITED_HOUSING_TABLES - ASSISTED_PERSONNEL_TABLES
                 - HOUSING_HISTORY_VOID_TABLES - HOUSING_ROOM_CARE_TABLES
+                - OPERATIONS_ERROR_DETAIL_TABLES - ASSET_RENTAL_TABLES - PERSON_ASSIGNMENT_TABLES - APPEARANCE_TABLES - ASSET_BATCH_TABLES
+                - REACTIONX_TABLES - HOUSING_PROPERTY_TABLES - TEAM_STAFF_TABLES
             )
             assert (
                 connection.scalar(
@@ -10583,7 +10795,7 @@ def test_0059_downgrade_waits_for_prior_writer_then_refuses_without_ddl(
                     account_id=account_id,
                     session_id=session_id,
                 )
-                future = pool.submit(command.downgrade, config, "0058_talent_tests")
+                future = pool.submit(_legacy_downgrade, config, "0058_talent_tests")
                 deadline = monotonic() + 10
                 blocked = False
                 with postgres_engine.connect().execution_options(
@@ -10653,7 +10865,7 @@ def test_0059_talent_dynamic_vision_upgrade_downgrade_preserves_legacy_rows(
         ],
     }
     try:
-        command.downgrade(config, "0058_talent_tests")
+        _legacy_downgrade(config, "0058_talent_tests")
         with postgres_engine.begin() as connection:
             tables_before = set(inspect(connection).get_table_names())
             session_id = _insert_talent_migration_session(
@@ -10692,7 +10904,7 @@ def test_0059_talent_dynamic_vision_upgrade_downgrade_preserves_legacy_rows(
                 {"id": dynamic_result_id},
             )
 
-        command.downgrade(config, "0058_talent_tests")
+        _legacy_downgrade(config, "0058_talent_tests")
         with postgres_engine.begin() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
                 "0058_talent_tests"
@@ -10734,7 +10946,7 @@ def test_0059_talent_dynamic_vision_downgrade_rejects_new_data_without_deleting(
     config = _alembic_config(postgres_engine)
     person_id, account_id = _insert_test_account(postgres_engine)
     try:
-        command.downgrade(config, "0059_talent_dynamic_vision")
+        _legacy_downgrade(config, "0059_talent_dynamic_vision")
         with postgres_engine.begin() as connection:
             version = "talent-training-v3" if new_data.startswith("v3_") else "talent-training-v2"
             session_id = _insert_talent_migration_session(
@@ -10780,7 +10992,7 @@ def test_0059_talent_dynamic_vision_downgrade_rejects_new_data_without_deleting(
             RuntimeError,
             match="存在八项天赋测试数据，拒绝降级；未删除任何记录",
         ):
-            command.downgrade(config, "0058_talent_tests")
+            _legacy_downgrade(config, "0058_talent_tests")
 
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
@@ -10820,7 +11032,7 @@ def test_portal_upgrade_refuses_preexisting_permission_before_ddl(
     permission_key: str,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0005_admissions_enrollment")
+    _legacy_downgrade(config, "0005_admissions_enrollment")
     params = {
         "permission_id": permission_id,
         "permission_key": permission_key,
@@ -10870,7 +11082,7 @@ def test_portal_upgrade_refuses_preexisting_default_grant_before_ddl(
         "role_id": UUID("10000000-0000-4000-8000-000000000002"),
         "permission_id": UUID("20000000-0000-4000-8000-000000000021"),
     }
-    command.downgrade(config, "0005_admissions_enrollment")
+    _legacy_downgrade(config, "0005_admissions_enrollment")
     try:
         with postgres_engine.begin() as connection:
             connection.execute(
@@ -10934,6 +11146,7 @@ def test_portal_downgrade_refuses_account_override_before_ddl(
     config = _alembic_config(postgres_engine)
     with postgres_engine.connect() as connection:
         _assert_portal_ddl_is_intact(connection)
+        original_grants = _role_permission_grants(connection)
     person_id, account_id = _insert_test_account(postgres_engine)
     override_id = uuid4()
     try:
@@ -10955,10 +11168,11 @@ def test_portal_downgrade_refuses_account_override_before_ddl(
             RuntimeError,
             match="cannot downgrade portal with account permission overrides",
         ):
-            command.downgrade(config, "0005_admissions_enrollment")
+            _legacy_downgrade(config, "0005_admissions_enrollment")
 
         with postgres_engine.connect() as connection:
             _assert_portal_ddl_is_intact(connection)
+            assert _role_permission_grants(connection) == original_grants
             assert (
                 connection.scalar(
                     text("SELECT EXISTS (SELECT 1 FROM user_permission_overrides WHERE id = :id)"),
@@ -10997,7 +11211,7 @@ def test_portal_downgrade_refuses_modified_permission_seed_before_ddl(
             RuntimeError,
             match="cannot downgrade portal with modified permission seed",
         ):
-            command.downgrade(config, "0005_admissions_enrollment")
+            _legacy_downgrade(config, "0005_admissions_enrollment")
 
         with postgres_engine.connect() as connection:
             _assert_portal_ddl_is_intact(connection)
@@ -11043,7 +11257,7 @@ def test_portal_downgrade_refuses_customized_roster_grant_before_ddl(
             RuntimeError,
             match="cannot downgrade portal with customized coach roster grants",
         ):
-            command.downgrade(config, "0005_admissions_enrollment")
+            _legacy_downgrade(config, "0005_admissions_enrollment")
 
         with postgres_engine.connect() as connection:
             _assert_portal_ddl_is_intact(connection)
@@ -11095,7 +11309,7 @@ def test_portal_downgrade_refuses_modified_default_grant_before_ddl(
             RuntimeError,
             match="cannot downgrade portal with modified default grants",
         ):
-            command.downgrade(config, "0005_admissions_enrollment")
+            _legacy_downgrade(config, "0005_admissions_enrollment")
 
         with postgres_engine.connect() as connection:
             _assert_portal_ddl_is_intact(connection)
@@ -11127,7 +11341,7 @@ def test_evaluation_foundation_upgrade_downgrade_upgrade_restores_clean_schema(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0007_evaluation_page_integration")
+    _legacy_downgrade(config, "0007_evaluation_page_integration")
     try:
         with postgres_engine.connect() as connection:
             inspector = inspect(connection)
@@ -11166,7 +11380,7 @@ def test_system_evaluation_upgrade_downgrade_upgrade_restores_clean_schema(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0011_housing_real_name_reporting")
+    _legacy_downgrade(config, "0011_housing_real_name_reporting")
     try:
         with postgres_engine.connect() as connection:
             inspector = inspect(connection)
@@ -11203,7 +11417,7 @@ def test_system_evaluation_manual_review_upgrade_downgrade_roundtrip(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0012_system_evaluation_processing")
+    _legacy_downgrade(config, "0012_system_evaluation_processing")
     try:
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
@@ -11225,7 +11439,7 @@ def test_teaching_reports_upgrade_downgrade_upgrade_restores_clean_schema(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0013_system_evaluation_manual_review")
+    _legacy_downgrade(config, "0013_system_evaluation_manual_review")
     try:
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
@@ -11260,14 +11474,17 @@ def test_teaching_reports_downgrade_refuses_business_rows_before_ddl(
         author_person_id=author_person_id,
         author_account_id=author_account_id,
     )
+    with postgres_engine.connect() as connection:
+        original_grants = _role_permission_grants(connection)
     try:
         with pytest.raises(
             RuntimeError,
             match="cannot downgrade teaching reports with business data",
         ):
-            command.downgrade(config, "0013_system_evaluation_manual_review")
+            _legacy_downgrade(config, "0013_system_evaluation_manual_review")
 
         with postgres_engine.connect() as connection:
+            assert _role_permission_grants(connection) == original_grants
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
                 CURRENT_HEAD
             )
@@ -11316,7 +11533,7 @@ def test_teaching_reports_downgrade_refuses_extra_role_grant_before_ddl(
             RuntimeError,
             match=("cannot downgrade teaching reports with customized permissions or grants"),
         ):
-            command.downgrade(config, "0013_system_evaluation_manual_review")
+            _legacy_downgrade(config, "0013_system_evaluation_manual_review")
 
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
@@ -11514,7 +11731,7 @@ def test_system_evaluation_manual_review_downgrade_refuses_draft_before_ddl(
             RuntimeError,
             match="cannot downgrade system evaluation review with manual drafts",
         ):
-            command.downgrade(config, "0012_system_evaluation_processing")
+            _legacy_downgrade(config, "0012_system_evaluation_processing")
 
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
@@ -11574,7 +11791,7 @@ def test_reviewed_result_survives_manual_review_downgrade_with_old_guard(
                 {"account_id": account_id, "result_id": result_id},
             )
 
-        command.downgrade(config, "0012_system_evaluation_processing")
+        _legacy_downgrade(config, "0012_system_evaluation_processing")
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
                 "0012_system_evaluation_processing"
@@ -11643,7 +11860,7 @@ def test_system_evaluation_downgrade_refuses_business_rows_before_ddl(
             RuntimeError,
             match="cannot downgrade system evaluation with business data",
         ):
-            command.downgrade(config, "0011_housing_real_name_reporting")
+            _legacy_downgrade(config, "0011_housing_real_name_reporting")
 
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
@@ -11705,7 +11922,7 @@ def test_system_evaluation_downgrade_refuses_changed_analysis_profile(
             RuntimeError,
             match="cannot downgrade system evaluation with changed analysis profiles",
         ):
-            command.downgrade(config, "0011_housing_real_name_reporting")
+            _legacy_downgrade(config, "0011_housing_real_name_reporting")
 
         with postgres_engine.connect() as connection:
             assert (
@@ -11748,7 +11965,7 @@ def test_system_evaluation_downgrade_refuses_modified_permission_before_ddl(
             RuntimeError,
             match="cannot downgrade system evaluation with customized permission",
         ):
-            command.downgrade(config, "0011_housing_real_name_reporting")
+            _legacy_downgrade(config, "0011_housing_real_name_reporting")
 
         with postgres_engine.connect() as connection:
             assert (
@@ -11791,7 +12008,7 @@ def test_system_evaluation_downgrade_refuses_extra_role_grant_before_ddl(
             RuntimeError,
             match="cannot downgrade system evaluation with customized grant",
         ):
-            command.downgrade(config, "0011_housing_real_name_reporting")
+            _legacy_downgrade(config, "0011_housing_real_name_reporting")
 
         with postgres_engine.connect() as connection:
             assert (
@@ -11825,7 +12042,7 @@ def test_evaluation_foundation_downgrade_refuses_business_rows_before_ddl(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0007_evaluation_page_integration")
+    _legacy_downgrade(config, "0007_evaluation_page_integration")
     command.upgrade(config, "0008_evaluation_data_media_foundation")
     guardian_id, student_id = _insert_people(postgres_engine)
     actor_person_id, actor_id = _insert_test_account(postgres_engine)
@@ -12008,7 +12225,7 @@ def test_evaluation_foundation_downgrade_refuses_business_rows_before_ddl(
             RuntimeError,
             match="cannot downgrade evaluation foundation with business data",
         ):
-            command.downgrade(config, "0007_evaluation_page_integration")
+            _legacy_downgrade(config, "0007_evaluation_page_integration")
 
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
@@ -12109,7 +12326,7 @@ def test_housing_foundation_upgrade_downgrade_upgrade_restores_clean_schema(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0008_evaluation_data_media_foundation")
+    _legacy_downgrade(config, "0008_evaluation_data_media_foundation")
     try:
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
@@ -12159,7 +12376,7 @@ def test_housing_downgrade_refuses_edited_seeded_room_before_ddl(
             RuntimeError,
             match="cannot downgrade housing foundation with customized housing data",
         ):
-            command.downgrade(config, "0008_evaluation_data_media_foundation")
+            _legacy_downgrade(config, "0008_evaluation_data_media_foundation")
 
         with postgres_engine.connect() as connection:
             _assert_housing_downgrade_refusal_preserved(connection)
@@ -12210,7 +12427,7 @@ def test_housing_downgrade_refuses_added_room_before_ddl(
             RuntimeError,
             match="cannot downgrade housing foundation with customized housing data",
         ):
-            command.downgrade(config, "0008_evaluation_data_media_foundation")
+            _legacy_downgrade(config, "0008_evaluation_data_media_foundation")
 
         with postgres_engine.connect() as connection:
             _assert_housing_downgrade_refusal_preserved(connection)
@@ -12247,7 +12464,7 @@ def test_housing_downgrade_refuses_edited_permission_before_ddl(
             RuntimeError,
             match="cannot downgrade housing foundation with customized housing data",
         ):
-            command.downgrade(config, "0008_evaluation_data_media_foundation")
+            _legacy_downgrade(config, "0008_evaluation_data_media_foundation")
 
         with postgres_engine.connect() as connection:
             _assert_housing_downgrade_refusal_preserved(connection)
@@ -12290,7 +12507,7 @@ def test_housing_downgrade_refuses_removed_admin_grant_before_ddl(
             RuntimeError,
             match="cannot downgrade housing foundation with customized housing data",
         ):
-            command.downgrade(config, "0008_evaluation_data_media_foundation")
+            _legacy_downgrade(config, "0008_evaluation_data_media_foundation")
 
         with postgres_engine.connect() as connection:
             _assert_housing_downgrade_refusal_preserved(connection)
@@ -12357,7 +12574,7 @@ def test_housing_downgrade_refuses_housing_scope_override_before_ddl(
             RuntimeError,
             match="cannot downgrade housing foundation with customized housing data",
         ):
-            command.downgrade(config, "0008_evaluation_data_media_foundation")
+            _legacy_downgrade(config, "0008_evaluation_data_media_foundation")
 
         with postgres_engine.connect() as connection:
             _assert_housing_downgrade_refusal_preserved(connection)
@@ -12400,7 +12617,7 @@ def test_housing_downgrade_refuses_override_using_housing_permission_before_ddl(
             RuntimeError,
             match="cannot downgrade housing foundation with customized housing data",
         ):
-            command.downgrade(config, "0008_evaluation_data_media_foundation")
+            _legacy_downgrade(config, "0008_evaluation_data_media_foundation")
 
         with postgres_engine.connect() as connection:
             _assert_housing_downgrade_refusal_preserved(connection)
@@ -12447,7 +12664,7 @@ def test_housing_downgrade_refuses_role_grant_using_housing_scope_before_ddl(
             RuntimeError,
             match="cannot downgrade housing foundation with customized housing data",
         ):
-            command.downgrade(config, "0008_evaluation_data_media_foundation")
+            _legacy_downgrade(config, "0008_evaluation_data_media_foundation")
 
         with postgres_engine.connect() as connection:
             _assert_housing_downgrade_refusal_preserved(connection)
@@ -12534,7 +12751,7 @@ def test_housing_downgrade_refuses_assignment_using_housing_permission_before_dd
             RuntimeError,
             match="cannot downgrade housing foundation with customized housing data",
         ):
-            command.downgrade(config, "0008_evaluation_data_media_foundation")
+            _legacy_downgrade(config, "0008_evaluation_data_media_foundation")
 
         with postgres_engine.connect() as connection:
             _assert_housing_downgrade_refusal_preserved(connection)
@@ -12588,7 +12805,7 @@ def test_housing_occupancy_upgrade_downgrade_upgrade_restores_clean_schema(
     postgres_engine: Engine,
 ) -> None:
     config = _alembic_config(postgres_engine)
-    command.downgrade(config, "0009_housing_room_status_foundation")
+    _legacy_downgrade(config, "0009_housing_room_status_foundation")
     try:
         with postgres_engine.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
@@ -12664,7 +12881,7 @@ def test_housing_occupancy_downgrade_refuses_business_data_before_ddl(
             RuntimeError,
             match="cannot downgrade housing occupancy with business data",
         ):
-            command.downgrade(config, "0009_housing_room_status_foundation")
+            _legacy_downgrade(config, "0009_housing_room_status_foundation")
 
         with postgres_engine.connect() as connection:
             _assert_housing_occupancy_downgrade_state_is_intact(connection)
@@ -12714,7 +12931,7 @@ def test_housing_occupancy_downgrade_refuses_modified_permission_before_ddl(
             RuntimeError,
             match="cannot downgrade housing occupancy with customized grants",
         ):
-            command.downgrade(config, "0009_housing_room_status_foundation")
+            _legacy_downgrade(config, "0009_housing_room_status_foundation")
 
         with postgres_engine.connect() as connection:
             _assert_housing_occupancy_downgrade_state_is_intact(connection)
@@ -12759,7 +12976,7 @@ def test_housing_occupancy_downgrade_refuses_missing_default_grant_before_ddl(
             RuntimeError,
             match="cannot downgrade housing occupancy with customized grants",
         ):
-            command.downgrade(config, "0009_housing_room_status_foundation")
+            _legacy_downgrade(config, "0009_housing_room_status_foundation")
 
         with postgres_engine.connect() as connection:
             _assert_housing_occupancy_downgrade_state_is_intact(connection)
@@ -12816,7 +13033,7 @@ def test_housing_occupancy_downgrade_refuses_permission_override_before_ddl(
             RuntimeError,
             match="cannot downgrade housing occupancy with customized grants",
         ):
-            command.downgrade(config, "0009_housing_room_status_foundation")
+            _legacy_downgrade(config, "0009_housing_room_status_foundation")
 
         with postgres_engine.connect() as connection:
             _assert_housing_occupancy_downgrade_state_is_intact(connection)
@@ -12867,7 +13084,7 @@ def test_housing_occupancy_downgrade_refuses_extra_role_grant_before_ddl(
             RuntimeError,
             match="cannot downgrade housing occupancy with customized grants",
         ):
-            command.downgrade(config, "0009_housing_room_status_foundation")
+            _legacy_downgrade(config, "0009_housing_room_status_foundation")
 
         with postgres_engine.connect() as connection:
             _assert_housing_occupancy_downgrade_state_is_intact(connection)
@@ -12953,7 +13170,7 @@ def test_housing_occupancy_downgrade_refuses_staff_permission_before_ddl(
             RuntimeError,
             match="cannot downgrade housing occupancy with customized grants",
         ):
-            command.downgrade(config, "0009_housing_room_status_foundation")
+            _legacy_downgrade(config, "0009_housing_room_status_foundation")
 
         with postgres_engine.connect() as connection:
             _assert_housing_occupancy_downgrade_state_is_intact(connection)
@@ -13087,7 +13304,7 @@ def test_housing_occupancy_downgrade_locks_concurrent_customization_until_ddl(
         advisory_lock_held = True
         pool = ThreadPoolExecutor(max_workers=1)
         future = pool.submit(
-            command.downgrade,
+            _legacy_downgrade,
             config,
             "0009_housing_room_status_foundation",
         )
@@ -13177,3 +13394,76 @@ def test_housing_occupancy_downgrade_locks_concurrent_customization_until_ddl(
                 account_id=account_id,
             )
             command.upgrade(config, "head")
+
+
+def test_reactionx_foundation_upgrade_downgrade_preserves_business_rows(postgres_engine):
+    from app.reactionx.models import (
+        ReactionxCommand,
+        ReactionxConnector,
+        ReactionxEvent,
+        ReactionxPairing,
+        ReactionxResultReceipt,
+        ReactionxRun,
+    )
+
+    config = _alembic_config(postgres_engine)
+    person, account = _insert_test_account(postgres_engine)
+    tables = {
+        "reactionx_connectors", "reactionx_pairings", "reactionx_runs",
+        "reactionx_commands", "reactionx_events", "reactionx_result_receipts",
+    }
+    person_query = text("SELECT * FROM people WHERE id=:id")
+    account_query = text("SELECT * FROM user_accounts WHERE id=:id")
+    try:
+        with postgres_engine.connect() as connection:
+            before = connection.execute(person_query, {"id": person}).one()
+            before_account = connection.execute(account_query, {"id": account}).one()
+        command.downgrade(config, "0079_talent_item_ranking_indexes")
+        assert not tables & set(inspect(postgres_engine).get_table_names())
+        command.upgrade(config, "head")
+        assert tables <= set(inspect(postgres_engine).get_table_names())
+        with postgres_engine.connect() as connection:
+            assert connection.execute(person_query, {"id": person}).one() == before
+            assert connection.execute(account_query, {"id": account}).one() == before_account
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == CURRENT_HEAD
+            assert connection.execute(
+                text(
+                    "SELECT r.key,p.key,rp.scope_kind FROM role_permissions rp "
+                    "JOIN permissions p ON p.id=rp.permission_id JOIN roles r ON r.id=rp.role_id "
+                    "WHERE p.key LIKE 'reactionx.%' ORDER BY p.key"
+                )
+            ).all() == [
+                ("super_admin", "reactionx.conduct", "global"),
+                ("super_admin", "reactionx.manage", "global"),
+            ]
+        for model in (
+            ReactionxConnector, ReactionxPairing, ReactionxRun,
+            ReactionxCommand, ReactionxEvent, ReactionxResultReceipt,
+        ):
+            assert {
+                column["name"] for column in inspect(postgres_engine).get_columns(model.__tablename__)
+            } == set(model.__table__.columns.keys())
+        with postgres_engine.connect() as connection:
+            assert {"reactionx_events_immutable", "reactionx_result_receipts_immutable"} <= set(
+                connection.execute(text("SELECT tgname FROM pg_trigger WHERE NOT tgisinternal")).scalars()
+            )
+        indexes = {item["name"] for item in inspect(postgres_engine).get_indexes("reactionx_result_receipts")}
+        assert {"ix_reactionx_rank_group", "ix_reactionx_result_page"} <= indexes
+        uncertainty = next(
+            item for item in inspect(postgres_engine).get_columns("reactionx_runs")
+            if item["name"] == "uncertainty_record"
+        )
+        assert uncertainty["nullable"] and str(uncertainty["type"]) == "JSONB"
+        run_checks = {
+            item["name"]: item["sqltext"]
+            for item in inspect(postgres_engine).get_check_constraints("reactionx_runs")
+        }
+        assert "uncertain_closed" in run_checks["ck_reactionx_run_status"]
+        active = next(
+            item for item in inspect(postgres_engine).get_indexes("reactionx_runs")
+            if item["name"] == "uq_reactionx_connector_active_run"
+        )
+        assert "uncertain_closed" not in str(active["dialect_options"]["postgresql_where"])
+    finally:
+        command.upgrade(config, "head")
+        _delete_test_account(postgres_engine, person_id=person, account_id=account)

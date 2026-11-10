@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import cast
 from uuid import UUID
 
@@ -169,14 +169,16 @@ class PortalLearningService:
             current.setdefault(row[0].student_person_id, row)
         return current
 
-    def _authorized_students(
+    def authorized_student_people(
         self,
         *,
         user_id: UUID,
         actor_person_id: UUID,
         reference_date: date,
-    ) -> list[LearningStudentSummary]:
-        decisions = self.rbac.decision_context(user_id)
+        decisions: RbacDecisionContext | None = None,
+    ) -> dict[UUID, tuple[Person, StudentProfile, PortalAccessSource]]:
+        """Current subject authorization, independent of enrollment state/dates."""
+        decisions = decisions or self.rbac.decision_context(user_id)
         sources = self._candidate_sources(
             user_id=user_id,
             actor_person_id=actor_person_id,
@@ -184,7 +186,7 @@ class PortalLearningService:
             decisions=decisions,
         )
         if not sources:
-            return []
+            return {}
         people = {
             person.id: (person, student)
             for person, student in self.db.execute(
@@ -210,10 +212,25 @@ class PortalLearningService:
                 resource_tokens=tokens_by_student[student_id],
             )
         ]
-        current_rows = self._current_rows(allowed_ids)
+        return {
+            student_id: (*people[student_id], sources[student_id]) for student_id in allowed_ids
+        }
+
+    def _authorized_students(
+        self,
+        *,
+        user_id: UUID,
+        actor_person_id: UUID,
+        reference_date: date,
+    ) -> list[LearningStudentSummary]:
+        subjects = self.authorized_student_people(
+            user_id=user_id,
+            actor_person_id=actor_person_id,
+            reference_date=reference_date,
+        )
+        current_rows = self._current_rows(list(subjects))
         items: list[tuple[int, datetime | None, str, int, LearningStudentSummary]] = []
-        for student_id in allowed_ids:
-            person, student = people[student_id]
+        for student_id, (person, student, source) in subjects.items():
             current_row = current_rows.get(student_id)
             current_summary = (
                 self._enrollment_summary(current_row)
@@ -237,7 +254,7 @@ class PortalLearningService:
                         student_name=person.full_name,
                         student_number=student.student_number,
                         age_status=age_status,
-                        access_source=sources[student_id],
+                        access_source=source,
                         current_enrollment=current_summary,
                     ),
                 )
@@ -245,7 +262,7 @@ class PortalLearningService:
         items.sort(
             key=lambda item: (
                 item[0],
-                item[1] or datetime.max.replace(tzinfo=None),
+                item[1] or datetime.max.replace(tzinfo=UTC),
                 item[2],
                 item[3],
             )

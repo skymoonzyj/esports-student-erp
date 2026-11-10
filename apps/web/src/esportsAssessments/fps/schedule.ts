@@ -1,6 +1,8 @@
 import { nextU32, shuffled, taskConfigSchema, validateRaw, validateSettings, type ControlSettings, type RawResult, type TaskConfig } from '../contracts'
 import { isInputInWindow, type InputAction, type Size } from '../engineRuntime/types'
 import { INITIAL_CAMERA, isTargetFullyVisible, sampleVisibleDirection, verticalFovDeg } from './math'
+import { validateGridViewport } from './gridCandidates'
+import { validateFixedGridViewport } from './fixedGrid'
 
 export function createRng(seed: number): () => number {
   nextU32(seed)
@@ -17,7 +19,10 @@ export function validateFpsViewport(config: TaskConfig, viewport: Size): void {
   const p = taskConfigSchema.parse(config).params
   verticalFovDeg(viewport)
   if (!config.suite_id.endsWith('fps')) throw new Error('FPS 套系配置不匹配')
-  if (p.kind === 'tracking') {
+  if (p.kind === 'multi_target') {
+    if (config.engine_version === 'pc-fps-v5') validateFixedGridViewport(p, viewport)
+    else validateGridViewport(p, viewport)
+  } else if (p.kind === 'tracking' || p.kind === 'spheretrack90') {
     for (const yaw_deg of [-p.horizontal_bound_deg, p.horizontal_bound_deg]) {
       for (const pitch_deg of [-p.vertical_bound_deg, p.vertical_bound_deg]) {
         if (!isTargetFullyVisible({ yaw_deg, pitch_deg }, p.target_diameter_deg / 2, INITIAL_CAMERA, viewport)) throw new Error('当前 viewport 视野不足以完整显示跟踪区域')

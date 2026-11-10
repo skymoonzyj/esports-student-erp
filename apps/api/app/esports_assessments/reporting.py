@@ -67,6 +67,18 @@ _V2_ADVICE: dict[TestId, str] = {
     ),
 }
 
+_V4_LABELS: dict[TestId, str] = {
+    "gridshot": "网格射击",
+    "sixshot": "六目标射击",
+    "spheretrack90": "90°范围跟枪",
+}
+_V4_ADVICE: dict[TestId, str] = {
+    "gridshot": "练习保持准确率并提高连续命中节奏",
+    "sixshot": "练习小目标稳定定位，先保证准确率再提速",
+    "spheretrack90": "练习持续跟随并缩短离靶后的重捕获时间",
+}
+_V4_DISCLAIMER = "ERP 暂定场景规则，不等同官方分数或职业能力结论"
+
 
 def comparison_key(
     config: TaskConfig,
@@ -90,6 +102,15 @@ def comparison_key(
 
 
 def _recommendation(result: ReportResult) -> str:
+    if result.config.report_version == "pc-moba-v5":
+        return "五分钟兵线与防御塔补刀：练习观察血量、规避塔伤，减少死亡损失的操作时间；本分数仅为训练参考，不是职业筛选常模"
+    if result.config.report_version == "pc-moba-v4":
+        return "五分钟兵线补刀：练习观察血量、普攻前摇及兵线交战节奏；本分数仅为训练参考，不是职业筛选常模"
+    if result.config.report_version == "pc-fps-v4":
+        label, v4_advice = _V4_LABELS[result.test_id], _V4_ADVICE[result.test_id]
+        if result.scored.quality_flags:
+            v4_advice = "本次存在质量提示，建议在相同设备、设置和稳定环境下复测"
+        return f"{label}：{v4_advice}；{_V4_DISCLAIMER}"
     uses_v2_report = result.config.report_version == f"{result.config.suite_id}-v2"
     labels = _V2_LABELS if uses_v2_report else _LABELS
     advice = _V2_ADVICE if uses_v2_report else _ADVICE
@@ -125,12 +146,23 @@ def build_report(
 ) -> AssessmentReportView:
     """Build the immutable report payload persisted by the formal write service."""
 
-    canonical_rules = get_suite(rules.suite_id, catalog_version=rules.catalog_version)
+    lane = rules.tasks.get("last-hit")
+    canonical_rules = get_suite(
+        rules.suite_id,
+        catalog_version=rules.catalog_version,
+        attack_mode=lane.params.attack_mode
+        if lane and lane.params.kind in ("lane_last_hit", "lane_last_hit_towers")
+        else None,
+    )
     if rules != canonical_rules:
         raise ValueError("report rules must use the canonical frozen suite")
 
     actual = tuple(result.test_id for result in results)
-    if len(actual) != 4 or len(set(actual)) != 4 or set(actual) != set(rules.test_ids):
+    if (
+        len(actual) != len(rules.test_ids)
+        or len(set(actual)) != len(actual)
+        or set(actual) != set(rules.test_ids)
+    ):
         raise ValueError("report results must contain every frozen member exactly once")
     by_test = {result.test_id: result for result in results}
     ordered: list[ReportResult] = []
@@ -161,12 +193,7 @@ def build_report(
         for test_id in rules.test_ids
         if test_id in comparison_by_test
     )
-    ordered_results: tuple[ReportResult, ReportResult, ReportResult, ReportResult] = (
-        ordered[0],
-        ordered[1],
-        ordered[2],
-        ordered[3],
-    )
+    ordered_results = tuple(ordered)
 
     return AssessmentReportView(
         id=report_id,

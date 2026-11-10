@@ -38,7 +38,7 @@ from app.personnel_intake.claims.schemas import (
     ClaimDetail,
     ClaimReasonInput,
 )
-from app.personnel_intake.guardian_records import canonical_json
+from app.personnel_intake.guardian_records import canonical_json, payload_identity_keys
 from app.personnel_intake.locks import CredentialReservationPolicy
 from app.personnel_intake.models import (
     AssistedApproval,
@@ -76,7 +76,7 @@ class ProfileClaimReviewService(ClaimQueries):
         payload = self._completion_candidates(row)
         if payload:
             for guardian in payload.guardians:
-                identity = self.lookup.digest(guardian.identity_number)
+                identity = payload_identity_keys(guardian, self.lookup).identity_digest
                 person_id = self.db.scalar(
                     select(Person.id).where(Person.identity_digest == identity)
                 )
@@ -122,7 +122,9 @@ class ProfileClaimReviewService(ClaimQueries):
             identities.add(target.identity_digest)
         payload = self._completion_candidates(row)
         if payload:
-            identities.update(self.lookup.digest(g.identity_number) for g in payload.guardians)
+            identities.update(
+                payload_identity_keys(g, self.lookup).identity_digest for g in payload.guardians
+            )
         phones = (
             {
                 self.lookup.digest(p)
@@ -370,11 +372,12 @@ class ProfileClaimReviewService(ClaimQueries):
                             existing = self.db.scalar(
                                 select(Person).where(
                                     Person.identity_digest
-                                    == self.lookup.digest(guardian.identity_number)
+                                    == payload_identity_keys(guardian, self.lookup).identity_digest
                                 )
                             )
                             policy.require_identity_available(
                                 identity=guardian.identity_number,
+                                identity_keys=payload_identity_keys(guardian, self.lookup),
                                 person_id=existing.id if existing else None,
                             )
                             if guardian.email:

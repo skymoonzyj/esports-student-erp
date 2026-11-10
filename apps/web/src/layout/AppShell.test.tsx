@@ -2,9 +2,29 @@ import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { readFileSync } from "node:fs"
 import { MemoryRouter } from "react-router-dom"
-import { expect, it } from "vitest"
+import { expect, it, vi } from "vitest"
 
 import { AppShell } from "./AppShell"
+
+it.each([true, false])("closes bottom-primary leaf navigation only on the actual mobile breakpoint (%s)", async (mobile) => {
+  const matchMedia = vi.fn().mockReturnValue({ matches: mobile } as MediaQueryList)
+  vi.stubGlobal("matchMedia", matchMedia)
+  try {
+    render(<MemoryRouter><AppShell permissions={new Set(["people.list", "accounts.read"])} /></MemoryRouter>)
+    const nav = within(screen.getByRole("navigation", { name: "手机导航" }))
+    await userEvent.click(nav.getByRole("link", { name: "人员中心" }))
+    await userEvent.click(nav.getByRole("link", { name: "账号管理" }))
+    expect(nav.getByRole("link", { name: "人员中心" })).toHaveAttribute("aria-expanded", String(!mobile))
+    expect(Boolean(nav.queryByRole("link", { name: "账号管理" }))).toBe(!mobile)
+    expect(matchMedia).toHaveBeenCalledWith("(max-width: 767px)")
+  } finally { vi.unstubAllGlobals() }
+})
+
+it("shows authorized page context without claiming unobserved system health", () => {
+  render(<MemoryRouter initialEntries={["/people/123"]}><AppShell permissions={new Set(["people.list"])} /></MemoryRouter>)
+  expect(screen.getByLabelText("当前位置")).toHaveTextContent("人员中心")
+  expect(screen.queryByText("系统运行正常")).not.toBeInTheDocument()
+})
 
 it("shows one registration processing entry from claim authority without granting ordinary review", async () => {
   render(<MemoryRouter initialEntries={["/settings/registrations/claims"]}><AppShell claimReviewAvailable /></MemoryRouter>)

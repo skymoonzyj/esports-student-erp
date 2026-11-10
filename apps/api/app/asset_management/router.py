@@ -8,13 +8,30 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session, selectinload, undefer
+from sqlalchemy.sql.elements import ColumnElement
 
+from app.asset_management.batch_service import AssetBatchConflict, AssetBatchService
+from app.asset_management.category_catalog import BUILT_IN_CATEGORIES, CATEGORY_GROUPS
 from app.asset_management.export_service import render_asset_export
+from app.asset_management.hardware import HARDWARE_FIELDS
 from app.asset_management.models import Asset, AssetAssignment, AssetPhoto
 from app.asset_management.photos import AssetPhotoValidationError, validate_asset_photo
+from app.asset_management.rental_schemas import (
+    OwnershipFilter,
+    RentalFacts,
+    RentalProjection,
+    RentalRenewalPage,
+    RentalRenewRequest,
+    RentalRenewResponse,
+    RentalReturnRequest,
+)
+from app.asset_management.rental_service import RENTAL_ERROR_DETAILS, RentalConflict, RentalService
 from app.asset_management.schemas import (
     AssetAssignmentResponse,
     AssetAssignRequest,
+    AssetBatchCreate,
+    AssetBatchResponse,
+    AssetCategoryDirectory,
     AssetCreate,
     AssetExportRequest,
     AssetPage,
@@ -39,8 +56,8 @@ from app.asset_management.service import (
     AssetWarrantyRangeInvalid,
 )
 from app.audit.service import AuditService
-from app.auth.dependencies import require_standard_account
-from app.auth.service import AuthContext
+from app.auth.dependencies import get_auth_service, require_standard_account
+from app.auth.service import AuthContext, InvalidSession
 from app.core.database import get_db
 from app.core.errors import ProblemError
 from app.core.transactions import atomic_write_transaction
@@ -126,6 +143,10 @@ def _asset_response(
         else None
     )
     return AssetResponse(
+        **{key: getattr(asset, key) for key in HARDWARE_FIELDS},
+        **{key: getattr(asset, key) for key in RentalFacts.model_fields},
+        rental_returned_on=asset.rental_returned_on,
+        rental_revision=asset.rental_revision,
         id=asset.id,
         asset_code=asset.asset_code,
         name=asset.name,
@@ -191,13 +212,16 @@ def _audit(
 def _raise_asset_error(exc: AssetServiceError) -> NoReturn:
     if isinstance(exc, (AssetNotFound, AssetAssignmentNotFound, AssetPersonNotFound)):
         status_code = 404
-    elif isinstance(exc, (AssetAlreadyAssigned, AssetStatusConflict)):
+    elif isinstance(exc, (AssetAlreadyAssigned, AssetStatusConflict, RentalConflict, AssetBatchConflict)):
         status_code = 409
     elif isinstance(exc, (AssetNotAssignable, AssetWarrantyRangeInvalid)):
         status_code = 422
     else:
         status_code = 422
     details = {
+        **{f"asset_rental_{reason}": message for reason, message in RENTAL_ERROR_DETAILS.items()},
+        "asset_rental_conflict": "租赁状态冲突，请刷新后重试",
+        "asset_rental_invalid": "租赁操作无效，请检查资产状态和租期",
         "asset_not_found": "资产不存在",
         "asset_assignment_not_found": "资产当前没有有效领用记录",
         "asset_person_not_found": "领用人员不存在或档案已删除",
@@ -205,6 +229,8 @@ def _raise_asset_error(exc: AssetServiceError) -> NoReturn:
         "asset_not_assignable": "该资产当前不可分配",
         "asset_status_conflict": "资产状态与当前领用记录冲突",
         "asset_warranty_range_invalid": "保修到期日不能早于采购日期",
+        "asset_hardware_invalid": "电脑资产必须填写 CPU、内存、GPU 和硬盘容量",
+        "asset_batch_conflict": "操作键已用于其他参数，请核对原批次",
     }
     raise ProblemError(
         status=status_code,
@@ -237,6 +263,8 @@ def scan_asset(asset_code: str, response: Response, db: Db) -> AssetScanResponse
         raise ProblemError(status=404, code="asset_not_found", detail="资产不存在")
     response.headers["Cache-Control"] = "no-store"
     return AssetScanResponse(
+        **{key: getattr(asset, key) for key in HARDWARE_FIELDS},
+        **{key: getattr(asset, key) for key in RentalProjection.model_fields},
         asset_code=asset.asset_code,
         name=asset.name,
         category=asset.category,
@@ -258,6 +286,8 @@ def list_my_assets(context: Context, db: Db, response: Response) -> list[AssetSe
     response.headers["Cache-Control"] = "no-store, private"
     return [
         AssetSelfResponse(
+            **{key: getattr(item.asset, key) for key in HARDWARE_FIELDS},
+            **{key: getattr(item.asset, key) for key in RentalProjection.model_fields},
             id=item.asset.id,
             asset_code=item.asset.asset_code,
             name=item.asset.name,
@@ -306,6 +336,7 @@ def list_assets(
     query: str | None = Query(default=None, max_length=120),
     status_filter: Annotated[AssetStatus | None, Query(alias="status")] = None,
     category: str | None = Query(default=None, max_length=80),
+    ownership_type: OwnershipFilter | None = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> AssetPage:
@@ -314,6 +345,7 @@ def list_assets(
         query=query,
         status=status_filter,
         category=category,
+        ownership_type=ownership_type,
         page=page,
         page_size=page_size,
     )
@@ -328,6 +360,22 @@ def list_assets(
     )
 
 
+@router.get("/categories", response_model=AssetCategoryDirectory)
+def list_asset_categories(context: Context, db: Db, response: Response) -> AssetCategoryDirectory:
+    can_read = _decision(context, db, "assets.read", {"global"})
+    if not can_read and not _decision(context, db, "assets.manage", {"global"}):
+        _deny()
+    legacy_categories: list[str] = []
+    if can_read:
+        stored = db.scalars(select(Asset.category).distinct()).all()
+        legacy_categories = sorted(
+            value for value in stored
+            if value is not None and value.strip() and value not in BUILT_IN_CATEGORIES
+        )
+    response.headers["Cache-Control"] = "no-store, private"
+    return AssetCategoryDirectory(groups=list(CATEGORY_GROUPS), legacy_categories=legacy_categories)
+
+
 @router.post("/exports")
 def export_assets(
     input: AssetExportRequest,
@@ -336,7 +384,11 @@ def export_assets(
     db: Db,
 ) -> Response:
     _require_management(context, db, "assets.export")
-    conditions = []
+    conditions: list[ColumnElement[bool]] = []
+    if input.ownership_type == "unconfirmed":
+        conditions.append(Asset.ownership_type.is_(None))
+    elif input.ownership_type is not None:
+        conditions.append(Asset.ownership_type == input.ownership_type)
     if input.status is not None:
         conditions.append(Asset.status == input.status)
     if input.category:
@@ -373,21 +425,22 @@ def export_assets(
             format=input.format,
             occurred_at=occurred_at,
         )
-        _audit(
-            db,
-            request,
-            context,
-            action="asset.export",
-            resource_type="asset_export",
-            resource_id=None,
-            purpose=input.purpose,
-            metadata={
-                "format": export_format,
-                "item_count": len(export_rows),
-                "file_sha256": sha256(content).hexdigest(),
-            },
-        )
-        db.commit()
+        with atomic_write_transaction(db):
+            _fresh_asset_actor(request, context, db, permission="assets.export")
+            _audit(
+                db,
+                request,
+                context,
+                action="asset.export",
+                resource_type="asset_export",
+                resource_id=None,
+                purpose=input.purpose,
+                metadata={
+                    "format": export_format,
+                    "item_count": len(export_rows),
+                    "file_sha256": sha256(content).hexdigest(),
+                },
+            )
     except Exception as exc:
         db.rollback()
         if isinstance(exc, ProblemError):
@@ -408,6 +461,83 @@ def export_assets(
     )
 
 
+def _fresh_asset_actor(
+    request: Request,
+    context: AuthContext,
+    db: Session,
+    *,
+    permission: str = "assets.manage",
+    require_read: bool = False,
+) -> None:
+    try:
+        fresh = get_auth_service(request, db).authenticate(
+            request.cookies.get("erp_session"), request_id=_request_id(request),
+            foreign_key_compatible_locks=True,
+        )
+    except InvalidSession as exc:
+        raise ProblemError(status=401, code="invalid_session", detail="登录已失效，请重新登录") from exc
+    if fresh.account.id != context.account.id or fresh.account.force_password_change:
+        _deny()
+    _require_management(fresh, db, permission)
+    if require_read:
+        _require_management(fresh, db, "assets.read")
+
+
+@router.post("/batch", response_model=AssetBatchResponse, status_code=status.HTTP_201_CREATED)
+def create_asset_batch(input: AssetBatchCreate, request: Request, context: Context, db: Db, response: Response) -> AssetBatchResponse:
+    _require_management(context, db)
+    _require_management(context, db, "assets.read")
+    try:
+        items = AssetBatchService(db).create(
+            input, actor_user_id=context.account.id,
+            reauthorize=lambda: _fresh_asset_actor(request, context, db, require_read=True),
+            audit=lambda asset: _audit(db, request, context, action="asset.create", resource_type="asset", resource_id=asset.id),
+        )
+        service = AssetService(db)
+        projected = []
+        for asset in items:
+            current = service.current_assignment(asset.id)
+            projected.append(_asset_response(asset, current[0], current[1]) if current else _asset_response(asset))
+        response.headers["Cache-Control"] = "no-store, private"
+        return AssetBatchResponse(operation_key=input.operation_key, items=projected, total=len(items))
+    except AssetServiceError as exc:
+        _raise_asset_error(exc)
+
+
+@router.post("/rentals/renew", response_model=RentalRenewResponse)
+def renew_rentals(input: RentalRenewRequest, request: Request, context: Context, db: Db) -> RentalRenewResponse:
+    _require_management(context, db)
+    try:
+        return RentalService(db).renew(input, actor_user_id=context.account.id,
+            request_id=_request_id(request), reauthorize=lambda: _fresh_asset_actor(request, context, db))
+    except AssetServiceError as exc:
+        _raise_asset_error(exc)
+
+
+@router.get("/{asset_id}/rental-renewals", response_model=RentalRenewalPage)
+def rental_history(asset_id: UUID, context: Context, db: Db, response: Response,
+                   page: Annotated[int, Query(ge=1)] = 1,
+                   page_size: Annotated[int, Query(ge=1, le=100)] = 20) -> RentalRenewalPage:
+    _require_management(context, db, "assets.read")
+    response.headers["Cache-Control"] = "no-store, private"
+    try:
+        return RentalService(db).history(asset_id, page=page, page_size=page_size)
+    except AssetServiceError as exc:
+        _raise_asset_error(exc)
+
+
+@router.post("/{asset_id}/rental-return", response_model=AssetResponse)
+def return_rental(asset_id: UUID, input: RentalReturnRequest, request: Request, context: Context, db: Db) -> AssetResponse:
+    _require_management(context, db)
+    _require_management(context, db, "assets.read")
+    try:
+        asset = RentalService(db).return_rental(asset_id, input, actor_user_id=context.account.id,
+            request_id=_request_id(request), reauthorize=lambda: _fresh_asset_actor(request, context, db, require_read=True))
+        return _asset_response(asset)
+    except AssetServiceError as exc:
+        _raise_asset_error(exc)
+
+
 @router.put("/{asset_id}/photo", response_model=AssetResponse)
 async def upload_asset_photo(
     asset_id: UUID,
@@ -417,6 +547,7 @@ async def upload_asset_photo(
     file: UploadFile = File(...),  # noqa: B008
 ) -> AssetResponse:
     _require_management(context, db)
+    _require_management(context, db, "assets.read")
     asset = db.get(Asset, asset_id)
     if asset is None:
         raise ProblemError(status=404, code="asset_not_found", detail="资产不存在")
@@ -425,27 +556,40 @@ async def upload_asset_photo(
         validated = validate_asset_photo(content, file.content_type)
     except AssetPhotoValidationError as exc:
         _raise_photo_error(exc)
-    photo = db.scalar(select(AssetPhoto).where(AssetPhoto.asset_id == asset_id).with_for_update())
-    if photo is None:
-        photo = AssetPhoto(asset_id=asset_id, uploaded_by_user_id=context.account.id)
-        db.add(photo)
-    photo.content = validated.content
-    photo.mime_type = validated.mime_type
-    photo.extension = validated.extension
-    photo.byte_size = validated.byte_size
-    photo.sha256 = validated.sha256
-    photo.uploaded_by_user_id = context.account.id
-    asset.updated_by_user_id = context.account.id
-    _audit(
-        db,
-        request,
-        context,
-        action="asset.photo.upload",
-        resource_type="asset",
-        resource_id=asset.id,
-        metadata={"file_sha256": validated.sha256},
-    )
-    db.commit()
+    with atomic_write_transaction(db):
+        # Do not retain identity locks during untrusted file processing. Once
+        # validated, take them before resource locks and keep them through audit.
+        _fresh_asset_actor(request, context, db, require_read=True)
+        asset = db.scalar(
+            select(Asset).where(Asset.id == asset_id).with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if asset is None:
+            raise ProblemError(status=404, code="asset_not_found", detail="资产不存在")
+        photo = db.scalar(
+            select(AssetPhoto).where(AssetPhoto.asset_id == asset_id).with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        _fresh_asset_actor(request, context, db, require_read=True)
+        if photo is None:
+            photo = AssetPhoto(asset_id=asset_id, uploaded_by_user_id=context.account.id)
+            db.add(photo)
+        photo.content = validated.content
+        photo.mime_type = validated.mime_type
+        photo.extension = validated.extension
+        photo.byte_size = validated.byte_size
+        photo.sha256 = validated.sha256
+        photo.uploaded_by_user_id = context.account.id
+        asset.updated_by_user_id = context.account.id
+        _audit(
+            db,
+            request,
+            context,
+            action="asset.photo.upload",
+            resource_type="asset",
+            resource_id=asset.id,
+            metadata={"file_sha256": validated.sha256},
+        )
     return _asset_response(asset)
 
 
@@ -457,22 +601,31 @@ def delete_asset_photo(
     db: Db,
 ) -> AssetResponse:
     _require_management(context, db)
-    asset = db.get(Asset, asset_id)
-    if asset is None:
-        raise ProblemError(status=404, code="asset_not_found", detail="资产不存在")
-    photo = db.scalar(select(AssetPhoto).where(AssetPhoto.asset_id == asset_id).with_for_update())
-    if photo is not None:
-        db.delete(photo)
-        asset.updated_by_user_id = context.account.id
-        _audit(
-            db,
-            request,
-            context,
-            action="asset.photo.remove",
-            resource_type="asset",
-            resource_id=asset.id,
+    _require_management(context, db, "assets.read")
+    with atomic_write_transaction(db):
+        _fresh_asset_actor(request, context, db, require_read=True)
+        asset = db.scalar(
+            select(Asset).where(Asset.id == asset_id).with_for_update()
+            .execution_options(populate_existing=True)
         )
-        db.commit()
+        if asset is None:
+            raise ProblemError(status=404, code="asset_not_found", detail="资产不存在")
+        photo = db.scalar(
+            select(AssetPhoto).where(AssetPhoto.asset_id == asset_id).with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        _fresh_asset_actor(request, context, db, require_read=True)
+        if photo is not None:
+            db.delete(photo)
+            asset.updated_by_user_id = context.account.id
+            _audit(
+                db,
+                request,
+                context,
+                action="asset.photo.remove",
+                resource_type="asset",
+                resource_id=asset.id,
+            )
     return _asset_response(asset)
 
 
@@ -524,6 +677,7 @@ def get_asset(asset_id: UUID, context: Context, db: Db, response: Response) -> A
 @router.post("", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
 def create_asset(input: AssetCreate, request: Request, context: Context, db: Db) -> AssetResponse:
     _require_management(context, db)
+    _require_management(context, db, "assets.read")
     try:
         with atomic_write_transaction(db):
             asset = AssetService(db).create(input, actor_user_id=context.account.id)
@@ -549,17 +703,22 @@ def update_asset(
     db: Db,
 ) -> AssetResponse:
     _require_management(context, db)
+    _require_management(context, db, "assets.read")
+    rental_fields = bool(set(RentalFacts.model_fields) & input.model_fields_set)
+
+    def audit_rental_correction(metadata: dict[str, object]) -> None:
+        _audit(db, request, context, action="asset.update", resource_type="asset",
+            resource_id=asset_id, metadata=metadata)
+
     try:
         with atomic_write_transaction(db):
-            asset = AssetService(db).update(asset_id, input, actor_user_id=context.account.id)
-            _audit(
-                db,
-                request,
-                context,
-                action="asset.update",
-                resource_type="asset",
-                resource_id=asset.id,
+            asset = AssetService(db).update(
+                asset_id, input, actor_user_id=context.account.id,
+                reauthorize=lambda: _fresh_asset_actor(request, context, db, require_read=True),
+                rental_audit=audit_rental_correction if rental_fields else None,
             )
+            if not rental_fields:
+                _audit(db, request, context, action="asset.update", resource_type="asset", resource_id=asset.id)
         current = AssetService(db).current_assignment(asset.id)
         return _asset_response(asset, current[0], current[1]) if current else _asset_response(asset)
     except AssetServiceError as exc:
@@ -575,10 +734,16 @@ def assign_asset(
     db: Db,
 ) -> AssetResponse:
     _require_management(context, db, "assets.assign")
+    _require_management(context, db, "assets.read")
     service = AssetService(db)
     try:
         with atomic_write_transaction(db):
-            assignment = service.assign(asset_id, input, actor_user_id=context.account.id)
+            assignment = service.assign(
+                asset_id, input, actor_user_id=context.account.id,
+                reauthorize=lambda: _fresh_asset_actor(
+                    request, context, db, permission="assets.assign", require_read=True,
+                ),
+            )
             _audit(
                 db,
                 request,
@@ -604,10 +769,16 @@ def return_asset(
     db: Db,
 ) -> AssetResponse:
     _require_management(context, db, "assets.assign")
+    _require_management(context, db, "assets.read")
     service = AssetService(db)
     try:
         with atomic_write_transaction(db):
-            assignment = service.return_asset(asset_id, input, actor_user_id=context.account.id)
+            assignment = service.return_asset(
+                asset_id, input, actor_user_id=context.account.id,
+                reauthorize=lambda: _fresh_asset_actor(
+                    request, context, db, permission="assets.assign", require_read=True,
+                ),
+            )
             _audit(
                 db,
                 request,

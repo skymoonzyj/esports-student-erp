@@ -24,11 +24,11 @@ class Person(TimestampMixin, Base):
     __tablename__ = "people"
     __table_args__ = (
         CheckConstraint("sex IN ('male', 'female')", name="ck_people_sex"),
-        CheckConstraint("document_type IN ('cn_id','passport')", name="ck_people_document_type"),
+        CheckConstraint("document_type IN ('cn_id','passport','hk_id','hk_mo_permit')", name="ck_people_document_type"),
         CheckConstraint("intake_mode IN ('strict','pending')", name="ck_people_intake_mode"),
         CheckConstraint("team_allocation_status IN ('untracked','pending','assigned','not_required') AND team_allocation_version >= 1", name="ck_people_team_allocation"),
-        CheckConstraint("(document_type='passport' AND passport_number_digest IS NOT NULL AND (document_issuing_country IS NULL OR document_issuing_country ~ '^[A-Z]{2}$')) OR (document_type='cn_id' AND passport_number_digest IS NULL AND document_issuing_country IS NULL)", name="ck_people_document_keys"),
-        CheckConstraint("(intake_mode='pending' AND document_type='passport') OR (sex IS NOT NULL AND date_of_birth IS NOT NULL AND (document_type='cn_id' OR document_issuing_country IS NOT NULL))", name="ck_people_required_identity_facts"),
+        CheckConstraint("(document_type='passport' AND passport_number_digest IS NOT NULL AND (document_issuing_country IS NULL OR document_issuing_country ~ '^[A-Z]{2}$')) OR (document_type IN ('cn_id','hk_id','hk_mo_permit') AND passport_number_digest IS NULL AND document_issuing_country IS NULL)", name="ck_people_document_keys"),
+        CheckConstraint("(intake_mode='pending' AND document_type IN ('passport','hk_id','hk_mo_permit')) OR (sex IS NOT NULL AND date_of_birth IS NOT NULL AND (document_type IN ('cn_id','hk_id','hk_mo_permit') OR document_issuing_country IS NOT NULL))", name="ck_people_required_identity_facts"),
         CheckConstraint(
             "nickname IS NULL OR btrim(nickname) <> ''",
             name="ck_people_nickname_not_blank",
@@ -98,7 +98,7 @@ class StaffProfile(Base):
     __table_args__ = (
         CheckConstraint(
             "staff_type IN ('coach', 'life_teacher', 'customer_service', "
-            "'administration', 'other')",
+            "'administration', 'other', 'team_manager', 'assistant_coach')",
             name="ck_staff_profiles_staff_type",
         ),
     )

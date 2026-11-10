@@ -9,6 +9,9 @@ const LONG_FRAME_WARNING_TOTAL_MS = 3000
 const FATAL_FRAME_GAP_MS = 500
 
 export class FrameQualityTracker {
+  constructor(private readonly durationMs = 60000) {
+    if (![60000, 300000, 20000].includes(durationMs)) throw new Error('invalid quality duration')
+  }
   private maxFrameGapMs = 0
   private longFrameGapTotalMs = 0
   private sawMouse = false
@@ -25,7 +28,7 @@ export class FrameQualityTracker {
   }
 
   recordFrameGap(gap_ms: number, observedDurationMs = gap_ms): void {
-    if (!Number.isFinite(gap_ms) || gap_ms < 0 || gap_ms > 60_000) {
+    if (!Number.isFinite(gap_ms) || gap_ms < 0 || gap_ms > this.durationMs) {
       throw new Error('invalid frame gap')
     }
     if (!Number.isFinite(observedDurationMs) || observedDurationMs < 0 || observedDurationMs > gap_ms) {
@@ -49,6 +52,7 @@ export class FrameQualityTracker {
   }
 
   snapshot(duration_ms: number): QualityInput {
+    if (duration_ms > this.durationMs) throw new Error('quality duration exceeds configured window')
     return qualityInputSchema.parse({
       duration_ms,
       max_frame_gap_ms: this.maxFrameGapMs,

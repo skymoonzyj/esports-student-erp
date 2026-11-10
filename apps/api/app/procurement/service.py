@@ -4,7 +4,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import Select, case, func, or_, select
@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, undefer
 from sqlalchemy.sql.base import ExecutableOption
 
+from app.asset_management.hardware import validate_computer_hardware
 from app.asset_management.schemas import AssetCreate
 from app.asset_management.service import AssetService
 from app.core.transactions import write_transaction
@@ -31,6 +32,7 @@ from app.procurement.schemas import (
     ReserveFundEntryCreate,
     SettlementCenterCreate,
     SettlementCenterUpdate,
+    calculate_purchase_total,
 )
 
 
@@ -68,6 +70,10 @@ class PurchaseConflict(ProcurementServiceError):
 
 class OperationConflict(PurchaseConflict):
     code = "procurement_operation_conflict"
+
+
+class PurchaseHardwareInvalid(ProcurementServiceError):
+    code = "procurement_asset_hardware_invalid"
 
 
 class ReserveFundInsufficient(ProcurementServiceError):
@@ -144,6 +150,10 @@ class ProcurementService:
         payload = input.model_dump(mode="json", exclude={"operation_key"})
         payload["settlement_center_id"] = str(center_id)
         if isinstance(input, PurchaseCreate):
+            # Old persisted fingerprints predate this optional field. Omission
+            # and explicit null must keep their original retry identity.
+            if input.asset_hardware is None:
+                payload.pop("asset_hardware", None)
             payload["quantity"] = format(input.quantity.normalize(), "f")
             if input.purchase_channel == "offline":
                 payload["product_url"] = None
@@ -153,12 +163,10 @@ class ProcurementService:
 
     @staticmethod
     def calculate_total(quantity: Decimal, unit_price_cents: int) -> int:
-        return int(
-            (quantity * Decimal(unit_price_cents)).quantize(
-                Decimal(1),
-                rounding=ROUND_HALF_UP,
-            )
-        )
+        try:
+            return calculate_purchase_total(quantity, unit_price_cents)
+        except ValueError as exc:
+            raise ProcurementServiceError(str(exc)) from exc
 
     @staticmethod
     def _purchase_load_options() -> tuple[ExecutableOption, ...]:
@@ -361,6 +369,14 @@ class ProcurementService:
                         raise OperationConflict("operation key payload mismatch")
                     self.operation_replayed = True
                     return existing
+                if input.add_to_assets:
+                    try:
+                        validate_computer_hardware(
+                            input.asset_category,
+                            input.asset_hardware.model_dump() if input.asset_hardware is not None else {},
+                        )
+                    except ValueError as exc:
+                        raise PurchaseHardwareInvalid(str(exc)) from exc
                 total_price_cents = self.calculate_total(
                     input.quantity,
                     input.unit_price_cents,
@@ -401,7 +417,11 @@ class ProcurementService:
                         asset_service.create_in_transaction(
                             AssetCreate(
                                 name=input.item_name,
+                                ownership_type="owned",
+                                acquisition_method="purchase",
+                                acquisition_channel=input.purchase_channel,
                                 category=input.asset_category,
+                                **(input.asset_hardware.model_dump() if input.asset_hardware is not None else {}),
                                 purchase_date=input.purchase_date,
                                 warranty_expires_on=input.asset_warranty_expires_on,
                                 note=input.note,

@@ -160,7 +160,25 @@ def test_self_service_registration_operations_document_is_truthful() -> None:
 
 def test_schema_manifest_tracks_current_head_and_all_required_tables() -> None:
     manifest = _text("scripts/db-schema-manifest.sh")
-    assert "EXPECTED_ALEMBIC_HEAD=0071_housing_room_care" in manifest
+    assert "EXPECTED_ALEMBIC_HEAD=0090_administration_team_mgmt" in manifest
+    assert "0090_administration_team_mgmt" in _shell_array(manifest, "MIGRATION_CHAIN")
+    assert "0087_intake_identity_teams" in _shell_array(manifest, "MIGRATION_CHAIN")
+    assert "0086_intake_activation_roles" in _shell_array(manifest, "MIGRATION_CHAIN")
+    for revision in ("0081_housing_cleaning_frequency", "0082_housing_room_cards", "0083_housing_property_changes", "0084_team_staff_roles", "0085_team_staff_assignments"):
+        assert revision in _shell_array(manifest, "MIGRATION_CHAIN")
+    for table in ("housing_room_cards", "housing_property_changes"):
+        assert table in _shell_array(manifest, "REQUIRED_TABLES")
+        assert table in _shell_array(manifest, "ROW_COUNT_TABLES")
+    assert "0080_reactionx_foundation" in _shell_array(manifest, "MIGRATION_CHAIN")
+    assert "0078_hk_mo_permit_documents" in _shell_array(manifest, "MIGRATION_CHAIN")
+    assert "0077_hk_identity_documents" in _shell_array(manifest, "MIGRATION_CHAIN")
+    assert "asset_batch_operations" in _shell_array(manifest, "REQUIRED_TABLES")
+    assert "asset_batch_operations" in _shell_array(manifest, "ROW_COUNT_TABLES")
+    assert "0075_global_appearance" in _shell_array(manifest, "MIGRATION_CHAIN")
+    assert "global_appearance" in _shell_array(manifest, "REQUIRED_TABLES")
+    assert "global_appearance" in _shell_array(manifest, "ROW_COUNT_TABLES")
+    assert "0073_asset_ownership_rentals" in _shell_array(manifest, "MIGRATION_CHAIN")
+    assert "0072_operations_request_errors" in _shell_array(manifest, "MIGRATION_CHAIN")
     assert "0071_housing_room_care" in _shell_array(manifest, "MIGRATION_CHAIN")
     assert "housing_room_photos" in _shell_array(manifest, "REQUIRED_TABLES")
     assert "housing_room_photos" in _shell_array(manifest, "ROW_COUNT_TABLES")
@@ -237,7 +255,26 @@ def test_schema_manifest_tracks_current_head_and_all_required_tables() -> None:
         "MIGRATION_CHAIN",
     )
     required_tables = _shell_array(manifest, "REQUIRED_TABLES")
-    assert len(required_tables) == 148
+    assert len(required_tables) == 172
+    assert "quick_intake_receipts" in required_tables
+    assert "quick_intake_receipts" in _shell_array(manifest, "ROW_COUNT_TABLES")
+    assert "0089_quick_intake_housing" in _shell_array(manifest, "MIGRATION_CHAIN")
+    intent_tables = {"intake_role_intents", "intake_role_decisions"}
+    assert intent_tables <= set(required_tables)
+    assert intent_tables <= set(_shell_array(manifest, "ROW_COUNT_TABLES"))
+    assert "0088_intake_role_intents" in _shell_array(manifest, "MIGRATION_CHAIN")
+    identity_team_tables = {"intake_identity_selections", "person_team_staff_positions", "person_team_staff_authorizations"}
+    assert identity_team_tables <= set(required_tables)
+    assert identity_team_tables <= set(_shell_array(manifest, "ROW_COUNT_TABLES"))
+    assert "intake_activation_role_plans" in required_tables
+    assert "intake_activation_role_plans" in _shell_array(manifest, "ROW_COUNT_TABLES")
+    reactionx_tables = {"reactionx_connectors", "reactionx_pairings", "reactionx_runs", "reactionx_commands", "reactionx_events", "reactionx_result_receipts"}
+    assert reactionx_tables <= set(required_tables)
+    assert reactionx_tables <= set(_shell_array(manifest, "ROW_COUNT_TABLES"))
+    assert {"person_assignment_states", "person_project_assignments", "person_assignment_operations"} <= set(required_tables)
+    assert {"asset_rental_operations", "asset_rental_renewals"} <= set(required_tables)
+    assert "operations_request_errors" in required_tables
+    assert "operations_request_errors" in _shell_array(manifest, "ROW_COUNT_TABLES")
     assert "housing_stay_void_operations" in required_tables
     assert "housing_stay_void_operations" in _shell_array(manifest, "ROW_COUNT_TABLES")
     claim_tables = {"profile_claim_sessions", "profile_claims", "profile_claim_bindings", "profile_claim_decisions"}
@@ -246,7 +283,7 @@ def test_schema_manifest_tracks_current_head_and_all_required_tables() -> None:
     assert "revenue_share_organization_manager_assignments" in required_tables
     assert {"cloud_auth_applications", "cloud_auth_sessions", "cloud_auth_candidates", "cloud_auth_operations", "cloud_backup_target_history", "cloud_connector_state"} <= set(required_tables)
     assert {"cloud_backup_targets", "cloud_backup_jobs"} <= set(required_tables)
-    assert {"team_memberships", "team_manager_assignments", "team_operations"} <= set(
+    assert {"team_memberships", "team_manager_assignments", "team_staff_assignments", "team_operations"} <= set(
         required_tables
     )
     assert "evaluation_quarantine_cleanup" in required_tables
@@ -473,6 +510,14 @@ def test_schema_manifest_tracks_current_head_and_all_required_tables() -> None:
         "ck_ea_practice_seed",
     } <= set(_shell_array(manifest, "REQUIRED_CONSTRAINTS"))
     assert set(_shell_array(manifest, "REQUIRED_TRIGGERS")) == {
+        "intake_identity_selections_immutable",
+        "intake_role_intents_immutable",
+        "intake_role_decisions_immutable",
+        "person_team_staff_authorizations_immutable",
+        "person_staff_authorization_role",
+        "person_team_staff_positions_history_guard",
+        "reactionx_events_immutable",
+        "reactionx_result_receipts_immutable",
         "trg_housing_stays_void_fact_immutable",
         "trg_housing_stay_void_operations_immutable",
         "trg_accounts_identity_facts", "trg_people_account_identity_facts",

@@ -42,7 +42,7 @@
   justify-content: center;
   gap: 8px;
   border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border-radius: var(--ui-radius-sm, 10px);
   padding: 8px 14px;
   color: var(--color-text);
   background: var(--color-surface, #fff);
@@ -57,7 +57,7 @@
 .teachingReportReviewForm textarea {
   width: 100%;
   border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border-radius: var(--ui-radius-sm, 10px);
   padding: 10px 12px;
   color: var(--color-text);
   background: var(--color-surface, #fff);
@@ -85,8 +85,8 @@
 .teachingReportHeader {
   padding: 22px;
   border: 1px solid var(--color-border-soft, var(--color-border));
-  border-radius: 16px;
-  background: linear-gradient(135deg, #fff 0%, #f7f5ff 100%);
+  border-radius: var(--ui-radius-lg, 16px);
+  background: linear-gradient(120deg, var(--color-accent-soft), var(--color-surface) 78%);
   box-shadow: var(--shadow-card-soft, 0 8px 24px rgb(16 24 40 / 6%));
 }
 
@@ -107,7 +107,7 @@
   gap: 12px;
   padding: 16px;
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: var(--ui-radius-md, 12px);
   background: var(--color-surface, #fff);
 }
 
@@ -162,7 +162,7 @@
 .teachingReportState,
 .publishedReportsState {
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: var(--ui-radius-md, 12px);
   background: var(--color-surface, #fff);
   box-shadow: 0 8px 24px rgb(16 24 40 / 6%);
 }
@@ -185,7 +185,7 @@
 .teachingReportQueueCard.selected,
 .teachingReportTargetList article.selected {
   border-color: var(--color-accent-600);
-  box-shadow: 0 0 0 3px rgb(99 91 255 / 12%);
+  box-shadow: inset 3px 0 0 var(--color-accent-600);
 }
 
 .teachingReportQueueSelect {
@@ -260,8 +260,8 @@
 .publishedReportCard > header > span {
   border-radius: 999px;
   padding: 5px 9px;
-  color: #5a3f80;
-  background: #f2ebfa;
+  color: var(--color-accent-800);
+  background: var(--color-accent-soft);
   font-size: 12px;
   font-weight: 750;
 }
@@ -366,3 +366,18 @@
     width: 100%;
   }
 }
+
+.teachingReportPage :is(button, a, input, select, textarea):focus-visible,
+.publishedReportsPanel :is(button, a):focus-visible,
+.teachingReportEditorBody textarea:focus-visible,
+.teachingReportReviewForm textarea:focus-visible {
+  outline: 3px solid var(--ui-focus-ring, #87baac);
+  outline-offset: 2px;
+}
+
+html[data-ui-theme="command"] .teachingReportPage { gap: 16px; }
+html[data-ui-theme="command"] .teachingReportHeader { padding: 18px; background: var(--color-surface); border-top: 3px solid var(--color-accent-600); box-shadow: none; }
+html[data-ui-theme="command"] :is(.teachingReportDetail, .teachingReportVersionCard, .teachingReportQueueCard, .teachingReportTargetList article, .teachingReportSlotList article, .publishedReportCard) { padding: 12px; box-shadow: none; }
+html[data-ui-theme="command"] :is(.teachingReportQueueCard.selected, .teachingReportTargetList article.selected) { box-shadow: inset 3px 0 0 var(--color-accent-600); }
+html[data-ui-theme="command"] .teachingReportFacts { gap: 0; border: 1px solid var(--color-border); border-radius: var(--ui-radius-sm, 6px); overflow: hidden; }
+html[data-ui-theme="command"] .teachingReportFacts div { border-radius: 0; border-inline-end: 1px solid var(--color-border); }

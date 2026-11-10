@@ -3,11 +3,18 @@
 from math import isfinite
 from typing import TypedDict
 
-from .config_schemas import MEMBERS, SuiteConfig, TaskConfig, registered_catalog_version
+from .config_schemas import (
+    MEMBERS,  # noqa: F401 - compatibility export for legacy consumers
+    AttackMode,
+    SuiteConfig,
+    TaskConfig,
+    members_for_catalog,
+    registered_catalog_version,
+)
 from .raw_schemas import RAW_ADAPTER, RawResult
 from .rule_versions import registered_rule
 
-AVAILABLE_SUITES: frozenset[str] = frozenset()
+AVAILABLE_SUITES: frozenset[str] = frozenset({"pc-fps", "pc-moba"})
 PRACTICE_MULTIPLIERS = (
     (1.5, 0.6, 1.4, 0.7),
     (1.25, 0.8, 1.2, 0.85),
@@ -80,15 +87,59 @@ def _registered_params(
     test_id: str,
     difficulty: int,
     catalog_version: str,
+    *,
+    attack_mode: AttackMode | None = None,
 ) -> dict[str, object]:
-    if suite_id not in MEMBERS or test_id not in MEMBERS[suite_id]:
+    if test_id not in members_for_catalog(suite_id, catalog_version):
         raise ValueError("unknown suite or task")
     if type(difficulty) is not int or not 1 <= difficulty <= 5:
         raise ValueError("difficulty must be a registered integer from 1 to 5")
+    if catalog_version in ("pc-moba-v4", "pc-moba-v5"):
+        mode = "melee" if attack_mode is None else attack_mode
+        if mode not in ("melee", "ranged"):
+            raise ValueError("请选择近战或远程人物")
+        lane: dict[str, object] = {
+            "kind": "lane_last_hit" if catalog_version == "pc-moba-v4" else "lane_last_hit_towers",
+            "attack_mode": mode,
+            "attack_range": 55 if mode == "melee" else 210,
+            "attack_windup_ms": 300 if mode == "melee" else 450,
+            "attack_interval_ms": 1100 if mode == "melee" else 1250,
+            "attack_damage": 70 if mode == "melee" else 54,
+            "projectile_speed": 0 if mode == "melee" else 500,
+        }
+        if catalog_version == "pc-moba-v5":
+            lane["tower_positions"] = [
+                {"id": "ally-rear", "team": "ally", "x": 70, "y": 162.5},
+                {"id": "ally-front", "team": "ally", "x": 280, "y": 400},
+                {"id": "enemy-front", "team": "enemy", "x": 720, "y": 162.5},
+                {"id": "enemy-rear", "team": "enemy", "x": 930, "y": 400},
+            ]
+        return lane
+    if attack_mode is not None:
+        raise ValueError("此套题不支持选择人物攻击模式")
     mobile = suite_id.startswith("mobile")
     size, speed, window, distance = PRACTICE_MULTIPLIERS[difficulty - 1]
     p: dict[str, object]
-    if test_id == "precision":
+    if test_id in ("gridshot", "sixshot"):
+        gridshot = test_id == "gridshot"
+        p = {
+            "kind": "multi_target",
+            "target_count": 3 if gridshot else 6,
+            "target_diameter_deg": (6 if gridshot else 1.5) * size,
+            "grid_columns": 5,
+            "grid_rows": 3 if gridshot else 5,
+            "grid_spacing_deg": (9 if catalog_version == "pc-fps-v5" else 10) if gridshot else 6,
+            "reference_hits": 300 if gridshot else 150,
+        }
+        if catalog_version == "pc-fps-v5":
+            p["pitch_limit_deg"] = 9 if gridshot else 12
+    elif test_id == "spheretrack90":
+        p = {
+            "kind": "spheretrack90",
+            "target_diameter_deg": 3 * size,
+            "speed_deg_s": 30 * speed,
+        }
+    elif test_id == "precision":
         p = {
             "kind": "aim",
             "opportunity_count": 30,
@@ -183,9 +234,10 @@ def get_task(
     difficulty: int = 3,
     *,
     catalog_version: str | None = None,
+    attack_mode: AttackMode | None = None,
 ) -> TaskConfig:
     version = registered_catalog_version(suite_id, catalog_version)
-    p = _registered_params(suite_id, test_id, difficulty, version)
+    p = _registered_params(suite_id, test_id, difficulty, version, attack_mode=attack_mode)
     identity = registered_rule(suite_id, test_id, version)
     return TaskConfig.model_validate(
         {
@@ -195,23 +247,25 @@ def get_task(
             "engine_version": version,
             "scoring_version": identity.scoring_version,
             "report_version": identity.report_version,
-            "duration_ms": 60000,
+            "duration_ms": 300000 if version in ("pc-moba-v4", "pc-moba-v5") else 60000,
             "difficulty": difficulty,
             "params": p,
         }
     )
 
 
-def get_suite(suite_id: str, *, catalog_version: str | None = None) -> SuiteConfig:
+def get_suite(
+    suite_id: str, *, catalog_version: str | None = None, attack_mode: AttackMode | None = None
+) -> SuiteConfig:
     version = registered_catalog_version(suite_id, catalog_version)
     return SuiteConfig.model_validate(
         {
             "suite_id": suite_id,
             "catalog_version": version,
-            "test_ids": MEMBERS[suite_id],
+            "test_ids": members_for_catalog(suite_id, version),
             "tasks": {
-                test: get_task(suite_id, test, catalog_version=version)
-                for test in MEMBERS[suite_id]
+                test: get_task(suite_id, test, catalog_version=version, attack_mode=attack_mode)
+                for test in members_for_catalog(suite_id, version)
             },
         }
     )
@@ -221,7 +275,13 @@ def validate_raw(config: TaskConfig, value: object) -> RawResult:
     # Revalidate even preconstructed objects; no model_construct/model_copy bypass.
     config = TaskConfig.model_validate(config.model_dump(mode="json"))
     if config != get_task(
-        config.suite_id, config.test_id, config.difficulty, catalog_version=config.catalog_version
+        config.suite_id,
+        config.test_id,
+        config.difficulty,
+        catalog_version=config.catalog_version,
+        attack_mode=config.params.attack_mode
+        if config.params.kind in ("lane_last_hit", "lane_last_hit_towers")
+        else None,
     ):
         raise ValueError("configuration differs from registered version")
     raw = RAW_ADAPTER.validate_python(
@@ -230,6 +290,15 @@ def validate_raw(config: TaskConfig, value: object) -> RawResult:
     p = config.params
     if raw.kind != p.kind:
         raise ValueError("raw result kind does not match task")
+    if raw.kind in ("lane_last_hit", "lane_last_hit_towers"):
+        from math import ceil
+
+        assert p.kind in ("lane_last_hit", "lane_last_hit_towers")
+        if (
+            raw.attacks > ceil((config.duration_ms - p.attack_windup_ms) / p.attack_interval_ms)
+            or sum(d.by_player for d in raw.deaths) > raw.attacks
+        ):
+            raise ValueError("普攻次数或补刀数超过该人物上限")
     if raw.kind == "aim":
         assert p.kind == "aim"
         if len(raw.trials) != p.opportunity_count:

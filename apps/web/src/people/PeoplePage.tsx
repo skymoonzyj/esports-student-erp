@@ -24,6 +24,8 @@ const countCards: CountCard[] = [
   { key: "guardian", label: "监护人", type: "guardian" },
   { key: "staff", label: "工作人员", type: "staff" },
   { key: "coach", label: "教练", type: "staff", staffType: "coach" },
+  { key: "staff_team_manager", label: "战队经理", type: "staff", staffType: "team_manager" },
+  { key: "assistant_coach", label: "助教", type: "staff", staffType: "assistant_coach" },
   {
     key: "life_teacher",
     label: "生活老师",
@@ -62,6 +64,8 @@ function personTypeParam(value: string | null): PersonType | "" {
 function staffTypeParam(value: string | null): StaffType | "" {
   return value && [
     "coach",
+    "team_manager",
+    "assistant_coach",
     "life_teacher",
     "customer_service",
     "administration",
@@ -77,6 +81,7 @@ function countKeyFor(
 ): keyof PersonCounts | null {
   if (!personType) return "total"
   if (personType === "staff") {
+    if (staffType === "team_manager") return "staff_team_manager"
     if (staffType) return staffType === "other" ? "other_staff" : staffType
     return "staff"
   }

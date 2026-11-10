@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import timedelta
 from threading import Event
 from time import monotonic, sleep
 
 import pytest
-from sqlalchemy import delete, event, text
+from sqlalchemy import delete, event, select, text
 from sqlalchemy.orm import Session
 
 from app.auth.models import AccountLoginIdentifier, UserAccount
@@ -104,8 +105,8 @@ def test_pending_reservation_edit_keeps_existing_room_validations(db, invalid_st
     assert error.value.code == expected_code
 
 
-@pytest.fixture
-def committed_cleaning_room(postgres_engine):
+@contextmanager
+def _committed_cleaning_scene(postgres_engine):
     with Session(postgres_engine) as db:
         person, actor = _account_person(db, name="保洁并发人员")
         room = _room(db, capacity=3)
@@ -125,7 +126,8 @@ def committed_cleaning_room(postgres_engine):
         yield *ids[:3], planned_id
     finally:
         with Session(postgres_engine) as db, db.begin():
-            assert db.scalar(text("SELECT current_database()")).endswith("_test")
+            database = db.scalar(text("SELECT current_database()"))
+            assert database == "erp_e2e" or database.endswith("_test")
             db.execute(delete(HousingStay).where(HousingStay.room_id == ids[1]))
             db.execute(delete(HousingRoom).where(HousingRoom.id == ids[1]))
             db.execute(delete(HousingFloor).where(HousingFloor.id == ids[4]))
@@ -134,6 +136,44 @@ def committed_cleaning_room(postgres_engine):
             db.execute(delete(StaffProfile).where(StaffProfile.person_id.in_([ids[3], arrival_id])))
             db.execute(delete(UserAccount).where(UserAccount.id.in_([actor, arrival_actor])))
             db.execute(delete(Person).where(Person.id.in_([ids[3], arrival_id])))
+
+
+@pytest.fixture
+def committed_cleaning_room(postgres_engine):
+    with _committed_cleaning_scene(postgres_engine) as identifiers:
+        yield identifiers
+
+
+def test_committed_cleaning_fixture_removes_all_owned_rows_without_database_reset(postgres_engine):
+    # Exercise the same lifecycle as the concurrency fixture, using independent
+    # committed observers before and after its own cleanup (no outer rollback).
+    with (
+        _committed_cleaning_scene(postgres_engine) as (_actor, room_id, stay_id, planned_id),
+        Session(postgres_engine) as observer,
+    ):
+        room = observer.get(HousingRoom, room_id)
+        person_ids = list(observer.scalars(
+            select(HousingStay.person_id).where(HousingStay.id.in_([stay_id, planned_id]))
+        ))
+        actor_ids = list(observer.scalars(
+            select(UserAccount.id).where(UserAccount.person_id.in_(person_ids))
+        ))
+        assert len(person_ids) == len(actor_ids) == 2
+        owned = (
+            (HousingStay, HousingStay.id, [stay_id, planned_id]),
+            (HousingRoom, HousingRoom.id, [room_id]),
+            (HousingFloor, HousingFloor.id, [room.floor_id]),
+            (HousingBuilding, HousingBuilding.id, [room.building_id]),
+            (AccountLoginIdentifier, AccountLoginIdentifier.account_id, actor_ids),
+            (StaffProfile, StaffProfile.person_id, person_ids),
+            (UserAccount, UserAccount.id, actor_ids),
+            (Person, Person.id, person_ids),
+        )
+        for model, column, identifiers in owned:
+            assert len(list(observer.scalars(select(model).where(column.in_(identifiers))))) == len(identifiers)
+    with Session(postgres_engine) as observer:
+        for model, column, identifiers in owned:
+            assert list(observer.scalars(select(model).where(column.in_(identifiers)))) == []
 
 
 @pytest.mark.parametrize("first_action,second_action", [

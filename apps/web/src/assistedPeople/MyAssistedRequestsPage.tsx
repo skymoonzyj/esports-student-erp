@@ -4,9 +4,10 @@ import { useAuth } from "../auth/AuthProvider"
 import { todayDateInput } from "../shared/date"
 import { AssistedPersonForm } from "./AssistedPersonForm"
 import { isAssistedAdult } from "./calendarAge"
+import { documentNumberLabel, documentTypeLabel } from "./documentFacts"
 import { assistedPeopleApi } from "./api"
 import type { AssistedContext, AssistedRequestFilters, IntakeDetail, PendingIntakePayload } from "./api"
-import type { IntakeInput } from "./types"
+import type { IntakeInput, DirectCreateInput } from "./types"
 import { assistedPeopleKeys } from "./keys"
 import { assistedQueryOptions, useAssistedOperation, useAssistedPeopleContext } from "./useAssistedPeopleContext"
 
@@ -43,7 +44,7 @@ function RequestWorkspace({ accountId, view, context }: { accountId: string; vie
   })
   const data = list.isError ? undefined : list.data
   function filter(next: Partial<AssistedRequestFilters>) { setFilters((current) => ({ ...current, ...next })); setPage(1) }
-  return <main className="peoplePage">
+  return <main className="peoplePage assistedPeoplePage assistedRequestsPage">
     <h1>{view === "review" ? "建档审核" : "我的建档申请"}</h1>
     <p>档案审核不代表监护验证、同意或家庭查看授权。待审核、退回或撤回的资料不能入住或激活。</p>
     <div className="personFormActions">
@@ -61,10 +62,10 @@ function RequestWorkspace({ accountId, view, context }: { accountId: string; vie
     {list.isError ? <p role="alert">申请列表暂不可用。<button onClick={() => void list.refetch()}>重试列表</button></p> : null}
     {data ? <>
       <p>共 {data.total} 条</p>
-      <table><thead><tr><th>申请</th><th>提交人</th><th>身份</th><th>状态</th><th>版本</th></tr></thead><tbody>
+      <table className="assistedRequestTable"><thead><tr><th scope="col">申请</th><th scope="col">提交人</th><th scope="col">身份</th><th scope="col">状态</th><th scope="col">版本</th></tr></thead><tbody>
         {data.items.map((item, index) => <tr key={item.id}>
-          <td><button onClick={() => setSelection(item.id)}>查看申请 {(page - 1) * 20 + index + 1}</button></td>
-          <td>{item.submitted_by.label}</td><td>{kindLabels[item.kind]}</td><td>{statusLabels[item.status]}</td><td>{item.version}</td>
+          <td data-label="申请"><button onClick={() => setSelection(item.id)}>查看申请 {(page - 1) * 20 + index + 1}</button></td>
+          <td data-label="提交人">{item.submitted_by.label}</td><td data-label="身份">{kindLabels[item.kind]}</td><td data-label="状态">{statusLabels[item.status]}</td><td data-label="版本">{item.version}</td>
         </tr>)}
       </tbody></table>
       {!data.items.length ? <p>没有符合条件的申请。</p> : null}
@@ -120,8 +121,9 @@ function LoadedDetail({ accountId, detail, context, view }: { accountId: string;
   const actions = detail.allowed_actions
   const payload = detail.scoped_payload
   const pendingPayload = payload && "material_version" in payload ? payload : null
-  const canResubmit = !pendingPayload && view === "mine" && context.can_submit && detail.status === "returned" && actions.includes("resubmit")
-  const canWithdraw = !pendingPayload && view === "mine" && ["pending", "returned"].includes(detail.status) && actions.includes("withdraw")
+  const ordinary = !pendingPayload && payload?.kind !== "staff"
+  const canResubmit = ordinary && view === "mine" && context.can_submit && detail.status === "returned" && actions.includes("resubmit")
+  const canWithdraw = ordinary && view === "mine" && ["pending", "returned"].includes(detail.status) && actions.includes("withdraw")
   if (operation.denied) return <p role="alert">{operation.message}</p>
   return <>
     <h2>申请详情</h2><p>{statusLabels[detail.status]} · {kindLabels[detail.kind]} · 版本 {detail.version}</p>
@@ -129,10 +131,10 @@ function LoadedDetail({ accountId, detail, context, view }: { accountId: string;
     {detail.returned_reason ? <p>退回原因：{detail.returned_reason}</p> : null}
     {operation.message ? <p role="status">{operation.message}</p> : null}
     {payload ? "material_version" in payload ? <AuthorizedPendingFacts payload={payload} context={context} />
-      : canResubmit ? <ReturnedRequestEditor detail={detail} payload={payload} context={context} operation={operation} />
+      : canResubmit && payload.kind !== "staff" ? <ReturnedRequestEditor detail={detail} payload={{ ...payload, kind: payload.kind }} context={context} operation={operation} />
         : <AuthorizedFacts payload={payload} context={context} /> : <p>无权查看完整资料。</p>}
     {canWithdraw ? <button disabled={operation.pending} onClick={() => void operation.run((signal) => assistedPeopleApi.withdraw(detail.id, detail.version, signal))}>撤回申请</button> : null}
-    {!pendingPayload && view === "review" && context.can_review ? <>
+    {ordinary && view === "review" && context.can_review ? <>
       {actions.includes("approve") ? <button disabled={operation.pending} onClick={() => void operation.run((signal) => assistedPeopleApi.approve(detail.id, detail.version, signal))}>审核通过</button> : null}
       {actions.includes("return") ? <><label>退回原因<textarea value={reason} maxLength={500} disabled={operation.pending}
         onChange={(event) => { setReason(event.target.value); setReasonError(false) }} /></label>
@@ -158,17 +160,17 @@ function ReturnedRequestEditor({ detail, payload, context, operation }: {
     }} />
 }
 
-function AuthorizedFacts({ payload, context }: { payload: IntakeInput; context: AssistedContext }) {
+function AuthorizedFacts({ payload, context }: { payload: DirectCreateInput; context: AssistedContext }) {
   const minor = !isAssistedAdult(payload.date_of_birth, todayDateInput())
   return <section aria-label="授权建档资料"><dl>
-    <dt>姓名</dt><dd>{payload.full_name}</dd><dt>身份证</dt><dd>{payload.identity_number}</dd>
+    <dt>姓名</dt><dd>{payload.full_name}</dd><dt>证件类型</dt><dd>{documentTypeLabel(payload.document_type)}</dd><dt>{documentNumberLabel(payload.document_type)}</dt><dd>{payload.identity_number}</dd>
     <dt>手机号</dt><dd>{payload.phone}</dd><dt>邮箱</dt><dd>{payload.email || "未提供"}</dd>
     <dt>性别</dt><dd>{payload.sex === "male" ? "男" : "女"}</dd><dt>出生日期</dt><dd>{payload.date_of_birth}</dd>
     <dt>年龄身份</dt><dd>{minor ? "未成年人" : "成年人"}</dd>
     <dt>负责教练</dt><dd>{payload.coach_person_ids.map((id) => context.eligible_coaches.find((option) => option.id === id)?.label ?? "当前不可见教练").join("、") || "无"}</dd>
     <dt>队伍</dt><dd>{context.eligible_teams.find((option) => option.id === payload.team_id)?.label ?? "无或当前不可见队伍"}</dd>
   </dl>{payload.guardians.map((guardian, index) => <section key={index} aria-label={`监护人 ${index + 1}`}><h3>监护人 {index + 1}</h3><dl>
-    <dt>姓名</dt><dd>{guardian.full_name}</dd><dt>身份证</dt><dd>{guardian.identity_number}</dd><dt>手机号</dt><dd>{guardian.phone}</dd>
+    <dt>姓名</dt><dd>{guardian.full_name}</dd><dt>{documentNumberLabel(guardian.document_type)}</dt><dd>{guardian.identity_number}</dd><dt>手机号</dt><dd>{guardian.phone}</dd>
     <dt>邮箱</dt><dd>{guardian.email || "未提供"}</dd><dt>关系</dt><dd>{guardian.relationship}</dd>
     <dt>出生日期</dt><dd>{guardian.date_of_birth}</dd><dt>性别</dt><dd>{guardian.sex === "male" ? "男" : "女"}</dd>
     <dt>主要监护人</dt><dd>{guardian.is_primary ? "是" : "否"}</dd>
@@ -180,7 +182,7 @@ function AuthorizedPendingFacts({ payload, context }: { payload: PendingIntakePa
     <p>资料待补建档记录，仅供查看。已通过仅表示建档审批，不代表账号已激活；当前账号及资料状态请在有权限的人员详情中核实。</p>
     <p>预填邮箱也须本人验证并经管理员核对认领；工作人员分类不授予岗位角色。</p>
     {!payload.sex ? <p>性别待补，暂不能办理实际入住</p> : null}
-    <dl><dt>姓名</dt><dd>{payload.full_name}</dd><dt>证件类型</dt><dd>{payload.document_type === "passport" ? "护照" : "中国居民身份证"}</dd>
+    <dl><dt>姓名</dt><dd>{payload.full_name}</dd><dt>证件类型</dt><dd>{documentTypeLabel(payload.document_type)}</dd>
       <dt>证件号码</dt><dd>{payload.identity_number}</dd>{payload.document_type === "passport" ? <><dt>签发国家</dt><dd>{payload.document_issuing_country || "待补"}</dd></> : null}
       <dt>联系电话</dt><dd>{payload.phone || "待补"}</dd><dt>邮箱</dt><dd>{payload.email || "待补"}</dd>
       <dt>性别</dt><dd>{payload.sex === "male" ? "男" : payload.sex === "female" ? "女" : "待补"}</dd>
@@ -190,7 +192,7 @@ function AuthorizedPendingFacts({ payload, context }: { payload: PendingIntakePa
       <dt>队伍</dt><dd>{payload.team_id ? context.eligible_teams.find((option) => option.id === payload.team_id)?.label ?? "当前不可见队伍" : "未选择"}</dd>
     </dl>
     {!payload.guardians.length ? <p>未登记监护资料；需要时在激活前补齐，不代表已取得监护授权。</p> : payload.guardians.map((guardian, index) => <section key={index} aria-label={`监护人 ${index + 1}`}><h3>监护人 {index + 1}</h3><dl>
-      <dt>姓名</dt><dd>{guardian.full_name}</dd><dt>身份证</dt><dd>{guardian.identity_number}</dd><dt>手机号</dt><dd>{guardian.phone}</dd>
+      <dt>姓名</dt><dd>{guardian.full_name}</dd><dt>{documentNumberLabel(guardian.document_type)}</dt><dd>{guardian.identity_number}</dd><dt>手机号</dt><dd>{guardian.phone}</dd>
       <dt>邮箱</dt><dd>{guardian.email || "未提供"}</dd><dt>关系</dt><dd>{guardian.relationship}</dd><dt>出生日期</dt><dd>{guardian.date_of_birth}</dd>
       <dt>性别</dt><dd>{guardian.sex === "male" ? "男" : "女"}</dd><dt>主要监护人</dt><dd>{guardian.is_primary ? "是" : "否"}</dd>
     </dl></section>)}

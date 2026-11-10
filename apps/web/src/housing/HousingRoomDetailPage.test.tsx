@@ -23,12 +23,19 @@ import {
   resolveHousingIssue,
   transferHousingStay,
   updateHousingStay,
+  updateHousingRoom,
   updateHousingPlannedDeparture,
   voidHousingStayHistory,
 } from "./api"
 import { HousingRoomDetailPage } from "./HousingRoomDetailPage"
+import { RoomOccupancySlots } from "./RoomOccupancySlots"
 import { housingKeys } from "./housingKeys"
 import { personHousingKeys } from "../people/housingApi"
+import { getRoomCards } from "./roomCardsApi"
+import { getHousingPropertyCapabilities, submitHousingPropertyChange } from "./propertyApi"
+
+vi.mock(import("./roomCardsApi"), async (importOriginal) => ({ ...await importOriginal(), getRoomCards: vi.fn().mockResolvedValue({ items: [] }) }))
+vi.mock(import("./propertyApi"), async (importOriginal) => ({ ...await importOriginal(), getHousingPropertyCapabilities: vi.fn().mockResolvedValue({ can_submit: false, can_review: false, can_export: false, show_basic_export: false, can_create_request: false }), listHousingPropertyChanges: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20 }), submitHousingPropertyChange: vi.fn() }))
 
 const accountId = "account-housing-manager"
 const authState = vi.hoisted(() => ({ accountId: "account-housing-manager", permissions: ["housing.read"], authenticated: true }))
@@ -68,6 +75,7 @@ vi.mock(import("./api"), async (importOriginal) => ({
   resolveHousingIssue: vi.fn(),
   transferHousingStay: vi.fn(),
   updateHousingStay: vi.fn(),
+  updateHousingRoom: vi.fn(),
   updateHousingPlannedDeparture: vi.fn(),
   voidHousingStayHistory: vi.fn(),
 }))
@@ -254,6 +262,72 @@ function renderPage(queryClient = new QueryClient({ defaultOptions: { queries: {
   return mountPage(queryClient).queryClient
 }
 
+it("mounts current resident card dates independently of the occupancy controls", async () => {
+  vi.mocked(getRoomCards).mockResolvedValueOnce({ items: [{ stay_id: "current", person_id: "p", person_name: "房卡住客", nickname: null, issued_on: "2026-11-01", expires_on: "2026-11-30", version: 1, can_edit: false }] })
+  renderPage()
+  expect(await screen.findByRole("region", { name: "住客房卡日期" })).toBeVisible()
+  expect(await screen.findByText("当前开卡日：2026-11-01 · 到期日：2026-11-30")).toBeVisible()
+  expect(screen.queryByRole("button", { name: "保存房卡住客的房卡日期" })).not.toBeInTheDocument()
+})
+
+it("mounts property proposals with the current room version and no direct occupancy authority", async () => {
+  vi.mocked(getHousingPropertyCapabilities).mockResolvedValue({ can_submit: true, can_review: false, can_export: false, show_basic_export: false, can_create_request: true })
+  detailMock.mockResolvedValue(detail({ room: room({ allowed_actions: { ...room().allowed_actions, create_stay: false, report_issue: false } }) }))
+  renderPage()
+  expect(await screen.findByRole("region", { name: "物业变更申请" })).toBeVisible()
+  expect(screen.getByText(/为 409 提交申请（当前版本/)).toBeVisible()
+  expect(screen.queryByRole("button", { name: "安排入住" })).not.toBeInTheDocument()
+  expect(screen.queryByRole("region", { name: "物业变更审批" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "编辑房间" })).toBeNull()
+})
+
+it("directly saves an authorized administrative room edit with the existing dialog instead of a proposal", async () => {
+  vi.mocked(getHousingPropertyCapabilities).mockResolvedValue({ can_submit: true, can_review: true, can_export: true, show_basic_export: false, can_create_request: false })
+  const initial = room({ allowed_actions: { ...room().allowed_actions, edit: true } })
+  detailMock.mockResolvedValue(detail({ room: initial }))
+  vi.mocked(updateHousingRoom).mockResolvedValue({ ...initial, notes: "行政直接维护", service_status: "maintenance", version: 9 })
+  renderPage()
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole("button", { name: "编辑房间" }))
+  const dialog = screen.getByRole("dialog", { name: "编辑房间 409" })
+  await user.clear(within(dialog).getByLabelText("备注"))
+  await user.type(within(dialog).getByLabelText("备注"), "行政直接维护")
+  await user.selectOptions(within(dialog).getByLabelText("服务状态"), "maintenance")
+  detailMock.mockResolvedValue(detail({ room: { ...initial, notes: "行政直接维护", service_status: "maintenance", status_text: "维修中", version: 9 } }))
+  await user.click(within(dialog).getByRole("button", { name: "保存房间" }))
+  await waitFor(() => expect(updateHousingRoom).toHaveBeenCalledWith("room-409", expect.objectContaining({ version: 8, notes: "行政直接维护", service_status: "maintenance" })))
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  expect(await screen.findByText("维修中")).toBeVisible()
+  expect(screen.queryByRole("button", { name: "提交待审申请" })).toBeNull()
+  expect(submitHousingPropertyChange).not.toHaveBeenCalled()
+})
+
+it("does not offer either a direct edit or a new request after administrative edit denial", async () => {
+  vi.mocked(getHousingPropertyCapabilities).mockResolvedValue({ can_submit: true, can_review: true, can_export: true, show_basic_export: true, can_create_request: false })
+  const client = renderPage()
+  await screen.findByRole("heading", { name: "房间 409" })
+  await waitFor(() => expect(client.isFetching()).toBe(0))
+  expect(screen.queryByRole("button", { name: "编辑房间" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "提交待审申请" })).toBeNull()
+})
+
+it.each([
+  ["team_manager", "战队经理"],
+  ["assistant_coach", "助教"],
+] as const)("labels %s in room detail", async (personType, label) => {
+  detailMock.mockResolvedValue(detail({ current_stays: [stay({ person_type: personType })] }))
+  renderPage()
+  expect((await screen.findAllByText(`${label} · 男`)).length).toBeGreaterThan(0)
+})
+
+it.each([
+  ["team_manager", "战队经理"],
+  ["assistant_coach", "助教"],
+] as const)("labels %s in occupancy slots", (personType, label) => {
+  render(<RoomOccupancySlots roomType="single" capacity={1} occupants={[stay({ person_type: personType })]} />)
+  expect(screen.getByText(`${label} · 男`)).toBeVisible()
+})
+
 it("labels unknown sex in stay details without inferring female", async () => {
   detailMock.mockResolvedValue(detail({ current_stays: [stay({ sex: null })] }))
   renderPage()
@@ -265,7 +339,7 @@ it("labels an initial ready room neutrally without implying a recorded cleaning 
   detailMock.mockResolvedValue(detail({ room: room({ cleaning_status: "ready", cleaning_pending_at: null, cleaning_completed_at: null }) }))
   renderPage()
   const label = await screen.findByText("保洁状态")
-  expect(label.parentElement).toHaveTextContent("保洁就绪")
+  expect(label.parentElement).toHaveTextContent("无退房待保洁")
   expect(screen.queryByText("已清洁")).not.toBeInTheDocument()
 })
 
@@ -321,7 +395,8 @@ it("clears current private detail and option queries after a real unmount", asyn
     await Promise.resolve()
   })
 
-  expect(cancelQueries).toHaveBeenCalledTimes(3)
+  // Child room-card queries now have their own cancellation lifecycle too.
+  // Assert the privacy roots, not a count of unrelated child cancellations.
   expect(cancelQueries).toHaveBeenCalledWith({ queryKey: housingKeys.details(accountId, catalog.access_revision) })
   expect(cancelQueries).toHaveBeenCalledWith({ queryKey: [...housingKeys.scope(accountId, catalog.access_revision), "cohort-options"] })
   expect(cancelQueries).toHaveBeenCalledWith({ queryKey: [...housingKeys.scope(accountId, catalog.access_revision), "transfer-options"] })
@@ -331,6 +406,9 @@ it("clears current private detail and option queries after a real unmount", asyn
 })
 
 beforeEach(() => {
+  vi.mocked(updateHousingRoom).mockReset()
+  vi.mocked(submitHousingPropertyChange).mockReset()
+  vi.mocked(getHousingPropertyCapabilities).mockResolvedValue({ can_submit: false, can_review: false, can_export: false, show_basic_export: false })
   cleaningMock.mockReset()
   authState.accountId = accountId
   authState.permissions = ["housing.read"]

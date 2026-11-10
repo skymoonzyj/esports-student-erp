@@ -88,6 +88,7 @@ export type HousingCatalogPanelProps = {
   clientStateEpochRef: RefObject<number>
   focusFallbackRef?: RefObject<HTMLElement | null>
   onPrivateFailure?: (error: unknown) => void
+  externalBulkActions?: boolean
 }
 
 function safeError(error: unknown): string {
@@ -102,7 +103,7 @@ function isPrivate(error: unknown): boolean {
   return error instanceof ProblemDetailsError && (error.problem.status === 403 || error.problem.status === 404)
 }
 
-export function HousingCatalogPanel({ accountId, accessRevision, catalog, rooms, currentRooms, pending = false, selectedRooms, onSelectedRoomsChange, mutations, mutationCallbacks, mutationCoordinator, clientStateEpochRef, focusFallbackRef, onPrivateFailure }: HousingCatalogPanelProps) {
+export function HousingCatalogPanel({ accountId, accessRevision, catalog, rooms, currentRooms, pending = false, selectedRooms, onSelectedRoomsChange, mutations, mutationCallbacks, mutationCoordinator, clientStateEpochRef, focusFallbackRef, onPrivateFailure, externalBulkActions = false }: HousingCatalogPanelProps) {
   const queryClient = useQueryClient()
   const localMutationCoordinator = useHousingMutationCoordinator()
   const coordinator = mutationCoordinator ?? localMutationCoordinator
@@ -156,6 +157,7 @@ export function HousingCatalogPanel({ accountId, accessRevision, catalog, rooms,
   }, [onSelectedRoomsChange, selectedRooms])
 
   useEffect(() => {
+    if (externalBulkActions) return
     updateSelected((current) => {
       const next = new Map(current)
       let changed = false
@@ -171,7 +173,7 @@ export function HousingCatalogPanel({ accountId, accessRevision, catalog, rooms,
       }
       return changed ? next : current
     })
-  }, [updateSelected, visibleRooms])
+  }, [externalBulkActions, updateSelected, visibleRooms])
 
   useEffect(() => {
     if (selected.size < MAX_HOUSING_BATCH_SELECTION) setSelectionNotice(null)
@@ -339,7 +341,7 @@ export function HousingCatalogPanel({ accountId, accessRevision, catalog, rooms,
       <header className="housingCatalog__header"><div><h2 id="housing-catalog-title">目录管理</h2><p>按楼栋和楼层维护房间目录</p></div>{catalog.can_create_building ? <button type="button" disabled={locked} onClick={() => { setError(null); setDialog({ type: "create-building" }) }}>新建楼栋</button> : null}</header>
       {notice ? <p className="housingCatalog__notice" role="alert">{notice}</p> : null}
       {selectionNotice ? <p className="housingCatalog__notice" role="alert">{selectionNotice}</p> : null}
-      {selected.size > 0 ? <div className="housingCatalog__batch"><span aria-label={`跨页已选总数 ${selected.size} 间`}><span>已选择 {selected.size} 间待核对房间</span><small>跨页总数</small></span><div className="housingCatalog__batchActions"><button type="button" disabled={locked} onClick={() => { setSelectionNotice(null); updateSelected(() => new Map()) }}>清空选择</button><button type="button" disabled={locked} onClick={batchVerify}>批量核对 {selected.size} 间房</button></div></div> : null}
+      {!externalBulkActions && selected.size > 0 ? <div className="housingCatalog__batch"><span aria-label={`跨页已选总数 ${selected.size} 间`}><span>已选择 {selected.size} 间待核对房间</span><small>跨页总数</small></span><div className="housingCatalog__batchActions"><button type="button" disabled={locked} onClick={() => { setSelectionNotice(null); updateSelected(() => new Map()) }}>清空选择</button><button type="button" disabled={locked} onClick={batchVerify}>批量核对 {selected.size} 间房</button></div></div> : null}
       <ul className="housingCatalog__buildings" aria-label="楼栋目录">
         {catalog.buildings.map((building) => {
           const floors = catalog.floors.filter((floor) => floor.building_id === building.id)
@@ -359,7 +361,7 @@ export function HousingCatalogPanel({ accountId, accessRevision, catalog, rooms,
                   {floor.allowed_actions.includes("delete") ? <button type="button" aria-label={`删除楼层 ${floor.name}`} disabled={locked} onClick={() => { setError(null); setDialog({ type: "delete-floor", floorId: floor.id }) }}>删除</button> : null}
                 </div></header>
                 {floorRooms.length ? <ul aria-label={`${floor.name}房间`}>{floorRooms.map((room) => <li key={room.id}><span>{room.room_number} · {room.verification_status === "pending_verification" ? "待核对" : "已核对"}</span><div className="housingCatalog__actions">
-                  {room.verification_status === "pending_verification" && room.allowed_actions.verify ? <label><input type="checkbox" aria-label={`选择房间 ${room.room_number}进行核对`} checked={selected.has(room.id)} disabled={locked} onChange={(event) => toggleSelected(room, event.currentTarget.checked)} />选择</label> : null}
+                  {!externalBulkActions && room.verification_status === "pending_verification" && room.allowed_actions.verify ? <label><input type="checkbox" aria-label={`选择房间 ${room.room_number}进行核对`} checked={selected.has(room.id)} disabled={locked} onChange={(event) => toggleSelected(room, event.currentTarget.checked)} />选择</label> : null}
                   {room.allowed_actions.edit ? <button type="button" aria-label={`编辑房间 ${room.room_number}`} disabled={locked} onClick={() => { setError(null); setDialog({ type: "edit-room", roomId: room.id, baseVersion: room.version }) }}>编辑</button> : null}
                   {room.verification_status === "pending_verification" && room.allowed_actions.verify ? <button type="button" aria-label={`核对房间 ${room.room_number}`} disabled={locked} onClick={() => void run(() => callbacks.verifyRoom(room.id, room.version), { close: false, affectedRoomIds: [room.id] })}>核对</button> : null}
                   {room.allowed_actions.delete ? <button type="button" aria-label={`删除房间 ${room.room_number}`} disabled={locked} onClick={() => { setError(null); setDialog({ type: "delete-room", roomId: room.id }) }}>删除</button> : null}

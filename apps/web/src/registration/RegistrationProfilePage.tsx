@@ -16,6 +16,7 @@ import type {
   RegistrationStateResponse,
 } from "./api"
 import "./registration.css"
+import { PublicEntryAside } from "./PublicEntryAside"
 
 const CONSENT_VERSION = "2026-08"
 const STAFF_TYPES = [
@@ -360,6 +361,7 @@ export function RegistrationProfilePage() {
 
   return (
     <main className="registrationPage">
+      <PublicEntryAside />
       <section className="registrationCard" aria-labelledby="registration-profile-title">
         <div className="registrationStep">步骤 3 / 3</div>
         <p className="registrationEyebrow">REAL-NAME PROFILE</p>

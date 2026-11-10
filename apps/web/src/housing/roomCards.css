@@ -1,0 +1,12 @@
+.housingRoomCards { padding: 18px; border: 1px solid var(--border-color, #dce3ea); border-radius: 14px; background: var(--surface, #fff); color: var(--text-primary, #1b2637); }
+.housingRoomCards h2 { margin-top: 0; font-size: 1.1rem; }
+.housingRoomCards > p, .housingResidentCard__current { color: var(--color-text-muted); font-size: .9rem; }
+.housingRoomCards__residents { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.housingResidentCard { min-width: 0; padding: 14px; border: 1px solid var(--border-color, #dce3ea); border-radius: 10px; }
+.housingResidentCard h3 { margin: 0 0 5px; }
+.housingResidentCard__dates { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.housingResidentCard__dates label { display: grid; gap: 6px; flex: 1 1 130px; min-width: 0; }
+.housingResidentCard input { min-width: 0; width: 100%; box-sizing: border-box; padding: 9px; border: 1px solid var(--border-color, #dce3ea); border-radius: 8px; background: var(--surface, #fff); color: inherit; }
+.housingResidentCard button, .housingRoomCards > div > button { min-height: 44px; padding: 8px 12px; margin: 4px 8px 4px 0; border-radius: var(--ui-radius-md, 8px); border: 1px solid var(--border-color, #dce3ea); background: var(--surface, #fff); color: inherit; cursor: pointer; }
+.housingResidentCard button:disabled { opacity: .55; cursor: not-allowed; }
+.housingResidentCard [role="alert"] { color: var(--color-danger-700); }

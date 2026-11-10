@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.admissions.models import Enrollment
 from app.audit.service import AuditService
 from app.auth.account_readiness import AccountAccessReadinessPolicy
-from app.auth.dependencies import require_standard_account
+from app.auth.dependencies import require_current_standard_account, require_standard_account
 from app.auth.models import UserAccount
 from app.auth.schemas import AccountStatus
 from app.auth.service import AuthContext
@@ -25,6 +25,8 @@ from app.rbac.policy import Effect, ScopeKind
 from app.rbac.schemas import (
     AccountAccessResponse,
     EffectivePermissionResponse,
+    JobRoleChangeRequest,
+    JobRoleChangeResponse,
     PermissionAccountDirectoryItem,
     PermissionBuildingDirectoryItem,
     PermissionBuildingDirectoryPage,
@@ -96,7 +98,11 @@ def _permission_denied() -> None:
 
 
 def _account_tokens(context: AuthContext, db: Session, account_id: UUID) -> set[str]:
-    account = db.get(UserAccount, account_id)
+    account = db.scalar(
+        select(UserAccount)
+        .where(UserAccount.id == account_id)
+        .execution_options(populate_existing=True)
+    )
     if account is None:
         raise ProblemError(status=404, code="rbac_resource_not_found", detail="账号不存在")
     return RbacService(db).person_resource_tokens(
@@ -690,6 +696,36 @@ def assign_role(
     return Response(status_code=204)
 
 
+@router.post("/accounts/{account_id}/job-role-change", response_model=JobRoleChangeResponse)
+def change_job_role(
+    account_id: UUID,
+    input: JobRoleChangeRequest,
+    request: Request,
+    response: Response,
+    context: Annotated[AuthContext, Depends(require_global_account_permissions_manager)],
+    db: Annotated[Session, Depends(get_db)],
+) -> JobRoleChangeResponse:
+    from app.rbac.service import JobRoleConflict
+
+    response.headers["Cache-Control"] = "no-store, private"
+    try:
+        return RbacService(db).change_job_role(
+            actor_user_id=context.account.id,
+            account_id=account_id,
+            input=input,
+            request_id=str(request.state.request_id),
+            before_change=lambda: require_current_standard_account(db, context),
+        )
+    except RbacResourceNotFound as exc:
+        raise ProblemError(status=404, code=exc.code, detail="账号或角色不存在") from exc
+    except PermissionDelegationDenied as exc:
+        raise ProblemError(status=403, code=exc.code, detail="当前账号无权调整该岗位或委派目标角色") from exc
+    except LastAdminProtected as exc:
+        raise ProblemError(status=409, code=exc.code, detail="不能移除本人或最后的超级管理员能力") from exc
+    except (JobRoleConflict, TeamHasActiveRelationships) as exc:
+        raise ProblemError(status=409, code=exc.code, detail=str(exc)) from exc
+
+
 @router.delete("/accounts/{account_id}/roles/{role_id}", status_code=204)
 def remove_role(
     account_id: UUID,
@@ -829,6 +865,12 @@ def remove_permission_override(
         with db.begin():
 
             def append_audit(change: PermissionOverrideChange) -> None:
+                # All override/recovery locks have been acquired by this point.
+                # Recheck both identity and the existing target-scoped policy
+                # before either the successful audit or deletion can occur.
+                current = require_current_standard_account(db, context)
+                if not _can_manage_account(current, db, account_id):
+                    _permission_denied()
                 _append_access_audit(
                     db=db,
                     request=request,
@@ -858,6 +900,10 @@ def remove_permission_override(
     except RbacResourceNotFound as exc:
         raise ProblemError(status=404, code=exc.code, detail="权限覆盖规则不存在") from exc
     except PermissionDelegationDenied as exc:
+        # The service can now reject a disabled actor at its participant lock,
+        # before the audit callback's identity check. Preserve the existing
+        # revoked-login response using a fresh database check after rollback.
+        require_current_standard_account(db, context)
         raise ProblemError(
             status=403, code=exc.code, detail="不能移除超出自身范围的拒绝规则"
         ) from exc

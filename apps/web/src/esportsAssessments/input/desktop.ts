@@ -7,6 +7,7 @@ export interface DesktopInputLayout {
   readonly sensitivity: number
   readonly bounds: Rect
   readonly logical_size: Size
+  readonly duration_ms?: number
 }
 
 export interface DesktopMoveEvent {
@@ -81,7 +82,7 @@ export class DesktopInputRouter {
   }
 
   private validAt(at_ms: number): boolean {
-    return isInputInWindow({ kind: 'fire', at_ms, pressed: false })
+    return isInputInWindow({ kind: 'fire', at_ms, pressed: false }, this.layout.duration_ms)
   }
 }
 

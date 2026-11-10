@@ -23,6 +23,10 @@ import { useMemo, useState } from "react"
 import type { FormEvent, ReactNode } from "react"
 
 import { ProblemDetailsError } from "../api/client"
+import { useOptionalAuth } from "../auth/AuthProvider"
+import { AssetCategorySelect } from "../assets/AssetCategorySelect"
+import { AssetHardwareFields, hardwareComplete, isComputer, normalizedHardware } from "../assets/AssetHardwareFields"
+import type { AssetHardware } from "../assets/api"
 import { formatCny, todayInChina } from "../revenueShare/format"
 import {
   addSettlementCenterReserveFund,
@@ -170,6 +174,8 @@ function PurchaseFormDialog({
   centers,
   canSettle,
   canCreateAssets,
+  categoryAccountId,
+  categoryAuthorized,
   pending,
   onClose,
   onSubmit,
@@ -178,6 +184,8 @@ function PurchaseFormDialog({
   centers: SettlementCenter[]
   canSettle: boolean
   canCreateAssets: boolean
+  categoryAccountId: string | null
+  categoryAuthorized: boolean
   pending: boolean
   onClose: () => void
   onSubmit: (input: PurchaseCreateInput | PurchaseInput) => Promise<void>
@@ -201,6 +209,7 @@ function PurchaseFormDialog({
   const [settledOn, setSettledOn] = useState(todayInChina())
   const [addToAssets, setAddToAssets] = useState(false)
   const [assetCategory, setAssetCategory] = useState("")
+  const [assetHardware, setAssetHardware] = useState<AssetHardware>({})
   const [assetWarrantyExpiresOn, setAssetWarrantyExpiresOn] = useState("")
   const [error, setError] = useState<string | null>(null)
   const selectableCenters = centers.filter(
@@ -256,6 +265,7 @@ function PurchaseFormDialog({
       return
     }
     if (!record && addToAssets) {
+      if (canCreateAssets && isComputer(assetCategory) && !hardwareComplete(assetHardware)) { setError("请补齐电脑的 CPU、内存、GPU 和硬盘配置"); return }
       if (!/^\d+$/.test(quantity.trim()) || Number(quantity) > 100) {
         setError("同步到资产管理时，数量必须是 1 至 100 的整数")
         return
@@ -294,6 +304,7 @@ function PurchaseFormDialog({
               asset_warranty_expires_on: canCreateAssets && addToAssets
                 ? assetWarrantyExpiresOn || null
                 : null,
+              ...(canCreateAssets && addToAssets && isComputer(assetCategory) ? { asset_hardware: normalizedHardware(assetHardware) } : {}),
             },
       )
     } catch (caught) {
@@ -445,11 +456,13 @@ function PurchaseFormDialog({
               <div className="procurementFormGrid">
                 <label>
                   <span>资产分类（选填）</span>
-                  <input
+                  <AssetCategorySelect
+                    id="purchase-asset-category"
                     value={assetCategory}
-                    onChange={(event) => setAssetCategory(event.target.value)}
-                    maxLength={80}
-                    placeholder="例如：办公设备、训练器材"
+                    onChange={(value) => { setAssetCategory(value); setAssetHardware({}) }}
+                    mode="create"
+                    accountId={categoryAccountId}
+                    authorized={categoryAuthorized}
                   />
                 </label>
                 <label>
@@ -464,6 +477,7 @@ function PurchaseFormDialog({
                 </label>
               </div>
             ) : null}
+            {addToAssets ? <AssetHardwareFields idPrefix="purchase" value={assetHardware} category={assetCategory} onChange={setAssetHardware} /> : null}
           </section>
         ) : null}
         <label>
@@ -1317,6 +1331,9 @@ export function ProcurementPage({
   canManageInvoices,
   canCreateAssets = false,
 }: ProcurementPageProps) {
+  const auth = useOptionalAuth()
+  const categoryAccountId = auth?.status === "authenticated" ? auth.user?.account_id ?? null : null
+  const categoryAuthorized = Boolean(canCreateAssets && categoryAccountId && (auth?.user?.is_super_admin || auth?.user?.permissions.includes("assets.manage")))
   const queryClient = useQueryClient()
   const [query, setQuery] = useState("")
   const [centerId, setCenterId] = useState("")
@@ -1746,7 +1763,7 @@ export function ProcurementPage({
           <div className="procurementState">当前条件下没有采购记录。</div>
         ) : null}
         {purchases.data && purchases.data.items.length > 0 ? (
-          <div className="procurementTableWrap">
+          <div className="procurementTableWrap" role="region" aria-label="采购台账，可横向滚动" tabIndex={0}>
             <table className="procurementTable">
               <thead>
                 <tr>
@@ -1921,6 +1938,8 @@ export function ProcurementPage({
           centers={centers.data ?? []}
           canSettle={canSettle}
           canCreateAssets={canCreateAssets}
+          categoryAccountId={categoryAccountId}
+          categoryAuthorized={categoryAuthorized}
           pending={pending}
           onClose={() => setEditing(undefined)}
           onSubmit={savePurchase}

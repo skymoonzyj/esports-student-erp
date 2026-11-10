@@ -70,7 +70,7 @@ function OwnHistory({ account, mode }: { account: string; mode: Mode }) {
         <ul className="assessmentReportsList">
           {uniqueBy(history.data.items.filter(item => item.mode === 'formal'), item => item.session.id).map(({ session, created_at }) => (
             <li key={session.id}>
-              <span>{suiteLabels[session.suite_id]} · {chinaDate(created_at)} · {session.status === 'completed' ? '已完成' : session.status === 'abandoned' ? '已放弃' : '进行中'} · {session.results.length}/4</span>
+              <span>{suiteLabels[session.suite_id]} · {chinaDate(created_at)} · {session.status === 'completed' ? '已完成' : session.status === 'abandoned' ? '已放弃' : '进行中'} · {session.results.length}/{session.members.length}</span>
               {session.report_id ? <Link to={`/esports-assessments/reports/${session.report_id}`}>查看报告</Link> : <Link to={`/esports-assessments/sessions/${session.id}`}>查看轮次</Link>}
             </li>
           ))}

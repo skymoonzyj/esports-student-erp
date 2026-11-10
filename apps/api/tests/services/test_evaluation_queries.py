@@ -338,7 +338,7 @@ def test_center_enrollment_deny_hides_relationship_task_history(evaluation_query
         permission = db.scalar(select(Permission).where(Permission.key == "evaluation_center.access"))
         assert permission is not None
         RbacService(db).add_override(
-            actor_user_id=scenario.base.actor_user_id, account_id=account_id,
+            actor_user_id=scenario.base.admin_user_id, account_id=account_id,
             input=PermissionOverrideCreate(permission_id=permission.id, effect="deny", scope_kind="enrollment",
                                            scope_id=scenario.base.enrollment_id, grant_reason="Center deny regression"),
         )
